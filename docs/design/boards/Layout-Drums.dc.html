@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Drum pads layout</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 844px; height: 390px; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+  <div style="position: absolute; left: 28px; top: 12px; width: 488px; height: 366px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px">
+    <sc-for list="{{pads}}" as="p" hint-placeholder-count="16">
+      <div style="position: relative; margin-top: {{p.dy}}px; border-radius: 14px; background: {{p.bg}}; color: {{p.fg}}; box-shadow: inset 0 0 0 2px {{p.ring}}; padding: 10px 12px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between">
+        <span style="font-size: 14px; font-weight: 700">{{p.name}}</span>
+        <span style="align-self: flex-start; padding: 3px 6px; border-radius: 6px; background: {{p.chipBg}}; font: 600 10px/1 'JetBrains Mono', monospace">key {{p.key}}</span>
+        <span style="position: absolute; right: 10px; top: 12px; width: 6px; height: 6px; border-radius: 3px; background: {{p.led}}"></span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position: absolute; left: 536px; top: 12px; width: 280px; height: 366px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; gap: 10px; align-items: flex-start">
+      <div style="width: 172px; height: 172px; box-sizing: border-box; padding: 6px; border-radius: 12px; background: #0B0A0F; box-shadow: inset 0 0 0 1px #2E2A3B">
+        <div style="width: 160px; height: 160px; background: #000000; font-family: VT323, monospace; color: #E8E8E8; padding: 6px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px">
+          <div style="display: flex; justify-content: space-between; font-size: 15px; line-height: 1"><span style="color: #EF4444">X0X</span><span>PAT A1 · 120</span></div>
+          <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px">
+            <sc-for list="{{steps}}" as="s" hint-placeholder-count="32"><div style="height: 12px; background: {{s}}"></div></sc-for>
+          </div>
+          <div style="margin-top: auto; font-size: 14px; line-height: 1">BD SD CH OH</div>
+        </div>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 10px">
+        <button type="button" aria-label="Menu" style="width: 48px; height: 48px; border-radius: 24px; border: none; background: #221F2B; display: flex; align-items: center; justify-content: center"><dc-import name="Creature" form="crab" size="0.45" mood="play" hint-size="32px,29px"></dc-import></button>
+        <span style="font: 600 10px/1.3 'JetBrains Mono', monospace; color: #A9A3B8; text-align: center">screen ×2<br>tap: ×3</span>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <button type="button" style="position: relative; height: 56px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 700 13px Inter, sans-serif">PLAY<span style="position: absolute; right: 8px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: #C6F24E"></span></button>
+      <button type="button" style="position: relative; height: 56px; border-radius: 12px; border: none; background: #221F2B; color: #FF9A7A; font: 700 13px Inter, sans-serif">REC<span style="position: absolute; right: 8px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: #3A3548"></span></button>
+      <button type="button" style="position: relative; height: 56px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 700 13px Inter, sans-serif">SEQ<span style="position: absolute; right: 8px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: #FF9F2E"></span></button>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <div style="position: relative; height: 48px; border-radius: 12px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 58%; background: #3A3450"></div><span style="position: absolute; left: 12px; top: 16px; font-size: 13px; font-weight: 600">Tempo</span><span style="position: absolute; right: 12px; top: 17px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A9A3B8">KNOB1 · clicks</span></div>
+      <div style="position: relative; height: 48px; border-radius: 12px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 30%; background: #3A3450"></div><span style="position: absolute; left: 12px; top: 16px; font-size: 13px; font-weight: 600">Swing</span><span style="position: absolute; right: 12px; top: 17px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A9A3B8">KNOB2 · clicks</span></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var keys = ['F3', 'F#3', 'G3', 'G#3', 'A3', 'A#3', 'B3', 'C4', 'C#4', 'D4', 'D#4', 'E4', 'F4', 'F#4', 'G4', 'G#4'];
+    var names = ['KICK', 'SNARE', 'CLAP', 'RIM', 'HAT C', 'HAT O', 'TOM L', 'TOM H', 'CYM', 'COW', 'PERC 1', 'PERC 2', 'FX 1', 'FX 2', 'FX 3', 'FX 4'];
+    var hue = ['#FF9A7A', '#FF9A7A', '#FF9A7A', '#FF9A7A', '#FFB547', '#FFB547', '#FFB547', '#FFB547', '#8FD8FF', '#8FD8FF', '#8FD8FF', '#8FD8FF', '#B9A2FF', '#B9A2FF', '#B9A2FF', '#B9A2FF'];
+    var order = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3];
+    var hit = [0, 4], ledOn = [1, 5, 8];
+    var pads = order.map(function (i) {
+      var h = hit.indexOf(i) >= 0;
+      return { name: names[i], key: keys[i], bg: h ? hue[i] : '#221F2B', fg: h ? '#14121A' : '#F3EFF8', ring: h ? hue[i] : '#2E2A3B', chipBg: h ? 'rgba(20,18,26,0.15)' : '#2E2A3B', dy: h ? 2 : 0, led: ledOn.indexOf(i) >= 0 ? '#FF9F2E' : (h ? 'rgba(20,18,26,0.3)' : '#3A3548') };
+    });
+    var on = [0, 4, 8, 12, 18, 22, 26, 30];
+    var steps = []; for (var s = 0; s < 32; s++) steps.push(on.indexOf(s) >= 0 ? '#F59E0B' : (s === 9 ? '#E5E7EB' : '#374151'));
+    return { pads: pads, steps: steps };
+  }
+}
+</script>
+</body>
+</html>

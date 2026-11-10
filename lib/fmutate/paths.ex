@@ -1,0 +1,47 @@
+defmodule FMutate.Paths do
+  @moduledoc """
+  Where things live. On a device: the engine and cartridges in the APK's native library dir
+  (`MOB_NATIVE_LIB_DIR`), state in the app's private data dir (`MOB_DATA_DIR`). On a host (tests,
+  development) both come from application env, so the same code runs against a desktop build of the
+  engine.
+  """
+
+  @doc "Directory holding `libfm1engine.so` and `libcart_<id>.so`."
+  def native_lib_dir do
+    System.get_env("MOB_NATIVE_LIB_DIR") || Application.get_env(:fmutate_app, :native_lib_dir) ||
+      Path.expand("native/build/host", File.cwd!())
+  end
+
+  @doc "The app's private data directory."
+  def data_dir do
+    System.get_env("MOB_DATA_DIR") || Application.get_env(:fmutate_app, :data_dir) ||
+      Path.join(System.tmp_dir!(), "fmutate")
+  end
+
+  def engine_bin, do: Path.join(native_lib_dir(), "libfm1engine.so")
+
+  @doc "A bundled cartridge's path, or nil if this build doesn't carry it."
+  def bundled_cart(firmware_id) do
+    path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
+    if File.exists?(path), do: path
+  end
+
+  @doc "Shared-memory prefix for an instance's engine slot (`<prefix>.ring`, `<prefix>.fb`)."
+  def shm_prefix(instance, slot), do: Path.join(ensure(Path.join(data_dir(), "run")), "#{instance}#{slot}")
+
+  def ring(prefix), do: prefix <> ".ring"
+  def fb(prefix), do: prefix <> ".fb"
+
+  @doc "The firmware's saved state (settings, patches) for one instance."
+  def flash(instance, firmware_id),
+    do: Path.join(ensure(Path.join([data_dir(), "flash", instance])), "#{firmware_id}.bin")
+
+  @doc "Per-instance app state (current firmware, crash counts)."
+  def instance_state(instance),
+    do: Path.join(ensure(Path.join(data_dir(), "instances")), "#{instance}.term")
+
+  defp ensure(dir) do
+    File.mkdir_p!(dir)
+    dir
+  end
+end

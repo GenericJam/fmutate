@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sound designer layout</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 844px; height: 390px; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+  <div style="position: absolute; left: 28px; top: 12px; width: 252px; height: 252px; box-sizing: border-box; padding: 6px; border-radius: 14px; background: #0B0A0F; box-shadow: inset 0 0 0 1px #2E2A3B">
+    <div style="width: 240px; height: 240px; background: #000000; font-family: VT323, monospace; color: #E8E8E8; display: flex; flex-direction: column; padding: 8px; box-sizing: border-box; gap: 8px">
+      <div style="display: flex; justify-content: space-between; font-size: 18px; line-height: 1"><span style="color: #38BDF8">FELUCCA</span><span>[screen]</span></div>
+      <div style="flex: 1; display: flex; align-items: center; gap: 3px">
+        <sc-for list="{{wave}}" as="h" hint-placeholder-count="28"><div style="flex: 1; height: {{h}}px; background: #38BDF8"></div></sc-for>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); font-size: 17px; line-height: 1.1"><span>K1 [param]</span><span>K2 [param]</span><span>K3 [param]</span><span>K4 [param]</span></div>
+    </div>
+  </div>
+  <span style="position: absolute; left: 28px; top: 268px; font: 500 10px/1 'JetBrains Mono', monospace; color: #8F89A3">×3 · 720 px</span>
+
+  <div style="position: absolute; left: 296px; top: 12px; width: 520px; height: 252px; display: flex; gap: 10px">
+    <sc-for list="{{sliders}}" as="s" hint-placeholder-count="4">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+        <div style="position: relative; flex: 1; border-radius: 16px; background: #221F2B; overflow: hidden; box-shadow: inset 0 0 0 2px {{s.ring}}">
+          <div style="position: absolute; left: 0; right: 0; bottom: 0; height: {{s.fill}}px; background: {{s.color}}; opacity: 0.85"></div>
+          <div style="position: absolute; left: 12px; right: 12px; bottom: {{s.handle}}px; height: 5px; border-radius: 3px; background: #14121A"></div>
+          <span style="position: absolute; left: 12px; top: 12px; font-size: 14px; font-weight: 700">{{s.label}}</span>
+          <span style="position: absolute; left: 12px; top: 32px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A9A3B8">{{s.bind}}</span>
+        </div>
+      </div>
+    </sc-for>
+    <div style="width: 48px; display: flex; flex-direction: column; gap: 8px">
+      <button type="button" aria-label="Menu" style="width: 48px; height: 48px; border-radius: 24px; border: none; background: #221F2B; display: flex; align-items: center; justify-content: center"><dc-import name="Creature" form="spire" size="0.3" tint="sky" hint-size="7px,34px"></dc-import></button>
+      <button type="button" style="height: 48px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 10px Inter, sans-serif">OCT−</button>
+      <button type="button" style="height: 48px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 10px Inter, sans-serif">OCT+</button>
+      <button type="button" style="flex: 1; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 10px Inter, sans-serif">SAVE</button>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 284px; width: 48px; height: 98px; display: flex; flex-direction: column; gap: 4px">
+    <button type="button" aria-label="Keyboard up an octave" style="flex: 1; border-radius: 10px; border: none; background: #221F2B; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F3EFF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"></path></svg></button>
+    <span style="text-align: center; font: 600 9px/1 'JetBrains Mono', monospace; color: #C6F24E">C3–C4</span>
+    <button type="button" aria-label="Keyboard down an octave" style="flex: 1; border-radius: 10px; border: none; background: #221F2B; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F3EFF8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+  </div>
+  <div style="position: absolute; left: 84px; top: 284px; width: 732px; height: 98px">
+    <sc-for list="{{whites}}" as="k" hint-placeholder-count="8">
+      <div style="position: absolute; left: {{k.l}}px; top: {{k.t}}px; width: {{k.w}}px; height: 96px; border-radius: 3px 3px 10px 10px; background: {{k.bg}}"><span style="position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 600 10px/1 'JetBrains Mono', monospace; color: #6B6580">{{k.name}}</span></div>
+    </sc-for>
+    <sc-for list="{{blacks}}" as="k" hint-placeholder-count="5">
+      <div style="position: absolute; left: {{k.l}}px; top: 0; width: 46px; height: 58px; border-radius: 2px 2px 8px 8px; background: #2A2633; box-shadow: 0 0 0 2px #14121A"></div>
+    </sc-for>
+    <div style="position: absolute; left: 218px; top: 64px; width: 28px; height: 28px; border-radius: 14px; box-sizing: border-box; border: 2px solid #14121A; opacity: 0.45"></div>
+    <svg width="80" height="16" viewBox="0 0 80 16" style="position: absolute; left: 196px; top: 66px" aria-hidden="true"><path d="M4 8H22M10 3L4 8l6 5M58 8h18M70 3l6 5-6 5" fill="none" stroke="#14121A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"></path></svg>
+    <span style="position: absolute; left: 196px; top: 8px; padding: 3px 6px; border-radius: 6px; background: #A98BFF; color: #14121A; font: 700 10px/1 'JetBrains Mono', monospace">bend +0.4</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var wave = []; for (var i = 0; i < 28; i++) wave.push(Math.round(10 + 50 * Math.abs(Math.sin(i * 0.45) * Math.cos(i * 0.12))));
+    var mk = function (label, bind, v, color, active) { var H = 252 - 0; return { label: label, bind: bind, fill: Math.round(H * v), handle: Math.round(H * v) - 3, color: color, ring: active ? '#C6F24E' : '#2E2A3B' }; };
+    var sliders = [mk('Mod index', 'KNOB1 · clicks', 0.62, '#3A3450', false), mk('Ratio', 'KNOB2 · clicks', 0.35, '#3A3450', false), mk('Feedback', 'KNOB3 · clicks', 0.8, '#4C5A2A', true), mk('Decay', 'KNOB4 · clicks', 0.48, '#3A3450', false)];
+    var colW = 732 / 8;
+    var wn = ['C3', 'D', 'E', 'F', 'G', 'A', 'B', 'C4'];
+    var whites = wn.map(function (n, i) { var p = i === 2; return { l: Math.round(i * colW), t: p ? 2 : 0, w: Math.round(colW - 4), name: n, bg: p ? '#C6F24E' : '#ECE7F2' }; });
+    var after = [0, 1, 3, 4, 5];
+    var blacks = after.map(function (i) { return { l: Math.round((i + 1) * colW - 25) }; });
+    return { wave: wave, sliders: sliders, whites: whites, blacks: blacks };
+  }
+}
+</script>
+</body>
+</html>

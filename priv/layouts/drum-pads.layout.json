@@ -1,0 +1,48 @@
+{
+  "format": "fmutate.layout/1",
+  "id": "drum-pads",
+  "name": "Drum pads",
+  "firmware": { "id": "x0x" },
+  "frame": "landscape",
+  "grid": { "cols": 14, "rows": 6 },
+  "switcher": "names",
+  "dock": [
+    { "id": "menu", "type": "menu", "at": { "col": 11, "row": 0, "w": 1, "h": 1 } },
+    { "id": "screen", "type": "screen", "at": { "col": 8, "row": 0, "w": 3, "h": 3 }, "screen": { "scale": 2 } },
+    { "id": "play", "type": "button", "label": "PLAY", "at": { "col": 8, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "play" } }] },
+    { "id": "rec", "type": "button", "label": "REC", "at": { "col": 10, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "rec" } }] },
+    { "id": "seq", "type": "button", "label": "SEQ", "at": { "col": 12, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "seq" } }] }
+  ],
+  "pages": [
+    {
+      "id": "beat",
+      "name": "Beat",
+      "controls": [
+        { "id": "pads", "type": "pad_grid", "at": { "col": 0, "row": 0, "w": 8, "h": 6 },
+          "pad_grid": { "cols": 4, "rows": 4, "pads": [
+            { "label": "FX 1", "color": "violet", "bindings": [{ "to": { "key": 12 } }] },
+            { "label": "FX 2", "color": "violet", "bindings": [{ "to": { "key": 13 } }] },
+            { "label": "FX 3", "color": "violet", "bindings": [{ "to": { "key": 14 } }] },
+            { "label": "FX 4", "color": "violet", "bindings": [{ "to": { "key": 15 } }] },
+            { "label": "CYM", "color": "sky", "bindings": [{ "to": { "key": 8 } }] },
+            { "label": "COW", "color": "sky", "bindings": [{ "to": { "key": 9 } }] },
+            { "label": "PERC 1", "color": "sky", "bindings": [{ "to": { "key": 10 } }] },
+            { "label": "PERC 2", "color": "sky", "bindings": [{ "to": { "key": 11 } }] },
+            { "label": "HAT C", "color": "amber", "bindings": [{ "to": { "key": 4 } }] },
+            { "label": "HAT O", "color": "amber", "bindings": [{ "to": { "key": 5 } }] },
+            { "label": "TOM L", "color": "amber", "bindings": [{ "to": { "key": 6 } }] },
+            { "label": "TOM H", "color": "amber", "bindings": [{ "to": { "key": 7 } }] },
+            { "label": "KICK", "color": "coral", "bindings": [{ "to": { "key": 0 } }] },
+            { "label": "SNARE", "color": "coral", "bindings": [{ "to": { "key": 1 } }] },
+            { "label": "CLAP", "color": "coral", "bindings": [{ "to": { "key": 2 } }] },
+            { "label": "RIM", "color": "coral", "bindings": [{ "to": { "key": 3 } }] }
+          ] } },
+        { "id": "tempo", "type": "slider", "label": "Tempo", "at": { "col": 8, "row": 4, "w": 6, "h": 1 },
+          "slider": { "orientation": "horizontal" }, "bindings": [{ "on": "value", "to": { "encoder": "knob1" } }] },
+        { "id": "swing", "type": "slider", "label": "Swing", "at": { "col": 8, "row": 5, "w": 6, "h": 1 },
+          "slider": { "orientation": "horizontal" }, "bindings": [{ "on": "value", "to": { "encoder": "knob2" } }] }
+      ]
+    }
+  ],
+  "meta": { "made_by": "preset", "note": "Pad → key mapping and the knob1/knob2 meanings are placeholders; check X0X's own docs." }
+}

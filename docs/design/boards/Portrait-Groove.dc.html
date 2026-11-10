@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Portrait groovebox page</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+
+  <div style="position: absolute; left: 28px; top: 12px; width: 334px; height: 44px; display: flex; gap: 8px; align-items: center">
+    <button type="button" aria-label="Menu" style="width: 44px; height: 44px; border-radius: 22px; border: none; padding: 0; background: #221F2B; display: flex; align-items: center; justify-content: center; flex: none"><dc-import name="Creature" form="crab" size="0.42" mood="play" hint-size="30px,27px"></dc-import></button>
+    <div role="tablist" aria-label="Pages" style="flex: 1; height: 44px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; box-sizing: border-box; border-radius: 12px; background: #1C1925">
+      <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4"><button type="button" role="tab" aria-selected="{{t.sel}}" style="border-radius: 9px; border: none; background: {{t.bg}}; color: {{t.fg}}; font: 600 13px Inter, sans-serif">{{t.label}}</button></sc-for>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 64px; width: 160px; height: 160px; background: #000000; box-shadow: 0 0 0 4px #0B0A0F; font-family: VT323, monospace; color: #E8E8E8; padding: 6px; box-sizing: border-box; display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; justify-content: space-between; font-size: 15px; line-height: 1"><span style="color: #EF4444">X0X</span><span>A1 · 120</span></div>
+    <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 3px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="32"><div style="height: 12px; background: {{s}}"></div></sc-for>
+    </div>
+    <div style="margin-top: auto; font-size: 14px; line-height: 1">BD SD CH OH</div>
+  </div>
+  <div style="position: absolute; left: 196px; top: 64px; width: 48px; height: 160px; display: flex; flex-direction: column; gap: 8px">
+    <button type="button" style="position: relative; flex: 1; border-radius: 10px; border: none; background: #221F2B; color: #F3EFF8; font: 700 10px Inter, sans-serif">PLAY<span style="position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 3px; background: #C6F24E"></span></button>
+    <button type="button" style="position: relative; flex: 1; border-radius: 10px; border: none; background: #221F2B; color: #FF9A7A; font: 700 10px Inter, sans-serif">REC</button>
+    <button type="button" style="position: relative; flex: 1; border-radius: 10px; border: none; background: #221F2B; color: #F3EFF8; font: 700 10px Inter, sans-serif">SEQ<span style="position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; border-radius: 3px; background: #FF9F2E"></span></button>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 236px; width: 216px; height: 216px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+    <sc-for list="{{pads}}" as="p" hint-placeholder-count="16"><div style="border-radius: 10px; background: {{p.bg}}; color: {{p.fg}}; margin-top: {{p.dy}}px; padding: 5px; box-sizing: border-box; font: 700 9px/1 Inter, sans-serif">{{p.name}}</div></sc-for>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 464px; width: 216px; display: flex; flex-direction: column; gap: 8px">
+    <div style="position: relative; height: 44px; border-radius: 12px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 58%; background: #3A3450"></div><span style="position: absolute; left: 12px; top: 14px; font-size: 13px; font-weight: 600">Tempo</span><span style="position: absolute; right: 10px; top: 16px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A9A3B8">KNOB1</span></div>
+    <div style="position: relative; height: 44px; border-radius: 12px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 30%; background: #3A3450"></div><span style="position: absolute; left: 12px; top: 14px; font-size: 13px; font-weight: 600">Swing</span><span style="position: absolute; right: 10px; top: 16px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A9A3B8">KNOB2</span></div>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 572px; width: 216px; height: 260px; border-radius: 16px; background: #1C1925; box-shadow: inset 0 0 0 1px #34304A; padding: 12px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; align-items: center; gap: 8px">
+      <span style="width: 8px; height: 8px; border-radius: 4px; background: #C6F24E"></span>
+      <span style="flex: 1; font-size: 15px; font-weight: 700">hats</span>
+      <span style="font: 600 10px/1 'JetBrains Mono', monospace; color: #A98BFF">PATTERN</span>
+    </div>
+    <div style="padding: 8px; border-radius: 8px; background: #0E0D12; font: 400 10px/1.5 'JetBrains Mono', monospace; color: #C9C3D6; white-space: pre; overflow: hidden">note("42 42 46 42")
+  .velocity(slider(0.8))</div>
+    <div style="position: relative; height: 40px; border-radius: 10px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 80%; background: #2A2240"></div><span style="position: absolute; left: 10px; top: 12px; font-size: 12px; font-weight: 600">Velocity</span><span style="position: absolute; right: 10px; top: 13px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A98BFF">0.80</span></div>
+    <div style="position: relative; height: 40px; border-radius: 10px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 20%; background: #2A2240"></div><span style="position: absolute; left: 10px; top: 12px; font-size: 12px; font-weight: 600">Drop-outs</span><span style="position: absolute; right: 10px; top: 13px; font: 600 10px/1 'JetBrains Mono', monospace; color: #A98BFF">0.20</span></div>
+    <div style="margin-top: auto; display: flex; gap: 6px">
+      <button type="button" aria-label="Stop pattern" style="width: 48px; height: 44px; border-radius: 12px; border: none; background: #C6F24E; display: flex; align-items: center; justify-content: center"><span style="width: 12px; height: 12px; border-radius: 2px; background: #14121A"></span></button>
+      <a href="Strudel.dc.html" style="flex: 1; height: 44px; border-radius: 12px; background: #2A2636; color: #F3EFF8; text-decoration: none; display: flex; align-items: center; justify-content: center; font: 600 13px Inter, sans-serif">Code</a>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 252px; top: 64px; width: 10px; height: 768px; border-radius: 5px; overflow: hidden; background: #0E0D12">
+    <sc-for list="{{rail}}" as="r" hint-placeholder-count="88"><div style="position: absolute; left: 0; right: 0; top: {{r.t}}px; height: {{r.h}}px; background: {{r.c}}"></div></sc-for>
+  </div>
+  <div style="position: absolute; left: 248px; top: {{win.t}}px; width: 18px; height: {{win.h}}px; box-sizing: border-box; border: 2px solid #F3EFF8; border-radius: 6px"></div>
+
+  <div style="position: absolute; left: 270px; top: 64px; width: 92px; height: 768px; overflow: hidden; border-radius: 10px">
+    <sc-for list="{{whites}}" as="k" hint-placeholder-count="14">
+      <div style="position: absolute; left: {{k.dx}}px; top: {{k.t}}px; width: 92px; height: 52px; border-radius: 8px 0 0 8px; background: {{k.bg}}; overflow: hidden">
+        <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 8px; background: {{k.cap}}"></div>
+        <span style="position: absolute; left: 14px; top: 20px; font: 700 10px/1 'JetBrains Mono', monospace; color: {{k.fg}}">{{k.name}}</span>
+      </div>
+    </sc-for>
+    <sc-for list="{{blacks}}" as="k" hint-placeholder-count="10">
+      <div style="position: absolute; left: 36px; top: {{k.t}}px; width: 56px; height: 32px; border-radius: 6px 0 0 6px; background: #2A2633; box-shadow: 0 0 0 2px #14121A; overflow: hidden"><div style="position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: {{k.cap}}"></div></div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tabs = ['Beat', 'Bass', 'Keys', '⋯'].map(function (l, i) { return { label: l, sel: i === 0 ? 'true' : 'false', bg: i === 0 ? '#34304A' : 'transparent', fg: i === 0 ? '#F3EFF8' : '#A9A3B8' }; });
+    var on = [0, 4, 8, 12, 18, 22, 26, 30];
+    var steps = []; for (var s = 0; s < 32; s++) steps.push(on.indexOf(s) >= 0 ? '#F59E0B' : (s === 9 ? '#E5E7EB' : '#374151'));
+    var hueC = ['#FF9A7A', '#FFB547', '#8FD8FF', '#B9A2FF'];
+    var nm = ['FX1', 'FX2', 'FX3', 'FX4', 'CYM', 'COW', 'PC1', 'PC2', 'HAT C', 'HAT O', 'TOM L', 'TOM H', 'KICK', 'SNARE', 'CLAP', 'RIM'];
+    var rowHue = [3, 2, 1, 0];
+    var pads = nm.map(function (n, i) { var row = Math.floor(i / 4), hit = i === 12 || i === 8; var c = hueC[rowHue[row]]; return { name: n, bg: hit ? c : '#221F2B', fg: hit ? '#14121A' : '#C9C3D6', dy: hit ? 2 : 0 }; });
+    var hue = function (m, l) { return 'hsl(' + Math.round((m - 21) / 87 * 300) + ', 72%, ' + (l || 62) + '%)'; };
+    var rh = 768 / 88, rail = [];
+    for (var i = 0; i < 88; i++) { var m = 21 + i; rail.push({ t: (768 - (i + 1) * rh).toFixed(2), h: (rh + 0.3).toFixed(2), c: hue(m) }); }
+    var NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    var wm = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
+    var whites = wm.map(function (m, i) {
+      var lit = m === 55;
+      return { t: 768 - (i + 1) * 55 + 3, dx: lit ? -2 : 0, name: NAMES[m % 12] + (Math.floor(m / 12) - 1), cap: hue(m), bg: lit ? hue(m) : '#ECE7F2', fg: lit ? '#14121A' : '#6B6580' };
+    });
+    var blacks = [];
+    wm.forEach(function (m, i) { if ([0, 2, 5, 7, 9].indexOf(m % 12) >= 0 && i < wm.length - 1) blacks.push({ t: 768 - (i + 1) * 55 + 1 - 16, cap: hue(m + 1, 50) }); });
+    var lo = 48 - 21, hiN = 72 - 21;
+    var win = { t: Math.round(64 + 768 - (hiN + 1) * rh) - 2, h: Math.round((hiN - lo + 1) * rh) + 4 };
+    return { tabs: tabs, steps: steps, pads: pads, rail: rail, whites: whites, blacks: blacks, win: win };
+  }
+}
+</script>
+</body>
+</html>

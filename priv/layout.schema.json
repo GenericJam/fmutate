@@ -1,0 +1,162 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "fmutate/layout.schema.json",
+  "title": "FMutate layout",
+  "description": "One layout for one firmware. Positions are in cells of the authoring grid (grid.cols × grid.rows); renderers scale to the device grid.",
+  "type": "object",
+  "required": ["format", "id", "name", "firmware", "frame", "grid", "pages"],
+  "additionalProperties": false,
+  "properties": {
+    "format": { "const": "fmutate.layout/1" },
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+    "name": { "type": "string", "maxLength": 40 },
+    "firmware": {
+      "type": "object",
+      "description": "Which firmware this layout is for. 'any' layouts only use universal bindings.",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": "string", "description": "Catalogue id, or 'any'." },
+        "min_version": { "type": "string" }
+      }
+    },
+    "frame": { "enum": ["landscape", "portrait"] },
+    "grid": {
+      "type": "object",
+      "description": "The grid this layout was authored on.",
+      "required": ["cols", "rows"],
+      "properties": {
+        "cols": { "type": "integer", "minimum": 1, "maximum": 40 },
+        "rows": { "type": "integer", "minimum": 1, "maximum": 40 }
+      }
+    },
+    "switcher": { "enum": ["names", "dots", "hidden"], "default": "names" },
+    "dock": {
+      "type": "array",
+      "description": "Controls drawn at the same cells on every page. Page controls must not overlap them.",
+      "items": { "$ref": "#/$defs/control" }
+    },
+    "pages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "controls"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$" },
+          "name": { "type": "string", "maxLength": 12 },
+          "controls": { "type": "array", "items": { "$ref": "#/$defs/control" } }
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "author": { "type": "string" },
+        "made_by": { "enum": ["user", "preset", "app"], "description": "'app' = written by a sibling app over distribution." },
+        "created_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "cell": {
+      "type": "object",
+      "required": ["col", "row", "w", "h"],
+      "properties": {
+        "col": { "type": "integer", "minimum": 0 },
+        "row": { "type": "integer", "minimum": 0 },
+        "w": { "type": "integer", "minimum": 1 },
+        "h": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "firmware_input": {
+      "oneOf": [
+        { "type": "object", "required": ["key"], "properties": { "key": { "type": "integer", "minimum": 0, "maximum": 26 } }, "additionalProperties": false },
+        { "type": "object", "required": ["encoder"], "properties": {
+            "encoder": { "enum": ["select", "presets", "algorithm", "knob1", "knob2", "knob3", "knob4"] },
+            "pt_per_click": { "type": "number", "default": 6 },
+            "invert": { "type": "boolean", "default": false } }, "additionalProperties": false },
+        { "type": "object", "required": ["pot"], "properties": { "pot": { "const": "master" } }, "additionalProperties": false },
+        { "type": "object", "required": ["button"], "properties": { "button": { "enum": ["oct_down", "oct_up", "fx", "sel", "env", "lfo", "edit", "glo", "home", "save", "arp", "seq", "play", "rec"] } }, "additionalProperties": false },
+        { "type": "object", "required": ["midi"], "properties": { "midi": {
+            "type": "object",
+            "required": ["type"],
+            "properties": {
+              "type": { "enum": ["note", "cc", "pitch_bend"] },
+              "channel": { "type": "integer", "minimum": 1, "maximum": 16, "default": 1 },
+              "number": { "type": "integer", "minimum": 0, "maximum": 127 },
+              "jump": { "type": "boolean", "default": false, "description": "CC only: slider jumps to touch position." } } } }, "additionalProperties": false },
+        { "type": "object", "required": ["page"], "properties": { "page": { "type": "string", "description": "'next', 'prev', or a page id." } }, "additionalProperties": false }
+      ]
+    },
+    "binding": {
+      "type": "object",
+      "description": "What a control (or one axis/gesture of it) drives.",
+      "required": ["to"],
+      "properties": {
+        "on": { "enum": ["press", "long_press", "x", "y", "value"], "default": "press" },
+        "to": { "$ref": "#/$defs/firmware_input" },
+        "mode": { "enum": ["momentary", "toggle"], "default": "momentary" }
+      }
+    },
+    "control": {
+      "type": "object",
+      "required": ["id", "type", "at"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "enum": ["menu", "key", "keyboard", "pad_grid", "button", "knob", "slider", "xy_pad", "strum", "screen", "label", "page_switcher"], "description": "'menu' is the creature button. Every layout has exactly one, in the dock; if missing, the renderer adds it at the first free cell from the top-left." },
+        "at": { "$ref": "#/$defs/cell" },
+        "label": { "type": "string", "maxLength": 16 },
+        "color": { "enum": ["default", "coral", "amber", "sky", "violet"] },
+        "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+
+        "keyboard": {
+          "type": "object",
+          "description": "type = keyboard. Range is in firmware keys (0..26) plus octave arrows.",
+          "properties": {
+            "from_key": { "type": "integer", "minimum": 0, "maximum": 26 },
+            "to_key": { "type": "integer", "minimum": 0, "maximum": 26 },
+            "octave_arrows": { "type": "boolean", "default": true },
+            "orientation": { "enum": ["horizontal", "vertical"], "default": "horizontal" },
+            "glide": { "enum": ["glissando", "wobble"], "default": "glissando" },
+            "bend_range": { "enum": [1, 2, 7, 12], "default": 2 },
+            "pitch_colors": { "type": "boolean", "default": false },
+            "scale": { "type": "string", "default": "chromatic", "description": "e.g. 'chromatic', 'D dorian'. Non-chromatic hides out-of-scale keys." }
+          }
+        },
+        "pad_grid": {
+          "type": "object",
+          "description": "type = pad_grid. Pads listed left→right, top→bottom; each has its own bindings.",
+          "properties": {
+            "cols": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "rows": { "type": "integer", "minimum": 1, "maximum": 8 },
+            "pads": { "type": "array", "items": { "type": "object", "properties": {
+              "label": { "type": "string", "maxLength": 8 },
+              "color": { "enum": ["default", "coral", "amber", "sky", "violet"] },
+              "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } } } } }
+          }
+        },
+        "slider": {
+          "type": "object",
+          "properties": { "orientation": { "enum": ["vertical", "horizontal"], "default": "vertical" } }
+        },
+        "xy_pad": {
+          "type": "object",
+          "properties": { "on_release": { "enum": ["stay", "spring_back"], "default": "stay" } }
+        },
+        "strum": {
+          "type": "object",
+          "description": "Strings map to firmware keys, low at the bottom.",
+          "properties": { "keys": { "type": "array", "items": { "type": "integer", "minimum": 0, "maximum": 26 } } }
+        },
+        "screen": {
+          "type": "object",
+          "properties": { "scale": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Device-pixel multiple of 240. Cell span must fit it." } }
+        },
+        "page_switcher": {
+          "type": "object",
+          "properties": { "look": { "enum": ["names", "dots"], "default": "names" } }
+        }
+      }
+    }
+  }
+}

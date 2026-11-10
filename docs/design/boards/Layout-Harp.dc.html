@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chord harp layout</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 844px; height: 390px; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+  <div style="position: absolute; left: 28px; top: 12px; width: 500px; height: 366px; display: flex; flex-direction: column; gap: 10px">
+    <div style="display: flex; gap: 10px; align-items: center; height: 92px">
+      <div style="width: 92px; height: 92px; box-sizing: border-box; padding: 6px; border-radius: 12px; background: #0B0A0F; box-shadow: inset 0 0 0 1px #2E2A3B; flex: none">
+        <div style="width: 80px; height: 80px; background: #000000; font: 13px/1 VT323, monospace; color: #E8E8E8; padding: 4px; box-sizing: border-box"><span style="color: #A855F7">FoMni</span><br>G MAJ<br><span style="color: #F59E0B">RHY 04</span></div>
+      </div>
+      <button type="button" aria-label="Menu" style="width: 48px; height: 48px; border-radius: 24px; border: none; background: #221F2B; display: flex; align-items: center; justify-content: center; flex: none"><dc-import name="Creature" form="twins" size="0.6" mood="play" hint-size="28px,28px"></dc-import></button>
+      <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button type="button" style="height: 48px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 12px Inter, sans-serif">Rhythm</button>
+        <button type="button" style="height: 48px; border-radius: 12px; border: none; background: #3A3450; color: #C6F24E; font: 600 12px Inter, sans-serif">Sustain</button>
+        <button type="button" style="height: 48px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 12px Inter, sans-serif">Tempo</button>
+      </div>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 34px repeat(8, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(0, 1fr)); gap: 6px">
+      <sc-for list="{{cells}}" as="c" hint-placeholder-count="27">
+        <sc-if value="{{c.head}}" hint-placeholder-val="{{false}}"><span style="align-self: center; font: 600 11px/1 'JetBrains Mono', monospace; color: #A9A3B8">{{c.label}}</span></sc-if>
+        <sc-if value="{{c.btn}}" hint-placeholder-val="{{true}}"><button type="button" style="margin-top: {{c.dy}}px; border-radius: 12px; border: none; background: {{c.bg}}; color: {{c.fg}}; font: 700 15px Inter, sans-serif">{{c.label}}</button></sc-if>
+      </sc-for>
+    </div>
+    <span style="font: 500 10px/1 'JetBrains Mono', monospace; color: #8F89A3">24 chord buttons → keys, using FoMni’s own chord map (the binding sheet shows each)</span>
+  </div>
+
+  <div style="position: absolute; left: 548px; top: 12px; width: 268px; height: 366px; border-radius: 18px; background: #1C1925; overflow: hidden">
+    <sc-for list="{{strings}}" as="s" hint-placeholder-count="14"><div style="position: absolute; left: 14px; right: 14px; top: {{s.t}}px; height: {{s.h}}px; border-radius: 2px; background: {{s.c}}"></div></sc-for>
+    <sc-for list="{{trail}}" as="t" hint-placeholder-count="5"><div style="position: absolute; left: {{t.l}}px; top: {{t.t}}px; width: {{t.d}}px; height: {{t.d}}px; border-radius: 50%; background: #C6F24E; opacity: {{t.o}}"></div></sc-for>
+    <span style="position: absolute; left: 14px; bottom: 12px; padding: 4px 8px; border-radius: 8px; background: #2E2A3B; font: 600 10px/1 'JetBrains Mono', monospace; color: #E4DFEE">STRUM · 14 notes of G → keys</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var roots = ['E♭', 'B♭', 'F', 'C', 'G', 'D', 'A', 'E'];
+    var rows = [['MAJ', ''], ['MIN', 'm'], ['7TH', '7']];
+    var cells = [];
+    rows.forEach(function (r, ri) {
+      cells.push({ head: true, btn: false, label: r[0] });
+      roots.forEach(function (n) {
+        var on = ri === 0 && n === 'G';
+        cells.push({ head: false, btn: true, label: n + r[1], bg: on ? '#C6F24E' : (ri === 0 ? '#2A2636' : '#221F2B'), fg: on ? '#14121A' : '#F3EFF8', dy: on ? 2 : 0 });
+      });
+    });
+    var strings = [];
+    for (var i = 0; i < 14; i++) { var lit = i >= 5 && i <= 8; strings.push({ t: 22 + i * 22, h: lit ? 4 : 2, c: lit ? '#C6F24E' : '#4A4560' }); }
+    var trail = [{ l: 150, t: 120, d: 20, o: 0.12 }, { l: 147, t: 145, d: 26, o: 0.2 }, { l: 143, t: 172, d: 32, o: 0.3 }, { l: 138, t: 200, d: 44, o: 0.45 }];
+    return { cells: cells, strings: strings, trail: trail };
+  }
+}
+</script>
+</body>
+</html>

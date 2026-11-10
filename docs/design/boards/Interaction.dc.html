@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Touch interaction spec</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; padding: 40px 48px; display: flex; flex-direction: column; gap: 20px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between">
+    <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 34px; font-weight: 800">Touch rules <span style="font-weight: 400; color: #A9A3B8">· sliders by default, knobs by choice</span></h2>
+    <span style="font: 500 12px/1 'JetBrains Mono', monospace; color: #A9A3B8">needs per-finger touch events from Mob; otherwise a native view</span>
+  </div>
+
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 16px">
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <div style="position: absolute; left: 30px; top: 20px; width: 44px; height: 130px; border-radius: 12px; background: #221F2B; box-shadow: inset 0 0 0 2px #C6F24E"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 70px; border-radius: 0 0 12px 12px; background: #4C5A2A"></div></div>
+        <div style="position: absolute; left: 160px; top: 20px; width: 44px; height: 130px; border-radius: 12px; background: #221F2B; box-shadow: inset 0 0 0 2px #A98BFF"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 40px; border-radius: 0 0 12px 12px; background: #3A3450"></div></div>
+        <svg width="260" height="170" viewBox="0 0 260 170" style="position: absolute; left: 0; top: 0" aria-hidden="true"><path d="M52 84 C70 70 90 60 112 52" fill="none" stroke="#C6F24E" stroke-width="2" stroke-dasharray="4 4"></path></svg>
+        <div style="position: absolute; left: 104px; top: 38px; width: 26px; height: 26px; border-radius: 13px; background: #C6F24E; color: #14121A; font: 700 12px/26px Inter, sans-serif; text-align: center">1</div>
+        <div style="position: absolute; left: 169px; top: 98px; width: 26px; height: 26px; border-radius: 13px; background: #A98BFF; color: #14121A; font: 700 12px/26px Inter, sans-serif; text-align: center">2</div>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">A finger belongs to one control</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Whatever it lands on owns it until it lifts, even after it slides away. Finger 2 grabs its own control, so two-knob DJ moves just work.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <svg width="260" height="170" viewBox="0 0 260 170" style="position: absolute; left: 0; top: 0" aria-hidden="true">
+          <path d="M130 85 V25 M120 35 L130 25 L140 35" fill="none" stroke="#C6F24E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M130 85 H200 M190 75 L200 85 L190 95" fill="none" stroke="#C6F24E" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M130 85 V145 M120 135 L130 145 L140 135" fill="none" stroke="#6B6580" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+          <path d="M130 85 H60 M70 75 L60 85 L70 95" fill="none" stroke="#6B6580" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+          <circle cx="130" cy="85" r="10" fill="#F3EFF8"></circle>
+        </svg>
+        <span style="position: absolute; left: 146px; top: 18px; font: 700 14px/1 'JetBrains Mono', monospace; color: #C6F24E">+</span>
+        <span style="position: absolute; left: 206px; top: 64px; font: 700 14px/1 'JetBrains Mono', monospace; color: #C6F24E">+</span>
+        <span style="position: absolute; left: 40px; top: 64px; font: 700 14px/1 'JetBrains Mono', monospace; color: #A9A3B8">−</span>
+        <span style="position: absolute; left: 146px; top: 140px; font: 700 14px/1 'JetBrains Mono', monospace; color: #A9A3B8">−</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Knobs: up or right is more</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Movement = right + up − left − down, so diagonals just work. Touching never jumps the value. Pot: 0–100 over ~200 pt, haptic bump at each end. Encoder: 1 click per 6 pt.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <div style="position: absolute; left: 24px; right: 24px; top: 80px; height: 4px; border-radius: 2px; background: #34304A"></div>
+        <div style="position: absolute; left: 24px; width: 80px; top: 80px; height: 4px; border-radius: 2px; background: #A9A3B8"></div>
+        <div style="position: absolute; left: 104px; right: 24px; top: 80px; height: 4px; border-radius: 2px; background: #C6F24E"></div>
+        <div style="position: absolute; left: 16px; top: 72px; width: 20px; height: 20px; border-radius: 10px; background: #F3EFF8"></div>
+        <div style="position: absolute; left: 98px; top: 74px; width: 16px; height: 16px; border-radius: 8px; background: #C6F24E"></div>
+        <span style="position: absolute; left: 14px; top: 104px; font: 600 11px/1.3 'JetBrains Mono', monospace; color: #A9A3B8">touch</span>
+        <span style="position: absolute; left: 80px; top: 104px; font: 600 11px/1.3 'JetBrains Mono', monospace; color: #A9A3B8">0.4 s · tick</span>
+        <span style="position: absolute; right: 24px; top: 104px; font: 600 11px/1.3 'JetBrains Mono', monospace; color: #C6F24E">drag ×¼</span>
+        <span style="position: absolute; left: 100px; top: 40px; padding: 4px 8px; border-radius: 8px; background: #C6F24E; color: #14121A; font: 700 11px/1 'JetBrains Mono', monospace">fine</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Hold still, then drag, for fine</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Works for knobs, sliders and XY pads, one-handed, at any edge. Only that control changes; your other hand stays free to play.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A; overflow: hidden">
+        <div style="position: absolute; right: 0; top: 0; bottom: 0; width: 28px; background: #FF9A7A; opacity: 0.14"></div>
+        <svg width="260" height="170" viewBox="0 0 260 170" style="position: absolute; left: 0; top: 0" aria-hidden="true">
+          <path d="M40 130 L120 70" fill="none" stroke="#C6F24E" stroke-width="3" stroke-linecap="round"></path>
+          <path d="M80 140 L170 60" fill="none" stroke="#C6F24E" stroke-width="3" stroke-linecap="round"></path>
+          <circle cx="120" cy="70" r="6" fill="#14121A" stroke="#C6F24E" stroke-width="2"></circle>
+          <circle cx="80" cy="140" r="6" fill="#C6F24E"></circle>
+        </svg>
+        <span style="position: absolute; left: 128px; top: 76px; font: 600 11px/1 'JetBrains Mono', monospace; color: #A9A3B8">lift</span>
+        <span style="position: absolute; left: 94px; top: 146px; font: 600 11px/1 'JetBrains Mono', monospace; color: #A9A3B8">grab again</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Out of room? Lift and re-grab</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Every drag is relative, like a trackpad, so re-grabbing never jumps. No control sits in the 28 pt edge gutter.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <div style="position: absolute; left: 40px; top: 15px; width: 56px; height: 140px; border-radius: 14px; background: #221F2B; overflow: hidden"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 60px; background: #4C5A2A"></div><div style="position: absolute; left: 8px; right: 8px; bottom: 56px; height: 4px; border-radius: 2px; background: #C6F24E"></div></div>
+        <div style="position: absolute; left: 56px; top: 24px; width: 24px; height: 24px; border-radius: 12px; box-sizing: border-box; border: 2px solid #F3EFF8"></div>
+        <span style="position: absolute; left: 110px; top: 26px; font: 600 11px/1.4 'JetBrains Mono', monospace; color: #A9A3B8">lands here:<br>value stays at 43</span>
+        <span style="position: absolute; left: 110px; top: 96px; font: 600 11px/1.4 'JetBrains Mono', monospace; color: #A9A3B8">moves from there</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Sliders: the default</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Work anywhere on screen. They move from where you land, so a stray tap never jumps. Jump-to-position is an option for MIDI CCs only. Bound to an encoder, a slider sends clicks.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <div style="position: absolute; left: 20px; top: 15px; width: 140px; height: 140px; border-radius: 14px; background: #221F2B; overflow: hidden">
+          <div style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #3A3548"></div><div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #3A3548"></div>
+          <div style="position: absolute; left: 82px; top: 26px; width: 36px; height: 36px; border-radius: 18px; background: #A98BFF; opacity: 0.25"></div>
+          <div style="position: absolute; left: 91px; top: 35px; width: 18px; height: 18px; border-radius: 9px; background: #A98BFF"></div>
+        </div>
+        <span style="position: absolute; left: 172px; top: 30px; font: 600 11px/1.5 'JetBrains Mono', monospace; color: #C9C3D6">X → KNOB2<br>Y → KNOB3</span>
+        <span style="position: absolute; left: 172px; top: 92px; font: 600 11px/1.5 'JetBrains Mono', monospace; color: #A9A3B8">on lift:<br>stay or<br>spring back</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">XY pad: two inputs, one finger</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Each axis is bound separately; diagonal moves change both. Relative like a slider. Spring back sends the clicks in reverse, for a wobble that returns home.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A">
+        <div style="position: absolute; left: 20px; top: 30px; display: flex; gap: 3px">
+          <div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #ECE7F2"></div><div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #C6F24E"></div><div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #ECE7F2"></div><div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #C6F24E"></div><div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #ECE7F2"></div><div style="width: 32px; height: 110px; border-radius: 0 0 6px 6px; background: #C6F24E"></div>
+        </div>
+        <svg width="260" height="170" viewBox="0 0 260 170" style="position: absolute; left: 0; top: 0" aria-hidden="true"><path d="M90 150 H200 M192 144 L200 150 L192 156" fill="none" stroke="#A98BFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="position: absolute; left: 210px; top: 144px; font: 600 11px/1 'JetBrains Mono', monospace; color: #A98BFF">glide</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Keys, pads, strum: every finger plays</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">The exception to rule 1. Sliding onto the next key plays it (glissando, strum). With wobble on, sliding sideways bends the held note instead. Empty panel space does nothing.</p>
+    </div>
+
+    <div style="border-radius: 18px; background: #1C1925; padding: 18px; display: flex; flex-direction: column; gap: 12px">
+      <div style="position: relative; height: 170px; border-radius: 12px; background: #14121A; padding: 14px; box-sizing: border-box; display: flex; flex-direction: column; gap: 10px; font: 600 12px/1.3 'JetBrains Mono', monospace">
+        <div style="display: flex; align-items: center; gap: 8px"><span style="padding: 4px 8px; border-radius: 8px; background: #2A2636; color: #C6F24E">+2</span><span style="color: #A9A3B8">+</span><span style="padding: 4px 8px; border-radius: 8px; background: #2A2636; color: #C6F24E">+3</span><span style="color: #A9A3B8">→ KNOB2</span><span style="color: #F3EFF8">+5</span></div>
+        <span style="color: #A9A3B8">encoders: moves add up</span>
+        <div style="display: flex; align-items: center; gap: 8px; margin-top: 6px"><span style="padding: 4px 8px; border-radius: 8px; background: #2A2636; color: #F3EFF8">slider 72</span><span style="padding: 4px 8px; border-radius: 8px; background: #1C1925; color: #6B6580; box-shadow: inset 0 0 0 1px #34304A">knob 40</span></div>
+        <span style="color: #A9A3B8">pot / CC: last move wins; the other greys out and picks up at 72</span>
+      </div>
+      <h3 style="margin: 0; font-size: 16px">Two controls, one input</h3>
+      <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Bindings allow it, so the binding sheet flags it. Pickup is how hardware MIDI controllers avoid jumps.</p>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

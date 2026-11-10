@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Firmware library (flat)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 390px; height: 844px; box-sizing: border-box; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden; display: flex; flex-direction: column">
+  <div style="padding: 20px 20px 0; display: flex; align-items: flex-end; justify-content: space-between">
+    <div>
+      <p style="margin: 0 0 4px; font-family: 'Bricolage Grotesque', sans-serif; font-size: 15px; letter-spacing: -0.02em"><span style="font-weight: 800; color: #C6F24E">FM</span>utate</p>
+      <h1 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 32px; font-weight: 800; line-height: 1">Firmware</h1>
+    </div>
+    <dc-import name="Creature" form="crab" size="0.8" look="down" hint-size="58px,51px"></dc-import>
+  </div>
+
+  <div style="padding: 16px 20px 0">
+    <label for="fw-search" style="position: absolute; left: -9999px">Search firmware</label>
+    <div style="height: 48px; border-radius: 14px; background: #221F2B; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#A9A3B8" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+      <input id="fw-search" type="text" placeholder="Search ~150 firmwares, authors, tags" style="flex: 1; min-width: 0; border: none; background: transparent; color: #F3EFF8; font: 400 15px Inter, sans-serif; outline: none">
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 8px; padding: 12px 20px 0; overflow: hidden; white-space: nowrap">
+    <sc-for list="{{tags}}" as="t" hint-placeholder-count="7">
+      <button type="button" style="flex: none; height: 36px; padding: 0 14px; border-radius: 18px; border: none; background: {{t.bg}}; color: {{t.fg}}; font: 600 13px/1 Inter, sans-serif">{{t.label}}</button>
+    </sc-for>
+  </div>
+
+  <div style="margin: 16px 20px 0; padding: 12px; border-radius: 18px; background: #C6F24E; color: #14121A; display: flex; gap: 12px; align-items: center">
+    <div style="width: 56px; height: 56px; border-radius: 8px; background: #000000; position: relative; flex: none; overflow: hidden">
+      <div style="position: absolute; left: 6px; top: 6px; width: 44px; height: 6px; background: #A855F7"></div>
+      <div style="position: absolute; left: 6px; top: 18px; width: 12px; height: 12px; background: #F59E0B"></div><div style="position: absolute; left: 22px; top: 18px; width: 12px; height: 12px; background: #F59E0B"></div><div style="position: absolute; left: 38px; top: 18px; width: 12px; height: 12px; background: #4B5563"></div>
+      <div style="position: absolute; left: 6px; top: 36px; width: 44px; height: 2px; background: #E5E7EB"></div><div style="position: absolute; left: 6px; top: 42px; width: 30px; height: 2px; background: #E5E7EB"></div>
+    </div>
+    <div style="flex: 1; min-width: 0">
+      <p style="margin: 0; font: 700 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em">NOW RUNNING</p>
+      <p style="margin: 4px 0 0; font-size: 18px; font-weight: 700">FoMni</p>
+      <p style="margin: 2px 0 0; font-size: 13px">Omnichord-style chord harp · Chord harp layout</p>
+    </div>
+    <a href="Flat-Instrument.dc.html" aria-label="Back to instrument" style="width: 48px; height: 48px; border-radius: 24px; background: #14121A; display: flex; align-items: center; justify-content: center; flex: none"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C6F24E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4l12 8-12 8z"></path></svg></a>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 10px; padding: 16px 20px 0">
+    <sc-for list="{{items}}" as="it" hint-placeholder-count="4">
+      <div style="padding: 12px; border-radius: 18px; background: #1C1925; display: flex; gap: 12px">
+        <div style="width: 72px; height: 72px; border-radius: 8px; background: #000000; position: relative; flex: none; overflow: hidden; opacity: {{it.thumbOp}}">
+          <sc-for list="{{it.thumb}}" as="b" hint-placeholder-count="3"><div style="position: absolute; left: {{b.l}}px; top: {{b.t}}px; width: {{b.w}}px; height: {{b.h}}px; background: {{b.c}}"></div></sc-for>
+        </div>
+        <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px">
+            <span style="font-size: 16px; font-weight: 700">{{it.name}}</span>
+            <span style="flex: none; padding: 4px 8px; border-radius: 8px; background: {{it.badgeBg}}; color: {{it.badgeFg}}; box-shadow: inset 0 0 0 1px {{it.badgeLine}}; font: 600 11px/1 Inter, sans-serif">{{it.badge}}</span>
+          </div>
+          <span style="font: 400 11px/1.2 'JetBrains Mono', monospace; color: #A9A3B8">{{it.meta}}</span>
+          <span style="font-size: 13px; line-height: 1.35; color: #D6D0E0">{{it.desc}}</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 4px">
+            <div style="display: flex; gap: 6px; overflow: hidden">
+              <sc-for list="{{it.tags}}" as="tg" hint-placeholder-count="2"><span style="padding: 3px 7px; border-radius: 6px; background: #2A2636; color: #C9C3D6; font-size: 11px">{{tg}}</span></sc-for>
+            </div>
+            <button type="button" style="flex: none; height: 40px; padding: 0 14px; border-radius: 20px; border: none; background: {{it.actBg}}; color: {{it.actFg}}; box-shadow: inset 0 0 0 1px {{it.actLine}}; font: 700 13px/1 Inter, sans-serif">{{it.action}}</button>
+          </div>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="position: absolute; left: 12px; right: 12px; bottom: 92px; padding: 12px 14px; border-radius: 16px; background: #F3EFF8; color: #14121A; display: flex; align-items: center; gap: 12px">
+    <dc-import name="Creature" form="twins" size="0.6" mood="hatch" hint-size="28px,28px"></dc-import>
+    <div style="flex: 1; font-size: 13px; line-height: 1.35"><strong>Switching to X0X…</strong><br>Your FoMni saves and layout are kept.</div>
+    <button type="button" style="height: 40px; padding: 0 12px; border-radius: 12px; border: none; background: transparent; color: #5B3FD6; font: 700 13px/1 Inter, sans-serif">Undo</button>
+  </div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 80px; box-sizing: border-box; padding: 12px 20px 20px; background: #14121A; box-shadow: 0 -1px 0 #2A2636; display: flex; gap: 10px; align-items: center">
+    <button type="button" style="height: 48px; padding: 0 18px; border-radius: 14px; border: none; background: #221F2B; color: #F3EFF8; font: 600 14px/1 Inter, sans-serif; display: flex; align-items: center; gap: 8px"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C6F24E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3M7 8l5-5 5 5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"></path></svg>Import .fwsc</button>
+    <span style="font-size: 12px; line-height: 1.35; color: #A9A3B8">Stock M-VAVE firmware: bring your own file.</span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var tags = ['All', 'Drums', 'Groovebox', 'Chords', 'Ambient', 'Tracker', 'Sampler', 'Organ'].map(function (l, i) {
+      return { label: l, bg: i === 0 ? '#F3EFF8' : '#221F2B', fg: i === 0 ? '#14121A' : '#E4DFEE' };
+    });
+    var st = {
+      downloaded: { badge: 'On phone', badgeBg: '#2A2636', badgeFg: '#E4DFEE', badgeLine: '#2A2636', action: 'Switch', actBg: '#C6F24E', actFg: '#14121A', actLine: '#C6F24E', thumbOp: 1 },
+      available: { badge: 'Available', badgeBg: 'transparent', badgeFg: '#C9C3D6', badgeLine: '#4A4560', action: 'Download', actBg: '#2A2636', actFg: '#F3EFF8', actLine: '#2A2636', thumbOp: 1 },
+      notyet: { badge: 'Doesn’t run here yet', badgeBg: 'transparent', badgeFg: '#FFB547', badgeLine: '#7A5A22', action: 'Why?', actBg: 'transparent', actFg: '#E4DFEE', actLine: '#4A4560', thumbOp: 0.45 },
+      quarantined: { badge: 'Quarantined', badgeBg: '#4A1F1A', badgeFg: '#FFB4A3', badgeLine: '#4A1F1A', action: 'Run anyway', actBg: 'transparent', actFg: '#FFB4A3', actLine: '#7A3A30', thumbOp: 0.45 }
+    };
+    var mk = function (name, s, meta, desc, tg, thumb) { var o = Object.assign({ name: name, meta: meta, desc: desc, tags: tg, thumb: thumb }, st[s]); return o; };
+    var items = [
+      mk('X0X', 'downloaded', '[author] · v[–] · [licence]', 'Drum machine. Plays best on the Drum pads layout.', ['drums', 'groovebox'],
+        [{ l: 6, t: 8, w: 60, h: 6, c: '#EF4444' }, { l: 6, t: 22, w: 12, h: 12, c: '#F59E0B' }, { l: 22, t: 22, w: 12, h: 12, c: '#4B5563' }, { l: 38, t: 22, w: 12, h: 12, c: '#F59E0B' }, { l: 54, t: 22, w: 12, h: 12, c: '#4B5563' }, { l: 6, t: 40, w: 12, h: 12, c: '#4B5563' }, { l: 22, t: 40, w: 12, h: 12, c: '#F59E0B' }, { l: 38, t: 40, w: 12, h: 12, c: '#4B5563' }, { l: 54, t: 40, w: 12, h: 12, c: '#F59E0B' }]),
+      mk('Hortator', 'available', '[author] · v[–] · [licence]', 'Drum machine. [one-line description]', ['drums'],
+        [{ l: 6, t: 8, w: 40, h: 6, c: '#22C55E' }, { l: 6, t: 24, w: 60, h: 4, c: '#22C55E' }, { l: 6, t: 34, w: 44, h: 4, c: '#22C55E' }, { l: 6, t: 44, w: 52, h: 4, c: '#22C55E' }, { l: 6, t: 54, w: 28, h: 4, c: '#22C55E' }]),
+      mk('Doom', 'notyet', '[author] · v[–] · [licence]', 'Yes, that one. Needs more CPU than this phone has.', ['game'],
+        [{ l: 0, t: 40, w: 72, h: 32, c: '#7C2D12' }, { l: 0, t: 0, w: 72, h: 40, c: '#292524' }, { l: 28, t: 30, w: 16, h: 20, c: '#A8A29E' }]),
+      mk('my-fork.fwsc', 'quarantined', 'imported · 2 crashes', 'Crashed the emulator, so it won’t autostart.', ['imported'],
+        [{ l: 6, t: 8, w: 60, h: 6, c: '#38BDF8' }, { l: 6, t: 24, w: 60, h: 30, c: '#1E293B' }])
+    ];
+    return { tags: tags, items: items };
+  }
+}
+</script>
+</body>
+</html>

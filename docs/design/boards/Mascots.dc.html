@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Oplings mascot sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,800&amp;family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;600&amp;family=Silkscreen:wght@400;700&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; padding: 40px 48px; display: flex; flex-direction: column; gap: 20px">
+  <div style="display: flex; align-items: baseline; justify-content: space-between">
+    <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 34px; font-weight: 800">Oplings <span style="font-weight: 400; color: #A9A3B8">· 32 algorithms, 32 bodies</span></h2>
+    <span style="font: 500 12px/1 'JetBrains Mono', monospace; color: #A9A3B8">antenna = feedback loop · feet = carriers · darker op = carrier</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 12px; height: 150px">
+    <sc-for list="{{forms}}" as="f" hint-placeholder-count="8">
+      <div style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px; border-radius: 14px; background: #1C1925; padding: 10px 6px">
+        <dc-import name="Creature" form="{{f.form}}" size="0.85" look="{{f.look}}" tint="{{f.tint}}" hint-size="70px,90px"></dc-import>
+        <div style="text-align: center; line-height: 1.25"><div style="font-size: 13px; font-weight: 600">{{f.form}}</div><div style="font: 400 11px/1.3 'JetBrains Mono', monospace; color: #A9A3B8">{{f.note}}</div></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px">
+    <sc-for list="{{moods}}" as="m" hint-placeholder-count="12">
+      <div style="height: 138px; box-sizing: border-box; border-radius: 14px; background: #1C1925; padding: 10px 12px; display: flex; flex-direction: column; justify-content: space-between">
+        <div style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px">
+          <sc-if value="{{m.pair}}" hint-placeholder-val="{{false}}">
+            <div style="opacity: {{m.aOp}}"><dc-import name="Creature" form="{{m.a}}" size="0.62" mood="{{m.aMood}}" hint-size="45px,50px"></dc-import></div>
+            <svg width="22" height="12" viewBox="0 0 22 12" aria-hidden="true"><path d="M1 6 H19 M14 1 L20 6 L14 11" fill="none" stroke="#A98BFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+            <div style="opacity: {{m.bOp}}"><dc-import name="Creature" form="{{m.b}}" size="0.62" mood="{{m.bMood}}" hint-size="45px,50px"></dc-import></div>
+          </sc-if>
+          <sc-if value="{{m.single}}" hint-placeholder-val="{{true}}">
+            <dc-import name="Creature" form="twins" size="1.15" mood="{{m.mood}}" look="{{m.look}}" hint-size="54px,54px"></dc-import>
+          </sc-if>
+        </div>
+        <div style="display: flex; justify-content: space-between; gap: 6px; font-size: 12px; line-height: 1.3"><span style="font-weight: 600">{{m.state}}</span><span style="color: #A9A3B8; text-align: right">{{m.desc}}</span></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); gap: 16px; flex: 1; min-height: 0">
+    <div style="border-radius: 14px; background: #B4C99A; padding: 14px 18px; display: flex; flex-direction: column; gap: 10px; color: #1B2A17">
+      <span style="font: 700 12px/1 'Silkscreen', monospace; letter-spacing: 0.06em">PIXEL OPLINGS · 1 OP = 11×7 PX</span>
+      <div style="flex: 1; display: flex; align-items: flex-end; justify-content: space-around">
+        <dc-import name="Creature" form="tower" size="1" pixel="true" hint-size="22px,80px"></dc-import>
+        <dc-import name="Creature" form="twins" size="1.2" pixel="true" mood="sing" hint-size="56px,57px"></dc-import>
+        <dc-import name="Creature" form="crab" size="1" pixel="true" mood="play" hint-size="72px,64px"></dc-import>
+        <dc-import name="Creature" form="trident" size="1" pixel="true" mood="sleep" hint-size="72px,64px"></dc-import>
+        <dc-import name="Creature" form="stairs" size="1" pixel="true" mood="dizzy" hint-size="72px,64px"></dc-import>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+      <div style="border-radius: 14px; background: #1C1925; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 600">Pupil tracking</span>
+        <span style="font-size: 12px; line-height: 1.45; color: #C9C3D6">Pupil offset = tilt × (eye r − pupil r) × 0.85, sprung, ~120 ms. Blink every 3–6 s: eye height to 20 % and back in 90 ms. Moves only.</span>
+      </div>
+      <div style="border-radius: 14px; background: #1C1925; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 600">Bob and flinch</span>
+        <span style="font-size: 12px; line-height: 1.45; color: #C9C3D6">On each beat, columns drop 4 % of body height and spring back, staggered 30 ms so it wiggles. A loud hit scales 1.06 × 0.94 for 80 ms.</span>
+      </div>
+      <div style="border-radius: 14px; background: #1C1925; padding: 14px; display: flex; flex-direction: column; gap: 6px">
+        <span style="font-size: 13px; font-weight: 600">Mutate</span>
+        <span style="font-size: 12px; line-height: 1.45; color: #C9C3D6">1 · kept ops slide to their new column. 2 · extra ops scale y 1→0, new ones 0→1. 3 · eyes and antenna ride the head op. Feet pop last.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var forms = [
+      { form: 'tower', note: '1 carrier', look: 'center', tint: 'lime' },
+      { form: 'twins', note: '2 carriers', look: 'right', tint: 'lime' },
+      { form: 'crab', note: '3 carriers', look: 'down', tint: 'lime' },
+      { form: 'spire', note: 'tall · ambient', look: 'up', tint: 'sky' },
+      { form: 'caterpillar', note: '6 carriers', look: 'right', tint: 'coral' },
+      { form: 'lopsy', note: 'stack + pair', look: 'left', tint: 'violet' },
+      { form: 'stairs', note: '3 · 2 · 1', look: 'upright', tint: 'lime' },
+      { form: 'trident', note: 'floater', look: 'center', tint: 'sky' }
+    ];
+    var one = function (state, desc, mood, look) { return { single: true, pair: false, state: state, desc: desc, mood: mood, look: look || 'center' }; };
+    var two = function (state, desc, a, aMood, b, bMood, aOp, bOp) { return { single: false, pair: true, state: state, desc: desc, a: a, aMood: aMood, b: b, bMood: bMood, aOp: aOp, bOp: bOp }; };
+    var moods = [
+      one('Idle', 'blinks, eyes follow tilt', 'idle', 'left'),
+      one('Playing', 'bobs to tempo', 'play'),
+      one('Voice input', 'sings along', 'sing'),
+      one('Agent thinking', 'antenna glows', 'think'),
+      two('Proposes change', 'before → after', 'tower', 'idle', 'crab', 'idle', 1, 1),
+      one('On trial', 'trying it on', 'trial', 'right'),
+      two('Reverted', 'snaps back', 'crab', 'idle', 'tower', 'blink', 0.4, 1),
+      one('Booting', 'hatching', 'hatch', 'up'),
+      one('Emulator crashed', 'dizzy', 'dizzy'),
+      one('Safe mode', 'asleep', 'sleep'),
+      one('Too slow', 'out of breath', 'breath'),
+      one('FM-1 connected', 'waves at it', 'wave', 'right')
+    ];
+    return { forms: forms, moods: moods };
+  }
+}
+</script>
+</body>
+</html>

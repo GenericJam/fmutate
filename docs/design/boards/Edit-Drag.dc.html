@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Edit in place: dragging</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 844px; height: 390px; background: #0E0D12; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+  <sc-for list="{{cells}}" as="c" hint-placeholder-count="84"><div style="position: absolute; left: {{c.l}}px; top: {{c.t}}px; width: {{c.w}}px; height: {{c.h}}px; border-radius: 8px; background: {{c.bg}}; box-shadow: inset 0 0 0 1px {{c.line}}"></div></sc-for>
+
+  <sc-for list="{{ctrls}}" as="k" hint-placeholder-count="8">
+    <div style="position: absolute; left: {{k.l}}px; top: {{k.t}}px; width: {{k.w}}px; height: {{k.h}}px; border-radius: 10px; background: {{k.bg}}; box-shadow: inset 0 0 0 {{k.ringW}}px {{k.ring}}; opacity: {{k.op}}; overflow: hidden">
+      <sc-for list="{{k.keys}}" as="w" hint-placeholder-count="0"><div style="position: absolute; left: {{w.l}}px; top: 0; width: {{w.w}}px; height: {{w.h}}px; border-radius: 0 0 5px 5px; background: {{w.c}}"></div></sc-for>
+      <sc-for list="{{k.pads}}" as="p" hint-placeholder-count="0"><div style="position: absolute; left: {{p.l}}px; top: {{p.t}}px; width: {{p.w}}px; height: {{p.h}}px; border-radius: 7px; background: #221F2B"></div></sc-for>
+      <sc-if value="{{k.fill}}" hint-placeholder-val="{{false}}"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: {{k.fillH}}px; background: #3A3450"></div></sc-if>
+      <span style="position: absolute; left: 8px; top: 8px; font: 700 11px/1.2 Inter, sans-serif; color: {{k.fg}}">{{k.label}}</span>
+    </div>
+  </sc-for>
+
+  <div style="position: absolute; left: {{drag.l}}px; top: {{drag.t}}px; width: {{drag.w}}px; height: {{drag.h}}px; border-radius: 10px; background: #2A2636; box-shadow: inset 0 0 0 2px #C6F24E; overflow: hidden">
+    <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 80px; background: #3A3450"></div>
+    <span style="position: absolute; left: 8px; top: 8px; font: 700 11px/1.2 Inter, sans-serif">Swing</span>
+  </div>
+  <div style="position: absolute; left: {{finger.l}}px; top: {{finger.t}}px; width: 40px; height: 40px; border-radius: 20px; background: #F3EFF8; opacity: 0.35"></div>
+  <span style="position: absolute; left: {{tip.l}}px; top: {{tip.t}}px; padding: 5px 8px; border-radius: 8px; background: #FF9A7A; color: #14121A; font: 700 11px/1.2 Inter, sans-serif; white-space: nowrap">Overlaps the keyboard</span>
+
+  <div style="position: absolute; left: 470px; top: 8px; height: 44px; padding: 0 4px 0 14px; border-radius: 22px; background: #F3EFF8; color: #14121A; display: flex; align-items: center; gap: 10px">
+    <span style="font-size: 13px; font-weight: 700">Editing Beat</span>
+    <span style="font: 500 11px/1 'JetBrains Mono', monospace; color: #5E5870">14 × 6 grid</span>
+    <button type="button" style="height: 36px; padding: 0 14px; border-radius: 18px; border: none; background: #14121A; color: #C6F24E; font: 700 13px Inter, sans-serif">Done</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var G = 8, cw = (788 - 13 * G) / 14, ch = (366 - 5 * G) / 6;
+    var X = function (c) { return 28 + c * (cw + G); }, Y = function (r) { return 12 + r * (ch + G); };
+    var W = function (n) { return n * cw + (n - 1) * G; }, H = function (n) { return n * ch + (n - 1) * G; };
+    var lime = { '9,1': 1, '9,2': 1 }, red = { '9,3': 1, '9,4': 1 };
+    var cells = [];
+    for (var r = 0; r < 6; r++) for (var c = 0; c < 14; c++) {
+      var k = c + ',' + r;
+      cells.push({ l: X(c).toFixed(1), t: Y(r).toFixed(1), w: cw.toFixed(1), h: ch.toFixed(1), bg: lime[k] ? 'rgba(198,242,78,0.28)' : (red[k] ? 'rgba(255,154,122,0.45)' : '#16141D'), line: lime[k] ? '#C6F24E' : (red[k] ? '#FF9A7A' : '#24212E') });
+    }
+    var box = function (c, r, w, h, o) {
+      return Object.assign({ l: X(c).toFixed(1), t: Y(r).toFixed(1), w: W(w).toFixed(1), h: H(h).toFixed(1), bg: '#221F2B', fg: '#F3EFF8', ring: '#34304A', ringW: 1, op: 1, keys: [], pads: [], fill: false, fillH: 0 }, o);
+    };
+    var keyW = W(5) / 10, keys = [];
+    for (var i = 0; i < 10; i++) keys.push({ l: Math.round(i * keyW), w: Math.round(keyW - 3), h: Math.round(H(3)), c: '#ECE7F2' });
+    var pads = [], pw = (W(4) - 3 * 6 - 12) / 4, ph = (H(3) - 2 * 6 - 34) / 3;
+    for (var pr = 0; pr < 3; pr++) for (var pc = 0; pc < 4; pc++) pads.push({ l: Math.round(6 + pc * (pw + 6)), t: Math.round(28 + pr * (ph + 6)), w: Math.round(pw), h: Math.round(ph) });
+    var ctrls = [
+      box(0, 0, 3, 3, { bg: '#000000', label: 'Screen ×1' }),
+      box(3, 0, 1, 1, { label: 'PLAY' }), box(3, 1, 1, 1, { label: 'REC' }), box(3, 2, 1, 1, { label: 'SEQ' }),
+      box(0, 3, 4, 3, { bg: '#1C1925', label: 'Pads 4×3', pads: pads }),
+      box(5, 0, 1, 6, { label: 'Tempo', fill: true, fillH: 180 }),
+      box(9, 3, 5, 3, { bg: '#1C1925', label: '', keys: keys }),
+      box(6, 0, 1, 4, { bg: 'transparent', ring: '#6B6580', ringW: 2, label: 'Swing', fg: '#6B6580', op: 0.8 })
+    ];
+    var drag = { l: (X(9) + 6).toFixed(1), t: (Y(1) - 6).toFixed(1), w: W(1).toFixed(1), h: H(4).toFixed(1) };
+    var finger = { l: Math.round(X(9) + cw / 2 - 14), t: Math.round(Y(2) - 4) };
+    var tip = { l: Math.round(X(10) + 4), t: Math.round(Y(3) + 40) };
+    return { cells: cells, ctrls: ctrls, drag: drag, finger: finger, tip: tip };
+  }
+}
+</script>
+</body>
+</html>

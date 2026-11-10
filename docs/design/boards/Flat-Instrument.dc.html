@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Instrument, classic layout (flat)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; width: 844px; height: 390px; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; overflow: hidden">
+  <div style="position: absolute; left: 28px; top: 12px; width: 788px; height: 196px; display: flex; gap: 16px; align-items: center">
+
+    <div style="display: flex; gap: 12px; align-items: center; width: 208px">
+      <div style="display: flex; flex-direction: column; gap: 8px; align-items: center">
+        <button type="button" aria-label="Menu: library, edit layout, I/O" style="width: 48px; height: 48px; border-radius: 24px; border: none; padding: 0; background: #221F2B; display: flex; align-items: center; justify-content: center; cursor: pointer">
+          <dc-import name="Creature" form="twins" size="0.62" mood="play" hint-size="29px,30px"></dc-import>
+        </button>
+        <button type="button" style="width: 48px; height: 40px; border-radius: 10px; border: none; background: #221F2B; color: #E4DFEE; font: 600 11px/1 Inter, sans-serif">OCT−</button>
+        <span style="font: 600 11px/1 'JetBrains Mono', monospace; color: #C6F24E">0</span>
+        <button type="button" style="width: 48px; height: 40px; border-radius: 10px; border: none; background: #221F2B; color: #E4DFEE; font: 600 11px/1 Inter, sans-serif">OCT+</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 8px; flex: 1">
+        <sc-for list="{{leftKnobs}}" as="k" hint-placeholder-count="4">
+          <div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px">
+            <svg width="56" height="56" viewBox="0 0 56 56" role="img" aria-label="{{k.aria}}">
+              <path d="{{k.track}}" fill="none" stroke="#2E2A3B" stroke-width="4" stroke-linecap="round"></path>
+              <path d="{{k.value}}" fill="none" stroke="#C6F24E" stroke-width="4" stroke-linecap="round"></path>
+              <path d="{{k.ticksOff}}" fill="#3A3548"></path>
+              <path d="{{k.ticksOn}}" fill="#C6F24E"></path>
+              <circle cx="28" cy="28" r="{{k.capR}}" fill="#2A2636"></circle>
+              <circle cx="{{k.ix}}" cy="{{k.iy}}" r="2.6" fill="#F3EFF8"></circle>
+            </svg>
+            <span style="font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; color: #A9A3B8">{{k.label}}</span>
+            <sc-if value="{{k.showVal}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: 21px; font: 600 11px/1 'JetBrains Mono', monospace; color: #F3EFF8">{{k.val}}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+      <div style="width: 172px; height: 172px; box-sizing: border-box; padding: 6px; border-radius: 12px; background: #0B0A0F; box-shadow: inset 0 0 0 1px #2E2A3B">
+        <div style="width: 160px; height: 160px; background: #000000; display: flex; flex-direction: column; font-family: VT323, monospace; color: #E8E8E8; overflow: hidden">
+          <div style="display: flex; justify-content: space-between; padding: 4px 6px; background: #1E3A8A; font-size: 15px; line-height: 1"><span>P012 GLASS BELL</span><span style="color: #FCD34D">A05</span></div>
+          <div style="flex: 1; display: flex; align-items: flex-end; justify-content: center; gap: 6px; padding: 8px 10px 6px">
+            <div style="display: flex; flex-direction: column; gap: 3px"><div style="width: 22px; height: 12px; background: #22D3EE"></div><div style="width: 22px; height: 12px; background: #22D3EE"></div><div style="width: 22px; height: 12px; background: #F472B6"></div></div>
+            <div style="display: flex; flex-direction: column; gap: 3px"><div style="width: 22px; height: 12px; background: #22D3EE"></div><div style="width: 22px; height: 12px; background: #22D3EE"></div><div style="width: 22px; height: 12px; background: #F472B6"></div></div>
+            <div style="width: 50px; height: 42px; margin-left: 6px; border-left: 2px solid #4B5563; border-bottom: 2px solid #4B5563; position: relative"><div style="position: absolute; left: 2px; bottom: 2px; width: 10px; height: 34px; background: #FCD34D"></div><div style="position: absolute; left: 14px; bottom: 2px; width: 30px; height: 18px; background: #A3A3A3"></div></div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; padding: 2px 6px 6px; font-size: 14px; line-height: 1.05"><span>RATIO 2.00</span><span>LVL&#160;&#160;87</span><span style="color: #FCD34D">FB&#160;&#160;&#160;&#160;3</span><span>DEC&#160;&#160;40</span></div>
+        </div>
+      </div>
+      <span style="font: 500 10px/1 'JetBrains Mono', monospace; color: #8F89A3">240² · ×2 · 480 px</span>
+    </div>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px">
+      <div style="display: flex; justify-content: space-around">
+        <sc-for list="{{rightKnobs}}" as="k" hint-placeholder-count="4">
+          <div style="position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px">
+            <svg width="52" height="52" viewBox="0 0 56 56" role="img" aria-label="{{k.aria}}">
+              <path d="{{k.ticksOff}}" fill="#3A3548"></path>
+              <path d="{{k.ticksOn}}" fill="#C6F24E"></path>
+              <circle cx="28" cy="28" r="{{k.capR}}" fill="{{k.capC}}"></circle>
+              <circle cx="{{k.ix}}" cy="{{k.iy}}" r="2.6" fill="#F3EFF8"></circle>
+            </svg>
+            <span style="font: 600 10px/1 'JetBrains Mono', monospace; letter-spacing: 0.04em; color: {{k.labelC}}">{{k.label}}</span>
+            <sc-if value="{{k.showVal}}" hint-placeholder-val="{{false}}"><span style="position: absolute; top: -14px; left: 34px; padding: 3px 6px; border-radius: 6px; background: #C6F24E; color: #14121A; font: 700 10px/1 'JetBrains Mono', monospace; white-space: nowrap">{{k.val}}</span></sc-if>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px">
+        <sc-for list="{{buttons}}" as="b" hint-placeholder-count="12">
+          <button type="button" style="position: relative; height: 56px; border-radius: 10px; border: none; background: {{b.bg}}; color: {{b.fg}}; font: 600 11px/1.1 Inter, sans-serif; letter-spacing: 0.02em; padding: 0 2px">{{b.label}}<span style="position: absolute; right: 7px; top: 7px; width: 6px; height: 6px; border-radius: 3px; background: {{b.led}}"></span></button>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="position: absolute; left: 28px; top: 222px; width: 788px; height: 158px">
+    <sc-for list="{{whites}}" as="k" hint-placeholder-count="16">
+      <div style="position: absolute; left: {{k.l}}px; top: {{k.t}}px; width: {{k.w}}px; height: 156px; border-radius: 3px 3px 9px 9px; background: {{k.bg}}">
+        <sc-if value="{{k.halo}}" hint-placeholder-val="{{false}}"><div style="position: absolute; left: {{k.haloL}}px; top: 4px; width: 16px; height: 16px; border-radius: 8px; background: #FF9F2E; opacity: 0.3"></div></sc-if>
+        <div style="position: absolute; left: {{k.ledL}}px; top: 9px; width: 6px; height: 6px; border-radius: 3px; background: {{k.led}}"></div>
+        <span style="position: absolute; left: 0; right: 0; bottom: 9px; text-align: center; font: 600 10px/1 'JetBrains Mono', monospace; color: #6B6580">{{k.name}}</span>
+        <sc-if value="{{k.pressed}}" hint-placeholder-val="{{false}}"><div style="position: absolute; left: 6px; top: 98px; width: 36px; height: 36px; border-radius: 18px; box-sizing: border-box; border: 2px solid #14121A; opacity: 0.35"></div></sc-if>
+      </div>
+    </sc-for>
+    <sc-for list="{{blacks}}" as="k" hint-placeholder-count="11">
+      <div style="position: absolute; left: {{k.l}}px; top: 0; width: 32px; height: 94px; border-radius: 2px 2px 7px 7px; background: #2A2633; box-shadow: 0 0 0 2px #14121A">
+        <div style="position: absolute; left: 13px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: {{k.led}}"></div>
+        <span style="position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 600 8px/1 'JetBrains Mono', monospace; color: #B9B2C8">{{k.label}}</span>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":844,"height":390}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var C = 28;
+    var pt = function (deg, r) { var a = deg * Math.PI / 180; return [C + r * Math.cos(a), C + r * Math.sin(a)]; };
+    var arc = function (a0, a1, r) {
+      if (a1 - a0 < 0.5) return '';
+      var p0 = pt(a0, r), p1 = pt(a1, r);
+      return 'M' + p0[0].toFixed(2) + ' ' + p0[1].toFixed(2) + ' A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2);
+    };
+    var dots = function (list) {
+      return list.map(function (deg) { var p = pt(deg, 24.5); return 'M' + (p[0] - 1.7).toFixed(2) + ' ' + p[1].toFixed(2) + ' a1.7 1.7 0 1 0 3.4 0 a1.7 1.7 0 1 0 -3.4 0'; }).join(' ');
+    };
+    var pot = function (label, v) {
+      var va = 135 + 270 * v, ip = pt(va, 10);
+      return { label: label, aria: label + ' pot, absolute, ' + Math.round(v * 100), track: arc(135, 405, 22), value: arc(135, va, 22), ticksOff: '', ticksOn: '', capR: 15, ix: ip[0].toFixed(1), iy: ip[1].toFixed(1), showVal: false, val: '' };
+    };
+    var enc = function (label, ang, lit, active, val) {
+      var all = [], on = [], off = [];
+      for (var i = 0; i < 16; i++) all.push(-90 + i * 22.5);
+      all.forEach(function (d, i) { (lit.indexOf(i) >= 0 ? on : off).push(d); });
+      var ip = pt(ang, 10);
+      return { label: label, aria: label + ' encoder, endless', track: '', value: '', ticksOff: dots(off), ticksOn: dots(on), capR: 16, capC: active ? '#3A3450' : '#2A2636', ix: ip[0].toFixed(1), iy: ip[1].toFixed(1), showVal: !!active, val: val || '', labelC: active ? '#C6F24E' : '#A9A3B8' };
+    };
+    var leftKnobs = [pot('MASTER', 0.72), enc('SELECT', -60, []), enc('PRESETS', 30, []), enc('ALGO', 200, [])];
+    leftKnobs[0].label = 'MASTER 72';
+    var rightKnobs = [enc('KNOB1', -120, []), enc('KNOB2', 10, [0, 1, 2, 3, 4], true, '+3 · fine'), enc('KNOB3', 150, []), enc('KNOB4', 250, [])];
+    var names = ['FX', 'SEL', 'ENV', 'LFO', 'EDIT', 'GLO', 'HOME', 'SAVE', 'ARP', 'SEQ', 'PLAY', 'REC'];
+    var buttons = names.map(function (n) {
+      var on = n === 'PLAY', amber = n === 'SEQ';
+      return { label: n, bg: '#221F2B', fg: '#E4DFEE', led: on ? '#C6F24E' : (amber ? '#FF9F2E' : '#3A3548') };
+    });
+    var colW = 788 / 16;
+    var wn = ['F', 'G', 'A', 'B', 'C4', 'D', 'E', 'F', 'G', 'A', 'B', 'C5', 'D', 'E', 'F', 'G'];
+    var pressed = [4, 6, 8], lit = [0, 4, 7, 11, 14];
+    var whites = wn.map(function (n, i) {
+      var p = pressed.indexOf(i) >= 0, l = lit.indexOf(i) >= 0, w = colW - 3;
+      return { l: Math.round(i * colW), t: p ? 2 : 0, w: Math.round(w), name: n, pressed: p, bg: p ? '#C6F24E' : '#ECE7F2', led: l ? '#FF9F2E' : (p ? '#7FA62A' : '#D3CCDD'), halo: l, ledL: Math.round(w / 2 - 3), haloL: Math.round(w / 2 - 8) };
+    });
+    var after = [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 14];
+    var bl = ['OP1', 'OP2', 'OP3', 'OP4', 'OP5', 'OP6', 'PIT', 'GLO', 'MONO', 'POLY', ''];
+    var blacks = after.map(function (i, j) { return { l: Math.round((i + 1) * colW - 17.5), label: bl[j], led: j === 3 ? '#FF9F2E' : '#3A3548' }; });
+    return { leftKnobs: leftKnobs, rightKnobs: rightKnobs, buttons: buttons, whites: whites, blacks: blacks };
+  }
+}
+</script>
+</body>
+</html>

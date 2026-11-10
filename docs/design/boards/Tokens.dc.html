@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tokens and components (flat)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=VT323&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 900px; box-sizing: border-box; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; padding: 40px 48px; display: grid; grid-template-columns: 380px minmax(0, 1fr); gap: 40px">
+  <div style="display: flex; flex-direction: column; gap: 18px; min-width: 0">
+    <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 30px; font-weight: 800">Tokens</h2>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px">
+      <sc-for list="{{colors}}" as="c" hint-placeholder-count="12">
+        <div style="display: flex; align-items: center; gap: 10px"><span style="width: 28px; height: 28px; border-radius: 8px; background: {{c.hex}}; box-shadow: inset 0 0 0 1px #34304A; flex: none"></span><span style="font-size: 12px; line-height: 1.25"><strong style="font-weight: 600">{{c.name}}</strong><br><span style="font-family: 'JetBrains Mono', monospace; color: #A9A3B8">{{c.hex}}</span></span></div>
+      </sc-for>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 6px; padding-top: 4px">
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 800; font-size: 32px; line-height: 1">Display 32 / 22</span>
+      <span style="font-size: 15px">UI body 15 · Inter 400/600</span>
+      <span style="font-size: 13px; color: #C9C3D6">UI small 13 · captions, meta</span>
+      <span style="font: 600 10px/1.2 'JetBrains Mono', monospace; letter-spacing: 0.06em; color: #A9A3B8">CONTROL LABEL 10 · MONO · FIXED SIZE ON THE INSTRUMENT</span>
+    </div>
+    <pre style="margin: 0; padding: 14px; border-radius: 14px; background: #0B0A0F; font: 400 11px/1.5 'JetBrains Mono', monospace; color: #D6D0E0; white-space: pre; overflow: hidden">defmodule FMutate.Style do
+  @colors %{
+    bg: "#14121A", surface: "#1C1925",
+    raised: "#221F2B", line: "#34304A",
+    text: "#F3EFF8", muted: "#A9A3B8",
+    key: "#ECE7F2", key_black: "#2A2633",
+    fm: "#C6F24E", agent: "#A98BFF",
+    led: "#FF9F2E", danger: "#FF9A7A",
+    info: "#8FD8FF"
+  }
+  @space [4, 8, 12, 16, 20, 28]  # 28 = edge gutter
+  @radius %{key: 9, btn: 10, card: 18,
+            sheet: 24, pill: 999}
+  @type %{display: 32, title: 22, body: 15,
+          small: 13, label: 10}
+  @touch 48
+end</pre>
+    <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #A9A3B8">Glows are 2–3 stacked translucent circles; pressed is a 2 pt move, never a shadow. Lime is reserved for "you touched it / it’s live".</p>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: min-content; gap: 14px; min-width: 0">
+    <div style="grid-column: span 2; border-radius: 16px; background: #1C1925; padding: 14px 16px">
+      <p style="margin: 0 0 10px; font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #A9A3B8">KEYS · IDLE · PRESSED · LED · BLACK</p>
+      <div style="display: flex; gap: 14px; align-items: flex-start">
+        <div style="position: relative; width: 48px; height: 120px; border-radius: 3px 3px 9px 9px; background: #ECE7F2"><span style="position: absolute; left: 21px; top: 9px; width: 6px; height: 6px; border-radius: 3px; background: #D3CCDD"></span></div>
+        <div style="position: relative; width: 48px; height: 120px; margin-top: 2px; border-radius: 3px 3px 9px 9px; background: #C6F24E"><span style="position: absolute; left: 21px; top: 9px; width: 6px; height: 6px; border-radius: 3px; background: #7FA62A"></span><span style="position: absolute; left: 6px; top: 70px; width: 36px; height: 36px; border-radius: 18px; box-sizing: border-box; border: 2px solid #14121A; opacity: 0.35"></span></div>
+        <div style="position: relative; width: 48px; height: 120px; border-radius: 3px 3px 9px 9px; background: #ECE7F2"><span style="position: absolute; left: 16px; top: 4px; width: 16px; height: 16px; border-radius: 8px; background: #FF9F2E; opacity: 0.3"></span><span style="position: absolute; left: 21px; top: 9px; width: 6px; height: 6px; border-radius: 3px; background: #FF9F2E"></span></div>
+        <div style="position: relative; width: 32px; height: 76px; border-radius: 2px 2px 7px 7px; background: #2A2633"><span style="position: absolute; left: 13px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: #3A3548"></span><span style="position: absolute; left: 0; right: 0; bottom: 8px; text-align: center; font: 600 8px/1 'JetBrains Mono', monospace; color: #B9B2C8">OP3</span></div>
+        <div style="position: relative; width: 32px; height: 76px; border-radius: 2px 2px 7px 7px; background: #2A2633"><span style="position: absolute; left: 8px; top: 3px; width: 16px; height: 16px; border-radius: 8px; background: #FF9F2E; opacity: 0.3"></span><span style="position: absolute; left: 13px; top: 8px; width: 6px; height: 6px; border-radius: 3px; background: #FF9F2E"></span></div>
+        <p style="margin: 0 0 0 8px; font-size: 12px; line-height: 1.5; color: #C9C3D6; max-width: 210px">Press paints on touch-down, before audio. The ring marks where the finger landed, so a chord of three shows three rings. LEDs belong to the firmware: amber dot + halo, never lime.</p>
+      </div>
+    </div>
+
+    <div style="border-radius: 16px; background: #1C1925; padding: 14px 16px">
+      <p style="margin: 0 0 10px; font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #A9A3B8">POT vs ENCODER</p>
+      <div style="display: flex; gap: 10px; justify-content: space-between">
+        <sc-for list="{{knobs}}" as="k" hint-placeholder-count="3">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 4px">
+            <svg width="62" height="62" viewBox="0 0 56 56" role="img" aria-label="{{k.label}}"><path d="{{k.track}}" fill="none" stroke="#2E2A3B" stroke-width="4" stroke-linecap="round"></path><path d="{{k.value}}" fill="none" stroke="#C6F24E" stroke-width="4" stroke-linecap="round"></path><path d="{{k.off}}" fill="#3A3548"></path><path d="{{k.on}}" fill="#C6F24E"></path><circle cx="28" cy="28" r="{{k.capR}}" fill="{{k.cap}}"></circle><circle cx="{{k.ix}}" cy="{{k.iy}}" r="2.6" fill="#F3EFF8"></circle></svg>
+            <span style="font: 600 10px/1.2 'JetBrains Mono', monospace; color: #C9C3D6; text-align: center">{{k.label}}</span>
+          </div>
+        </sc-for>
+      </div>
+      <p style="margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: #A9A3B8">Pot: arc with two ends, a value. Encoder: closed ring, no ends; ticks light as clicks are sent. Drag up or right for more; hold still 0.4 s first for fine (¼ speed). Knobs are optional; sliders are the default.</p>
+    </div>
+
+    <div style="border-radius: 16px; background: #1C1925; padding: 14px 16px">
+      <p style="margin: 0 0 10px; font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #A9A3B8">BUTTON · PAD</p>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+        <button type="button" style="position: relative; height: 52px; border-radius: 10px; border: none; background: #221F2B; color: #E4DFEE; font: 600 11px Inter, sans-serif">EDIT<span style="position: absolute; right: 7px; top: 7px; width: 6px; height: 6px; border-radius: 3px; background: #3A3548"></span></button>
+        <button type="button" style="position: relative; height: 52px; border-radius: 10px; border: none; background: #221F2B; color: #E4DFEE; font: 600 11px Inter, sans-serif">PLAY<span style="position: absolute; right: 7px; top: 7px; width: 6px; height: 6px; border-radius: 3px; background: #C6F24E"></span></button>
+        <button type="button" style="position: relative; height: 52px; margin-top: 2px; border-radius: 10px; border: none; background: #3A3450; color: #C6F24E; font: 600 11px Inter, sans-serif">SAVE</button>
+        <div style="height: 70px; border-radius: 12px; background: #2A2636; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between"><span style="font-size: 12px; font-weight: 700">KICK</span><span style="font: 500 9px 'JetBrains Mono', monospace; color: #A9A3B8">key F3</span></div>
+        <div style="position: relative; height: 70px; border-radius: 12px; background: #FF9A7A; color: #14121A; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; margin-top: 2px"><span style="font-size: 12px; font-weight: 700">SNARE</span><span style="font: 500 9px 'JetBrains Mono', monospace">velocity 104</span></div>
+        <div style="height: 70px; border-radius: 12px; background: #2A2636; box-shadow: inset 0 0 0 2px #FF9F2E; padding: 8px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between"><span style="font-size: 12px; font-weight: 700">HAT</span><span style="font: 500 9px 'JetBrains Mono', monospace; color: #FFB547">LED: step</span></div>
+      </div>
+    </div>
+
+    <div style="border-radius: 16px; background: #1C1925; padding: 14px 16px; display: flex; gap: 14px">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+        <div style="position: relative; width: 56px; height: 150px; border-radius: 14px; background: #2A2636; overflow: hidden"><div style="position: absolute; left: 0; right: 0; bottom: 0; height: 96px; background: #C6F24E; opacity: 0.85"></div><div style="position: absolute; left: 8px; right: 8px; bottom: 90px; height: 4px; border-radius: 2px; background: #14121A"></div></div>
+        <span style="font: 600 10px/1.2 'JetBrains Mono', monospace; color: #C9C3D6">SLIDER</span>
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+        <div style="position: relative; width: 70px; height: 150px; border-radius: 14px; background: #2A2636">
+          <sc-for list="{{strings}}" as="s" hint-placeholder-count="8"><div style="position: absolute; left: 8px; right: 8px; top: {{s.t}}px; height: {{s.h}}px; border-radius: 2px; background: {{s.c}}"></div></sc-for>
+        </div>
+        <span style="font: 600 10px/1.2 'JetBrains Mono', monospace; color: #C9C3D6">STRUM</span>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #A9A3B8">Sliders are the default control: they move from where you land and never jump. Bound to an encoder, a slider sends clicks for distance moved. A plucked string flashes lime and thickens.</p>
+    </div>
+
+    <div style="border-radius: 16px; background: #1C1925; padding: 14px 16px; display: flex; gap: 14px; align-items: center">
+      <div style="position: relative; width: 150px; height: 150px; border-radius: 14px; background: #2A2636; flex: none; overflow: hidden">
+        <div style="position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: #3A3548"></div><div style="position: absolute; top: 50%; left: 0; right: 0; height: 1px; background: #3A3548"></div>
+        <div style="position: absolute; left: 84px; top: 26px; width: 40px; height: 40px; border-radius: 20px; background: #A98BFF; opacity: 0.25"></div>
+        <div style="position: absolute; left: 94px; top: 36px; width: 20px; height: 20px; border-radius: 10px; background: #A98BFF"></div>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #A9A3B8"><span style="font: 600 10px/1.2 'JetBrains Mono', monospace; color: #C9C3D6">XY PAD</span>X → KNOB2<br>Y → KNOB3</div>
+    </div>
+
+    <div style="border-radius: 16px; background: #1C1925; padding: 14px 16px; display: flex; gap: 14px; align-items: center">
+      <div style="width: 132px; height: 132px; box-sizing: border-box; padding: 6px; border-radius: 12px; background: #0B0A0F; box-shadow: inset 0 0 0 1px #2E2A3B; flex: none"><div style="width: 120px; height: 120px; background: #000000; font: 14px/1 VT323, monospace; color: #E8E8E8; padding: 6px; box-sizing: border-box">FIRMWARE<br>DRAWS<br>THIS</div></div>
+      <div style="font-size: 12px; line-height: 1.5; color: #A9A3B8"><span style="font: 600 10px/1.2 'JetBrains Mono', monospace; color: #C9C3D6">SCREEN FRAME</span><br>Native view. Integer device-px scale only: ×1, ×2, ×3. 6 pt bezel, no overlays inside it.</div>
+    </div>
+
+    <div style="grid-column: span 3; border-radius: 16px; background: #1C1925; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px">
+      <p style="margin: 0; font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.1em; color: #A9A3B8">BINDING CHIPS · what this control drives</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px">
+        <sc-for list="{{chips}}" as="c" hint-placeholder-count="6">
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 4px; border-radius: 14px; background: #2A2636; font: 600 11px/1 'JetBrains Mono', monospace; color: #E4DFEE"><span style="width: 20px; height: 20px; border-radius: 10px; background: {{c.c}}; color: #14121A; display: inline-flex; align-items: center; justify-content: center; font-size: 10px">{{c.k}}</span>{{c.t}}</span>
+        </sc-for>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center">
+        <sc-for list="{{badges}}" as="b" hint-placeholder-count="5"><span style="padding: 5px 9px; border-radius: 8px; background: {{b.bg}}; color: {{b.fg}}; box-shadow: inset 0 0 0 1px {{b.line}}; font: 600 11px/1 Inter, sans-serif">{{b.t}}</span></sc-for>
+        <span style="margin-left: 8px; font-size: 12px; color: #A9A3B8">firmware card statuses</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: #2A2240; box-shadow: inset 0 0 0 1px #A98BFF">
+        <dc-import name="Creature" form="crab" size="0.55" mood="trial" hint-size="40px,35px"></dc-import>
+        <span style="flex: 1; font-size: 13px">On trial: <strong>drum pads layout</strong> · reverts by itself if you leave the app</span>
+        <button type="button" style="height: 40px; padding: 0 14px; border-radius: 12px; border: none; background: transparent; box-shadow: inset 0 0 0 1px #A98BFF; color: #F3EFF8; font: 700 13px Inter, sans-serif">Revert</button>
+        <button type="button" style="height: 40px; padding: 0 14px; border-radius: 12px; border: none; background: #C6F24E; color: #14121A; font: 700 13px Inter, sans-serif">Keep…</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var colors = [
+      ['bg', '#14121A'], ['surface', '#1C1925'], ['raised', '#221F2B'], ['line', '#34304A'],
+      ['text', '#F3EFF8'], ['muted', '#A9A3B8'], ['key', '#ECE7F2'], ['key black', '#2A2633'],
+      ['fm · live', '#C6F24E'], ['agent', '#A98BFF'], ['led', '#FF9F2E'], ['danger', '#FF9A7A']
+    ].map(function (c) { return { name: c[0], hex: c[1] }; });
+    var C = 28;
+    var pt = function (deg, r) { var a = deg * Math.PI / 180; return [C + r * Math.cos(a), C + r * Math.sin(a)]; };
+    var arc = function (a0, a1, r) { var p0 = pt(a0, r), p1 = pt(a1, r); return 'M' + p0[0].toFixed(2) + ' ' + p0[1].toFixed(2) + ' A' + r + ' ' + r + ' 0 ' + (a1 - a0 > 180 ? 1 : 0) + ' 1 ' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2); };
+    var dots = function (list) { return list.map(function (d) { var p = pt(d, 24.5); return 'M' + (p[0] - 1.7).toFixed(2) + ' ' + p[1].toFixed(2) + ' a1.7 1.7 0 1 0 3.4 0 a1.7 1.7 0 1 0 -3.4 0'; }).join(' '); };
+    var ring = function (lit) { var on = [], off = []; for (var i = 0; i < 16; i++) { (lit.indexOf(i) >= 0 ? on : off).push(-90 + i * 22.5); } return [dots(off), dots(on)]; };
+    var ip1 = pt(135 + 270 * 0.6, 10), ip2 = pt(40, 10), ip3 = pt(-10, 10);
+    var r1 = ring([]), r2 = ring([0, 1, 2, 3]);
+    var knobs = [
+      { label: 'POT 60', track: arc(135, 405, 22), value: arc(135, 135 + 270 * 0.6, 22), off: '', on: '', capR: 15, cap: '#2A2636', ix: ip1[0].toFixed(1), iy: ip1[1].toFixed(1) },
+      { label: 'ENCODER', track: '', value: '', off: r1[0], on: '', capR: 16, cap: '#2A2636', ix: ip2[0].toFixed(1), iy: ip2[1].toFixed(1) },
+      { label: '+3 FINE', track: '', value: '', off: r2[0], on: r2[1], capR: 16, cap: '#3A3450', ix: ip3[0].toFixed(1), iy: ip3[1].toFixed(1) }
+    ];
+    var strings = []; for (var i = 0; i < 8; i++) strings.push({ t: 14 + i * 17, h: i === 3 ? 4 : 2, c: i === 3 ? '#C6F24E' : '#5A5470' });
+    var chips = [
+      { k: 'K', c: '#ECE7F2', t: 'key C4' }, { k: 'E', c: '#C6F24E', t: 'KNOB2 · 1 click / 6 pt' }, { k: 'B', c: '#B9A2FF', t: 'PLAY/STOP' },
+      { k: 'P', c: '#FFB547', t: 'tilt → MASTER' }, { k: 'M', c: '#8FD8FF', t: 'MIDI CC 74' }, { k: '2', c: '#FF9A7A', t: 'KNOB2 + KNOB3' }
+    ];
+    var badges = [
+      { t: 'Running', bg: '#C6F24E', fg: '#14121A', line: '#C6F24E' }, { t: 'On phone', bg: '#2A2636', fg: '#E4DFEE', line: '#2A2636' },
+      { t: 'Available', bg: 'transparent', fg: '#C9C3D6', line: '#4A4560' }, { t: 'Doesn’t run here yet', bg: 'transparent', fg: '#FFB547', line: '#7A5A22' },
+      { t: 'Quarantined', bg: '#4A1F1A', fg: '#FFB4A3', line: '#4A1F1A' }
+    ];
+    return { colors: colors, knobs: knobs, strings: strings, chips: chips, badges: badges };
+  }
+}
+</script>
+</body>
+</html>

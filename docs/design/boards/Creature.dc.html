@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Opling creature</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="position: relative; display: inline-flex; flex-direction: column; align-items: center; padding-top: {{padTop}}px; outline: {{outline}}; outline-offset: {{outlineOff}}px; border-radius: {{outlineR}}px; font-family: 'JetBrains Mono', monospace; color: #F3EFF8" aria-hidden="true">
+<sc-for list="{{under}}" as="b" hint-placeholder-count="0"><div style="position: absolute; left: {{b.l}}px; top: {{b.t}}px; width: {{b.w}}px; height: {{b.h}}px; border-radius: {{b.r}}px; background: {{b.bg}}; opacity: {{b.o}}"></div></sc-for>
+<div style="display: flex; align-items: flex-end; gap: {{colGap}}px">
+<sc-for list="{{cols}}" as="col" hint-placeholder-count="2">
+<div style="display: flex; flex-direction: column; align-items: center; gap: {{gap}}px">
+<sc-for list="{{col.ops}}" as="op" hint-placeholder-count="2">
+<div style="position: relative; width: {{w}}px; height: {{h}}px; border-radius: {{r}}px; background: {{op.fill}}">
+<sc-if value="{{op.antenna}}" hint-placeholder-val="{{false}}">
+<svg style="position: absolute; left: {{ant.l}}px; top: {{ant.t}}px; overflow: visible" width="{{ant.w}}" height="{{ant.h}}" viewBox="0 0 9 11" aria-hidden="true"><path d="M2 11 C2 6 2 2 5.5 2 C8 2 8.2 5.5 5.8 5.6 C4.3 5.7 4.3 3.9 5.4 3.9" fill="none" stroke="{{ant.c}}" stroke-width="1.7" stroke-linecap="{{ant.cap}}" stroke-linejoin="{{ant.join}}"></path></svg>
+</sc-if>
+<sc-for list="{{op.eyes}}" as="e" hint-placeholder-count="0">
+<div style="position: absolute; left: {{e.x}}px; top: {{e.y}}px; width: {{e.d}}px; height: {{e.eh}}px; border-radius: {{e.r}}px; background: {{e.bg}}"><div style="position: absolute; left: {{e.px}}px; top: {{e.py}}px; width: {{e.pd}}px; height: {{e.pd}}px; border-radius: {{e.pr}}px; background: {{e.pc}}; display: {{e.pdisp}}"></div></div>
+</sc-for>
+<sc-if value="{{op.mouth}}" hint-placeholder-val="{{false}}">
+<div style="position: absolute; left: {{mouth.l}}px; top: {{mouth.t}}px; width: {{mouth.w}}px; height: {{mouth.h}}px; border-radius: {{mouth.r}}px; background: {{mouth.c}}"></div>
+</sc-if>
+</div>
+</sc-for>
+<div style="display: flex; justify-content: space-between; width: {{footRowW}}px"><div style="width: {{footW}}px; height: {{footH}}px; border-radius: {{footR}}px; background: {{footC}}"></div><div style="width: {{footW}}px; height: {{footH}}px; border-radius: {{footR}}px; background: {{footC}}"></div></div>
+</div>
+</sc-for>
+</div>
+<sc-for list="{{blobs}}" as="b" hint-placeholder-count="0"><div style="position: absolute; left: {{b.l}}px; top: {{b.t}}px; width: {{b.w}}px; height: {{b.h}}px; border-radius: {{b.r}}px; background: {{b.bg}}; opacity: {{b.o}}"></div></sc-for>
+<sc-if value="{{zz.on}}" hint-placeholder-val="{{false}}"><div style="position: absolute; left: {{zz.l}}px; top: {{zz.t}}px; font-size: {{zz.fs}}px; line-height: 1; font-weight: 700; color: {{zz.c}}; white-space: nowrap">z<span style="font-size: {{zz.fs2}}px">Z</span></div></sc-if>
+<sc-if value="{{shell.on}}" hint-placeholder-val="{{false}}"><svg style="position: absolute; left: {{shell.l}}px; top: {{shell.t}}px" width="{{shell.w}}" height="{{shell.h}}" viewBox="0 0 100 60" preserveAspectRatio="none" aria-hidden="true"><path d="M0 14 L10 3 L20 14 L30 3 L40 14 L50 3 L60 14 L70 3 L80 14 L90 3 L100 14 L100 42 Q100 60 82 60 L18 60 Q0 60 0 42 Z" fill="{{shell.fill}}" stroke="{{shell.stroke}}" stroke-width="1.5" vector-effect="non-scaling-stroke"></path></svg></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"form":{"editor":"enum","options":["tower","twins","crab","spire","caterpillar","lopsy","stairs","trident"],"default":"tower"},"mood":{"editor":"enum","options":["idle","blink","play","sing","think","trial","dizzy","sleep","breath","wave","hatch"],"default":"idle"},"size":{"editor":"float","min":0.4,"max":12,"step":0.1,"default":2.4},"tint":{"editor":"enum","options":["lime","violet","coral","sky"],"default":"lime"},"look":{"editor":"enum","options":["center","left","right","up","down","upright"],"default":"center"},"pixel":{"editor":"boolean","default":false},"$preview":{"width":220,"height":240}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var P = this.props;
+    var s = parseFloat(P.size == null ? 2.4 : P.size); if (!(s > 0)) s = 2.4;
+    var mood = P.mood || 'idle';
+    var pixel = P.pixel === true || P.pixel === 'true';
+    var FORMS = {
+      tower: { cols: [4], head: 0 }, twins: { cols: [2, 2], head: 0, split: true },
+      crab: { cols: [2, 3, 2], head: 1 }, spire: { cols: [6], head: 0 },
+      caterpillar: { cols: [1, 1, 1, 1, 1, 1], head: 5 }, lopsy: { cols: [4, 2], head: 0 },
+      stairs: { cols: [3, 2, 1], head: 0 }, trident: { cols: [1, 3, 1], head: 1 }
+    };
+    var f = FORMS[P.form] || FORMS.tower;
+    var TINTS = {
+      lime: ['#C6F24E', '#93CF32', '#5E8F1A', '#A98BFF'], violet: ['#B9A2FF', '#8F72F0', '#5B44B8', '#C6F24E'],
+      coral: ['#FF9A7A', '#F2705A', '#B9442F', '#A98BFF'], sky: ['#8FD8FF', '#58B6EC', '#2C7DB0', '#FFB547']
+    };
+    var t = TINTS[P.tint] || TINTS.lime;
+    var body = t[0], carrier = t[1], footC = t[2], antC = t[3];
+    var eyeBg = '#FFFFFF', pupilC = '#17141F', accent = '#A98BFF', tick = '#A9A3B8', warm = '#FFB547';
+    if (pixel) { body = '#46613A'; carrier = '#2A3D22'; footC = '#16220F'; antC = '#2A3D22'; eyeBg = '#E3EBCB'; pupilC = '#16220F'; accent = '#2A3D22'; tick = '#2A3D22'; warm = '#16220F'; }
+    var R = function (v) { return Math.max(1, Math.round(v * s)); };
+    var w = R(22), h = R(14), gap = R(2.5), colGap = R(3), padTop = R(11);
+    var r = pixel ? 0 : R(4);
+    var footW = R(6), footH = R(3.2), footR = pixel ? 0 : R(1.6), footRowW = w - R(6);
+    var maxOps = Math.max.apply(null, f.cols);
+    var n = f.cols.length;
+    var W = n * w + (n - 1) * colGap;
+    var H = padTop + maxOps * (h + gap) + footH;
+    var hc = f.head;
+    var hx = hc * (w + colGap);
+    var hy = padTop + (maxOps - f.cols[hc]) * (h + gap);
+    var ed = R(8), pd = R(3.8);
+    var closed = mood === 'sleep' || mood === 'blink';
+    var LOOK = { center: [0, 0], left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1], upright: [0.8, -0.8] };
+    var lk = LOOK[P.look] || LOOK.center;
+    if (mood === 'think') lk = LOOK.upright;
+    if (mood === 'breath') lk = LOOK.down;
+    var room = (ed - pd) / 2;
+    var eye = function (x, side) {
+      var lx = lk[0], ly = lk[1];
+      if (mood === 'dizzy') { lx = side === 'L' ? 1 : -1; ly = 0.4; }
+      return {
+        x: Math.round(x), y: closed ? R(2) : -R(2), d: ed, eh: closed ? R(1.6) : ed,
+        r: pixel ? 0 : (closed ? R(1) : Math.round(ed / 2)), bg: closed ? pupilC : eyeBg,
+        pd: pd, px: Math.round(room + lx * room * 0.85), py: Math.round(room + ly * room * 0.85),
+        pr: pixel ? 0 : Math.round(pd / 2), pc: pupilC, pdisp: closed ? 'none' : 'block'
+      };
+    };
+    var xL = w * 0.3 - ed / 2, xR = w * 0.7 - ed / 2;
+    var hasMouth = mood === 'sing' || mood === 'breath' || mood === 'wave';
+    var cols = f.cols.map(function (cnt, ci) {
+      var ops = [];
+      for (var i = 0; i < cnt; i++) {
+        var top = i === 0, bottom = i === cnt - 1, eyes = [];
+        if (top && f.split && ci < 2) eyes = [eye(ci === 0 ? xL : xR, ci === 0 ? 'L' : 'R')];
+        else if (top && !f.split && ci === hc) eyes = [eye(xL, 'L'), eye(xR, 'R')];
+        ops.push({ fill: bottom ? carrier : body, eyes: eyes, antenna: top && ci === hc, mouth: top && ci === hc && hasMouth });
+      }
+      return { ops: ops };
+    });
+    var mw = mood === 'sing' ? R(6) : R(4.5), mh = mood === 'sing' ? R(5) : R(3);
+    var mouth = { l: Math.round(w / 2 - mw / 2), t: Math.round(h - mh - R(1.6)), w: mw, h: mh, r: pixel ? 0 : Math.round(Math.min(mw, mh) / 2), c: pupilC };
+    var ant = { l: Math.round(w * 0.56), t: -R(10.5), w: R(9), h: R(11), c: antC, cap: pixel ? 'square' : 'round', join: pixel ? 'miter' : 'round' };
+    var ax = hx + ant.l + 5.5 * ant.w / 9, ay = hy + ant.t + 3.5 * ant.h / 11;
+    var circ = function (cx, cy, d, bg, o) { return { l: Math.round(cx - d / 2), t: Math.round(cy - d / 2), w: d, h: d, r: pixel ? 0 : Math.round(d / 2), bg: bg, o: o }; };
+    var bar = function (l, t2, bw, bh, bg) { return { l: Math.round(l), t: Math.round(t2), w: bw, h: bh, r: pixel ? 0 : Math.round(bw / 2), bg: bg, o: 1 }; };
+    var under = [], blobs = [];
+    if (mood === 'think') { under = [circ(ax, ay, R(20), accent, 0.14), circ(ax, ay, R(13), accent, 0.22), circ(ax, ay, R(7), accent, 0.4)]; }
+    if (mood === 'play') {
+      blobs = [bar(-R(5), H * 0.32, R(1.6), R(6), tick), bar(-R(8.5), H * 0.38, R(1.6), R(4), tick), bar(W + R(3.4), H * 0.32, R(1.6), R(6), tick), bar(W + R(6.9), H * 0.38, R(1.6), R(4), tick)];
+    }
+    if (mood === 'sing') {
+      blobs = [
+        { l: hx + w + R(2), t: hy - R(1), w: R(4), h: R(3.2), r: pixel ? 0 : R(1.6), bg: accent, o: 1 }, bar(hx + w + R(5), hy - R(8), R(1), R(8), accent),
+        { l: hx + w + R(9), t: hy - R(8), w: R(3.2), h: R(2.6), r: pixel ? 0 : R(1.3), bg: accent, o: 0.7 }, bar(hx + w + R(11.4), hy - R(14), R(0.9), R(6.6), accent)
+      ];
+    }
+    if (mood === 'dizzy') { blobs = [circ(hx + w * 0.15, hy - R(5), R(2.6), warm, 1), circ(hx + w * 0.5, hy - R(8), R(2.6), warm, 1), circ(hx + w * 0.85, hy - R(5), R(2.6), warm, 1)]; }
+    if (mood === 'breath') { blobs = [{ l: hx + w + R(1.5), t: hy + R(0.5), w: R(3), h: R(4.4), r: pixel ? 0 : R(1.5), bg: pixel ? '#2A3D22' : '#8FD8FF', o: 1 }, circ(hx - R(4), hy + R(9), R(2.4), tick, 0.6), circ(hx - R(7.5), hy + R(7), R(1.8), tick, 0.4)]; }
+    if (mood === 'wave') {
+      blobs = [{ l: hx + w + R(1.5), t: hy - R(4), w: R(4.5), h: R(11), r: pixel ? 0 : R(2.2), bg: body, o: 1 }, bar(hx + w + R(7.5), hy - R(7), R(1.4), R(4), tick), bar(hx + w + R(10.2), hy - R(4), R(1.4), R(3), tick)];
+    }
+    var zz = { on: mood === 'sleep', l: hx + w + R(1), t: hy - R(11), fs: R(6), fs2: R(9), c: tick };
+    var shell = { on: mood === 'hatch', l: -R(3), t: Math.round(H * 0.42), w: W + R(6), h: Math.round(H * 0.58) + R(1), fill: pixel ? '#E3EBCB' : '#F3EBD6', stroke: pixel ? '#2A3D22' : '#CDBF9C' };
+    return {
+      cols: cols, w: w, h: h, r: r, gap: gap, colGap: colGap, padTop: padTop,
+      footW: footW, footH: footH, footR: footR, footRowW: footRowW, footC: footC,
+      ant: ant, mouth: mouth, under: under, blobs: blobs, zz: zz, shell: shell,
+      outline: mood === 'trial' ? (R(0.9) + 'px dashed ' + accent) : 'none', outlineOff: R(5), outlineR: pixel ? 0 : R(8)
+    };
+  }
+}
+</script>
+</body>
+</html>

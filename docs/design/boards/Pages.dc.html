@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pages: switcher, page grid, editor strip</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div style="width: 1280px; height: 844px; box-sizing: border-box; background: #14121A; color: #F3EFF8; font-family: Inter, sans-serif; padding: 40px 48px; display: grid; grid-template-columns: 380px 380px minmax(0, 1fr); gap: 36px">
+
+  <div style="display: flex; flex-direction: column; gap: 18px; min-width: 0">
+    <h2 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 28px; font-weight: 800">The page switcher is a control</h2>
+    <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #C9C3D6">Placed, sized and removed like any other control. Never a scrolling tab bar: every page is one tap away. New layouts get one next to the creature.</p>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: #A9A3B8">NAMES · up to 4 fit, the last becomes “more”</span>
+      <div style="display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; background: #0E0D12">
+        <span style="width: 44px; height: 44px; border-radius: 22px; background: #221F2B; flex: none; display: flex; align-items: center; justify-content: center"><dc-import name="Creature" form="crab" size="0.42" hint-size="30px,27px"></dc-import></span>
+        <div style="flex: 1; height: 44px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 3px; box-sizing: border-box; border-radius: 12px; background: #1C1925">
+          <span style="border-radius: 9px; background: #34304A; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">Beat</span>
+          <span style="display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #A9A3B8">Bass</span>
+          <span style="display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #A9A3B8">Keys</span>
+          <span style="display: flex; align-items: center; justify-content: center; gap: 4px; font-size: 13px; font-weight: 600; color: #A9A3B8">+4</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: #A9A3B8">DOTS · tap a dot, the name shows above</span>
+      <div style="display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; background: #0E0D12">
+        <span style="width: 44px; height: 44px; border-radius: 22px; background: #221F2B; flex: none; display: flex; align-items: center; justify-content: center"><dc-import name="Creature" form="crab" size="0.42" hint-size="30px,27px"></dc-import></span>
+        <div style="height: 44px; display: flex; align-items: center; gap: 0; padding: 0 4px; border-radius: 22px; background: #1C1925">
+          <sc-for list="{{dots}}" as="d" hint-placeholder-count="7"><span style="width: 28px; height: 44px; display: flex; align-items: center; justify-content: center"><span style="width: {{d.s}}px; height: {{d.s}}px; border-radius: 6px; background: {{d.c}}"></span></span></sc-for>
+        </div>
+        <span style="font-size: 13px; font-weight: 600">Bass</span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <span style="font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: #A9A3B8">HIDDEN · your own page buttons instead</span>
+      <div style="display: flex; gap: 8px; align-items: center; padding: 10px; border-radius: 14px; background: #0E0D12">
+        <span style="height: 48px; padding: 0 14px; border-radius: 12px; background: #221F2B; display: flex; align-items: center; font-size: 13px; font-weight: 600">‹ Beat</span>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: center">
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 4px; border-radius: 13px; background: #2A2636; font: 600 10px/1 'JetBrains Mono', monospace"><span style="width: 18px; height: 18px; border-radius: 9px; background: #C6F24E; color: #14121A; display: inline-flex; align-items: center; justify-content: center">P</span>go to: previous</span>
+          <span style="display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px 0 4px; border-radius: 13px; background: #2A2636; font: 600 10px/1 'JetBrains Mono', monospace"><span style="width: 18px; height: 18px; border-radius: 9px; background: #C6F24E; color: #14121A; display: inline-flex; align-items: center; justify-content: center">P</span>go to: Keys</span>
+        </span>
+        <span style="height: 48px; padding: 0 14px; border-radius: 12px; background: #221F2B; display: flex; align-items: center; font-size: 13px; font-weight: 600">Keys ›</span>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #A9A3B8">Any button, pad or slider can be bound to “go to page”. Long-press the creature for the page grid, so a hidden switcher never traps you.</p>
+    </div>
+
+    <div style="margin-top: auto; padding: 14px; border-radius: 14px; background: #1C1925; font-size: 12px; line-height: 1.5; color: #C9C3D6">
+      <strong style="color: #F3EFF8">Rules.</strong> A page is exactly one screen and never scrolls; only controls scroll inside themselves. All pages in a layout share its frame (portrait or landscape). Switching pages never stops notes that are held or patterns that are running.
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0">
+    <span style="font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: #A9A3B8">“MORE” / LONG-PRESS · PAGE GRID</span>
+    <div style="flex: 1; border-radius: 24px; background: #1C1925; padding: 16px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; justify-content: space-between">
+        <h3 style="margin: 0; font-family: 'Bricolage Grotesque', sans-serif; font-size: 22px; font-weight: 800">X0X groove · 7 pages</h3>
+        <button type="button" aria-label="Close page grid" style="width: 44px; height: 44px; border-radius: 22px; border: none; background: #2A2636; color: #F3EFF8; font: 700 16px Inter, sans-serif">×</button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+        <sc-for list="{{thumbs}}" as="t" hint-placeholder-count="8">
+          <div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+            <div style="position: relative; width: 84px; height: 160px; border-radius: 10px; background: #0E0D12; box-shadow: 0 0 0 {{t.ringW}}px {{t.ring}}; overflow: hidden">
+              <sc-for list="{{t.blocks}}" as="b" hint-placeholder-count="4"><div style="position: absolute; left: {{b.l}}px; top: {{b.t}}px; width: {{b.w}}px; height: {{b.h}}px; border-radius: 3px; background: {{b.c}}"></div></sc-for>
+            </div>
+            <span style="font-size: 12px; font-weight: 600; color: {{t.fg}}">{{t.name}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 14px; min-width: 0">
+    <span style="font: 600 11px/1 'JetBrains Mono', monospace; letter-spacing: 0.08em; color: #A9A3B8">IN THE LAYOUT EDITOR · PAGES WORK LIKE SLIDES</span>
+    <div style="border-radius: 20px; background: #1C1925; padding: 14px; display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; gap: 10px; align-items: flex-end">
+        <sc-for list="{{strip}}" as="t" hint-placeholder-count="4">
+          <div style="display: flex; flex-direction: column; gap: 6px; align-items: center">
+            <div style="position: relative; width: 52px; height: 100px; border-radius: 8px; background: #0E0D12; box-shadow: 0 0 0 {{t.ringW}}px {{t.ring}}; overflow: hidden">
+              <sc-for list="{{t.blocks}}" as="b" hint-placeholder-count="4"><div style="position: absolute; left: {{b.l}}px; top: {{b.t}}px; width: {{b.w}}px; height: {{b.h}}px; border-radius: 2px; background: {{b.c}}"></div></sc-for>
+            </div>
+            <span style="font-size: 11px; color: {{t.fg}}">{{t.name}}</span>
+          </div>
+        </sc-for>
+        <button type="button" aria-label="Add page" style="width: 52px; height: 100px; margin-bottom: 21px; border-radius: 8px; border: none; background: transparent; box-shadow: inset 0 0 0 1px #4A4560; color: #C9C3D6; font: 400 24px Inter, sans-serif">+</button>
+      </div>
+      <p style="margin: 0; font-size: 12px; line-height: 1.45; color: #A9A3B8">Drag to reorder · long-press to duplicate, rename or delete. In edit mode, drag a control onto the screen’s side edge to move it to the next page.</p>
+      <button type="button" style="height: 48px; border-radius: 14px; border: none; background: #2A2636; color: #F3EFF8; font: 600 14px Inter, sans-serif">New page from a preset…</button>
+    </div>
+
+    <div style="border-radius: 20px; background: #1C1925; padding: 14px; display: flex; flex-direction: column; gap: 14px">
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="flex: 1"><div style="font-size: 15px; font-weight: 600">Dock</div><div style="font-size: 12px; line-height: 1.4; color: #A9A3B8">Controls pinned to the same place on every page: here the firmware screen and transport.</div></div>
+        <span role="switch" aria-checked="true" aria-label="Dock" style="width: 48px; height: 28px; border-radius: 14px; background: #C6F24E; position: relative; flex: none"><span style="position: absolute; right: 3px; top: 3px; width: 22px; height: 22px; border-radius: 11px; background: #14121A"></span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="flex: 1; font-size: 15px; font-weight: 600">Frame</span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; padding: 3px; border-radius: 12px; background: #14121A; width: 200px">
+          <span style="height: 38px; border-radius: 9px; background: #34304A; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">Portrait</span>
+          <span style="height: 38px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; color: #A9A3B8">Landscape</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <div style="flex: 1"><div style="font-size: 15px; font-weight: 600">Hold any way</div><div style="font-size: 12px; line-height: 1.4; color: #A9A3B8">Layout stays put; labels and the firmware screen turn in quarter turns. Needs label rotation in Mob.</div></div>
+        <span role="switch" aria-checked="false" aria-label="Hold any way" style="width: 48px; height: 28px; border-radius: 14px; background: #34304A; position: relative; flex: none"><span style="position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 11px; background: #A9A3B8"></span></span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="flex: 1; font-size: 15px; font-weight: 600">Switcher look</span>
+        <button type="button" style="height: 40px; padding: 0 14px; border-radius: 12px; border: none; background: #221F2B; color: #F3EFF8; font: 600 13px Inter, sans-serif">Names ▾</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    var dots = []; for (var i = 0; i < 7; i++) dots.push({ s: i === 1 ? 12 : 8, c: i === 1 ? '#C6F24E' : '#4A4560' });
+    var L = '#2E2A3B', K = '#ECE7F2', A = '#C6F24E', V = '#3A3450', S = '#000000';
+    var designs = {
+      beat: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 56, 56, V], [6, 114, 56, 20, L], [66, 6, 12, 148, K]],
+      bass: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 30, 100, V], [40, 52, 22, 100, V], [66, 6, 12, 148, K]],
+      keys: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 72, 102, K]],
+      mix: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 14, 100, V], [24, 52, 14, 100, V], [42, 52, 14, 100, V], [60, 52, 14, 100, V]],
+      fx: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 72, 72, '#2A2240'], [6, 130, 72, 22, L]],
+      pat: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 72, 60, '#2A2240'], [6, 118, 72, 16, V], [6, 138, 72, 16, V]],
+      voice: [[6, 6, 40, 40, S], [50, 6, 12, 40, L], [6, 52, 72, 20, K], [6, 78, 72, 76, L]]
+    };
+    var scale = function (list, k) { return list.map(function (b) { return { l: Math.round(b[0] * k), t: Math.round(b[1] * k), w: Math.round(b[2] * k), h: Math.round(b[3] * k), c: b[4] }; }); };
+    var pages = [['Beat', 'beat'], ['Bass', 'bass'], ['Keys', 'keys'], ['Mix', 'mix'], ['FX', 'fx'], ['Patterns', 'pat'], ['Voice', 'voice']];
+    var thumbs = pages.map(function (p, i) { var cur = i === 1; return { name: p[0], blocks: scale(designs[p[1]], 1), ring: cur ? A : '#2E2A3B', ringW: cur ? 3 : 1, fg: cur ? '#F3EFF8' : '#C9C3D6' }; });
+    thumbs.push({ name: 'New page', blocks: [{ l: 30, t: 68, w: 24, h: 24, c: '#34304A' }], ring: '#4A4560', ringW: 1, fg: '#A9A3B8' });
+    var strip = pages.slice(0, 4).map(function (p, i) { var cur = i === 0; return { name: p[0], blocks: scale(designs[p[1]], 0.62), ring: cur ? A : '#2E2A3B', ringW: cur ? 2 : 1, fg: cur ? '#F3EFF8' : '#A9A3B8' }; });
+    return { dots: dots, thumbs: thumbs, strip: strip };
+  }
+}
+</script>
+</body>
+</html>
