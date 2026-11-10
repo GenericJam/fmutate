@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- FMutate's sibling permission (signature): granted because this app is signed with the same key. -->
+    <uses-permission android:name="com.genericjam.fmutate.permission.SIBLING" />
+
+    <queries>
+        <package android:name="com.genericjam.fmutate" />
+    </queries>
+
+    <application android:label="FMutate Probe">
+        <activity android:name=".ProbeActivity" android:exported="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- "FMutate Probe": a virtual MIDI device FMutate can open, to test its device path without USB. -->
+        <service android:name=".ProbeMidiService" android:exported="true"
+            android:permission="android.permission.BIND_MIDI_DEVICE_SERVICE">
+            <intent-filter>
+                <action android:name="android.media.midi.MidiDeviceService" />
+            </intent-filter>
+            <meta-data android:name="android.media.midi.MidiDeviceService"
+                android:resource="@xml/probe_midi" />
+        </service>
+    </application>
+</manifest>

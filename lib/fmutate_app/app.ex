@@ -28,11 +28,12 @@ defmodule FmutateApp.App do
       Ecto.Migrator.run(repo, migrations_dir(), :up, all: true)
     end)
 
-    # the instrument: audio output, instance "a" and its firmware engine (FMutate.Supervisor)
+    # the instrument: audio output, instance "a" and its firmware engine, MIDI and I/O, and the
+    # distribution node sibling apps (and tools/rpc.exs) connect to (FMutate.Supervisor, FMutate.Dist)
     {:ok, _} = FMutate.Supervisor.start_link()
 
     Mob.Screen.start_root(FMutate.InstrumentScreen)
-    Mob.Dist.ensure_started(node: :"fmutate_app_android@127.0.0.1", cookie: :mob_secret)
+    # (no Mob.Dist.ensure_started/1: FMutate.Dist owns distribution as fmutate_a@127.0.0.1, see protocol.md)
   end
 
   # Returns the path to the migrations directory for the current environment.

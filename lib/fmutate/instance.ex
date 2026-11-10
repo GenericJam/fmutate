@@ -352,7 +352,8 @@ defmodule FMutate.Instance do
     {[], state}
   end
 
-  # Raw MIDI → 3-byte messages (2-byte messages padded); sysex is not passed on in v1.
+  # Raw MIDI → 3-byte messages (shorter ones padded); sysex is not passed on in v1. Clock, start, continue,
+  # stop and song position pass (FMutate.MIDI's clock follow/send).
   defp midi_cmds(bytes, frame) do
     for msg <- split_midi(bytes, []) do
       [st, d1, d2] = msg ++ List.duplicate(0, 3 - length(msg))
@@ -370,6 +371,11 @@ defmodule FMutate.Instance do
       _ -> Enum.reverse(acc)
     end
   end
+
+  defp split_midi(<<st, rest::binary>>, acc) when st in [0xF8, 0xFA, 0xFB, 0xFC], do: split_midi(rest, [[st] | acc])
+
+  defp split_midi(<<0xF2, lsb, msb, rest::binary>>, acc) when lsb < 0x80 and msb < 0x80,
+    do: split_midi(rest, [[0xF2, lsb, msb] | acc])
 
   defp split_midi(<<_skip, rest::binary>>, acc), do: split_midi(rest, acc)
 

@@ -1,0 +1,2 @@
+// FMutate Probe: a separate test app, not part of the FMutate build (see build.gradle).
+rootProject.name = 'fmutate-probe'

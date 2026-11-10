@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<devices>
+    <device name="FMutate Probe" manufacturer="FMutate" product="FMutate Probe">
+        <output-port name="out" />
+    </device>
+</devices>
