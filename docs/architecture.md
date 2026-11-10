@@ -15,7 +15,7 @@ flowchart LR
     SCR["FMutate.InstrumentScreen (Mob.Screen)"] --> VIEW["FMutate.InstrumentView (Mob.Component)"]
     VIEW <--> KT["Kotlin InstrumentView: layout, multitouch, drawing"]
   end
-  INST -- "Port ({packet,2})" --> ENG["libfm1engine.so + libcart_&lt;fw&gt;.so (own OS process)"]
+  INST -- "Port ({packet,2})" --> ENG["libfm1engine.so + libcart_&lt;fw&gt;.so, or libfm1emu.so + &lt;fw&gt;.fwsc (own OS process)"]
   ENG -- "ring (shm)" --> AUD
   ENG -- "fb + LEDs (shm)" --> KT
   KT -- "events: in / menu / page / edit" --> VIEW --> INST
@@ -23,7 +23,8 @@ flowchart LR
 
 - **Engines** are separate OS processes (`libfm1engine.so`, a PIE executable shipped as `lib*.so` so Android
   extracts it to the native lib dir). A crash, hang or exit ends only that process; `FMutate.Instance`
-  restarts it, and quarantines a firmware that dies twice within a minute.
+  restarts it, and quarantines a firmware that dies twice within a minute. `libfm1emu.so` is the same
+  protocol around fm1-emu, for any firmware's update package (`backend: :emu`, `docs/engine_protocol.md`).
 - **Audio** never passes through the BEAM: engines write a shared ring, `c_src/fm1audio.c` (static NIF) mixes
   the rings in an AAudio callback, resampling 44.1 kHz to the device rate.
 - **The firmware screen and LEDs** never pass through the BEAM either: the Kotlin view maps `<prefix>.fb`.
@@ -37,6 +38,7 @@ flowchart LR
 |---|---|
 | `native/engine/fm1engine.c`, `live.c` | the engine executable and the cartridge harness (from `../fmutate_spike`) |
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
+| `native/emu/`, `native/build_emu.sh`, `native/patches/fm1-emu/` | the emulator engine (Rust, around fm1-emu pinned in the script) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
 | `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `FMutateViews.kt` |
