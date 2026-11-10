@@ -2098,11 +2098,16 @@ object MobBridge {
             try {
                 val items = uris.mapIndexed { i, uri ->
                     val name = uri.lastPathSegment ?: "file_$i"
-                    val tmp = File(activity.cacheDir, "mob_file_${System.currentTimeMillis()}_$name")
+                    val tmp = File(activity.cacheDir, "mob_file_${System.currentTimeMillis()}_$i")
                     activity.contentResolver.openInputStream(uri)?.use { it.copyTo(tmp.outputStream()) }
                     val size = tmp.length()
                     val mime = activity.contentResolver.getType(uri) ?: "application/octet-stream"
-                    """{"path":"${tmp.absolutePath}","name":"$name","mime":"$mime","size":$size}"""
+                    // FMutate: the file's display name (a SAF uri's last segment is a document id like
+                    // "msf:35"), JSON-escaped; the library reads a .fwsc's name and version from it
+                    val display = activity.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+                        ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: name
+                    val jsonName = display.replace("\\", "\\\\").replace("\"", "\\\"")
+                    """{"path":"${tmp.absolutePath}","name":"$jsonName","mime":"$mime","size":$size}"""
                 }
                 val json = "[${items.joinToString(",")}]"
                 nativeDeliverFileResult(pid, "files", "picked", json)
