@@ -177,6 +177,23 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
 
     (props["master"] as? Number)?.let { m -> if ("pot:master" !in state.values) state.values["pot:master"] = m.toFloat() }
 
+    // ── edit mode, pages, toasts, rule 7 (EditMode.kt, Rule7.kt; FMutate.Editor) ──
+    val editing = props["editing"] == true
+    val pageProp = props["page"] as? String ?: ""
+    val edit = remember { EditMode() }
+    val rule7 = remember(layout.id) { Rule7() }
+    val addMenu = remember(props["add_menu"]) { AddMenu.parse(props["add_menu"] as? String) }
+    var toast by remember { mutableStateOf("") }
+    LaunchedEffect(layoutJson) { edit.layoutChanged() }
+    LaunchedEffect(pageProp, layout) { layout.pages.indexOfFirst { it.id == pageProp }.takeIf { it >= 0 }?.let { state.page = it } }
+    LaunchedEffect(props["toast_seq"]) {
+        edit.layoutChanged() // a refused edit comes back as a toast: drop its proposal
+        toast = props["toast"] as? String ?: ""
+        delay(2500)
+        toast = ""
+    }
+    // ── end edit mode ──
+
     // the layout's frame never rotates while playing (HANDOFF §5), and the instrument takes the whole screen:
     // system bars hidden (a swipe brings them back for a moment), drawn under a display cutout. The 28 dp
     // side gutters keep the back gesture clear.
@@ -217,14 +234,16 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     val page = layout.pages[state.page.coerceIn(0, layout.pages.size - 1)]
     val wDp = sizePx.width / density
     val hDp = sizePx.height / density
-    val fitted = remember(layout, page, wDp, hDp) { if (wDp > 0) fit(layout, page, wDp, hDp) else null }
+    val fitted = remember(layout, page, wDp, hDp, editing) {
+        if (wDp <= 0) null else if (editing) editFit(layout, page, wDp, hDp) else fit(layout, page, wDp, hDp)
+    }
     val controls = layout.dock + page.controls
 
     fun haptic(kind: Int) = view.performHapticFeedback(kind)
     fun emit(event: String, payload: Map<String, Any> = emptyMap()) = sendNow(event, payload)
     fun input(payload: Map<String, Any>) = emit("in", payload)
 
-    fun rectOf(c: Control): Grid.Rect? = fitted?.let { f -> f.placement.cells[c.id]?.let { f.grid.rect(it) } }
+    fun rectOf(c: Control): Grid.Rect? = fitted?.let { f -> (edit.override(c.id) ?: f.placement.cells[c.id])?.let { f.grid.rect(it) } }
 
     fun goPage(ref: String) {
         val i = when (ref) {
@@ -237,6 +256,13 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
             emit("page", mapOf("id" to layout.pages[i].id))
         }
     }
+
+    val ectx = fitted?.let {
+        EditCtx(layout, page, layout.pages.indexOf(page), it.grid, wDp, hDp, addMenu, scope, { e, p -> emit(e, p) },
+            { i -> goPage(layout.pages[i].id) }, { k -> haptic(k) })
+    }
+    val ectxNow by rememberUpdatedState(ectx)
+    val editingNow by rememberUpdatedState(editing)
 
     /** Press or release a discrete target (keys, buttons, notes, page). */
     fun fire(t: Target, down: Boolean) {
@@ -273,8 +299,8 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         if (down) state.pressed[key] = true else state.pressed.remove(key)
     }
 
-    fun sendValue(t: Target, v: Float) {
-        sendValueBytes(t, v)?.let { input(it) }
+    fun sendValue(c: Control, t: Target, v: Float) {
+        sendValueBytes(t, v, c.id)?.let { input(it) }
     }
 
     /** A relative move of `d` dp on a value control (knob, slider, xy axis). */
@@ -288,7 +314,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                     g.acc -= n * t.ptPerClick
                     g.clicks += n
                     state.encoderTurns[c.id] = (state.encoderTurns[c.id] ?: 0) + n
-                    input(mapOf("t" to "encoder", "id" to t.id, "clicks" to n))
+                    input(mapOf("t" to "encoder", "id" to t.id, "clicks" to n, "c" to c.id))
                     haptic(HapticFeedbackConstants.CLOCK_TICK)
                     state.bubbles[c.id] = (if (g.clicks > 0) "+" else "") + g.clicks + (if (g.fine) " · fine" else "")
                 }
@@ -299,18 +325,20 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 val v = (old + d * f / POT_RANGE_DP).coerceIn(0f, 1f)
                 if (v != old) {
                     if ((v == 0f || v == 1f) && v != old) haptic(HapticFeedbackConstants.CLOCK_TICK)
+                    if (!rule7.accept(key, c.id, v, old)) return
                     state.values[key] = v
-                    sendValue(t, v)
+                    sendValue(c, t, v)
                     state.bubbles[c.id] = "${(v * 100).roundToInt()}" + (if (g.fine) " · fine" else "")
                 }
             }
         }
     }
 
-    fun setValue(t: Target, v: Float) {
+    fun setValue(c: Control, t: Target, v: Float) {
         val key = t.absoluteKey ?: return
+        if (!rule7.accept(key, c.id, v, state.values[key])) return
         state.values[key] = v
-        sendValue(t, v)
+        sendValue(c, t, v)
     }
 
     // keyboard geometry: the visible firmware keys of a strip
@@ -320,9 +348,10 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         return start..(start + n)
     }
 
-    fun keyboardKeys(c: Control, r: Grid.Rect): List<Pair<Int, Grid.Rect>> {
+    fun keyboardKeys(c: Control, r0: Grid.Rect): List<Pair<Int, Grid.Rect>> {
         val keys = window(c)
-        val arrows = if (c.octaveArrows) ARROW_DP else 0f
+        val r = keysRect(c, r0)
+        val arrows = if (c.octaveArrows && !hasRail(c)) ARROW_DP else 0f
         val len = (if (c.vertical) r.h else r.w) - 2 * arrows
         val across = if (c.vertical) r.w else r.h
         val whites = keys.filter { !isBlack(it) }
@@ -331,7 +360,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         val out = mutableListOf<Pair<Int, Grid.Rect>>()
         // along: position from the low end; mapped to x (horizontal) or from the bottom (vertical)
         fun rectAlong(a: Float, l: Float, depth: Float): Grid.Rect =
-            if (c.vertical) Grid.Rect(r.x, r.y + r.h - arrows - a - l, depth, l)
+            if (c.vertical) Grid.Rect(r.x + r.w - depth, r.y + r.h - arrows - a - l, depth, l)
             else Grid.Rect(r.x + arrows + a, r.y, l, depth)
         var i = 0
         for (k in keys) if (!isBlack(k)) out += k to rectAlong(i++ * ww, ww - 2f, across)
@@ -352,7 +381,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     }
 
     fun arrowAt(c: Control, r: Grid.Rect, p: Offset): Int {
-        if (!c.octaveArrows) return 0
+        if (!c.octaveArrows || hasRail(c)) return 0
         val low = if (c.vertical) p.y > r.y + r.h - ARROW_DP else p.x < r.x + ARROW_DP
         val high = if (c.vertical) p.y < r.y + ARROW_DP else p.x > r.x + r.w - ARROW_DP
         return if (low) -1 else if (high) 1 else 0
@@ -397,7 +426,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     val grabs = remember { mutableMapOf<Long, Grab>() }
 
     fun down(id: Long, p: Offset, now: Long) {
-        if (fitted?.placement?.fits == false && p.y < 30f && abs(p.x - wDp / 2) < 160f) {
+        if (!editing && fitted?.placement?.fits == false && p.y < 30f && abs(p.x - wDp / 2) < 160f) {
             emit("use_classic")
             return
         }
@@ -433,6 +462,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
             }
             "pad_grid" -> padAt(c, r, p)?.let { i -> g.sub = i; pressBindings("${c.id}#$i", c.pads[i].bindings, true) }
             "keyboard" -> {
+                if (railHit(c, r, p.x, p.y)) { g.sub = RAIL_GRAB; state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 val arrow = arrowAt(c, r, p)
                 if (arrow != 0) { shiftOctave(c, arrow); return }
                 keyAt(c, r, p)?.let { k -> g.sub = k; state.pressed["${c.id}#$k"] = true; fire(Target.Key(k), true) }
@@ -451,7 +481,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 if (c.type == "slider") c.binding("value")?.let { b ->
                     if (b.to is Target.Midi && b.to.jump) {
                         val v = if (c.sliderVertical) 1 - (p.y - r.y) / r.h else (p.x - r.x) / r.w
-                        setValue(b.to, v.coerceIn(0f, 1f))
+                        setValue(c, b.to, v.coerceIn(0f, 1f))
                     }
                 }
                 scope.launch {
@@ -485,6 +515,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 }
             }
             "keyboard" -> {
+                if (g.sub == RAIL_GRAB) { state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 if (g.sub < 0) return
                 if (c.wobble && bendOk) { bend(c, g, r, p); return }
                 val k = keyAt(c, r, p)
@@ -509,7 +540,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 if (!(b.to is Target.Midi && b.to.jump)) turn(c, g, b, if (c.sliderVertical) -d.y else d.x)
                 else {
                     val v = if (c.sliderVertical) 1 - (p.y - r.y) / r.h else (p.x - r.x) / r.w
-                    setValue(b.to, v.coerceIn(0f, 1f))
+                    setValue(c, b.to, v.coerceIn(0f, 1f))
                 }
             }
             "xy_pad" -> {
@@ -544,7 +575,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 if (c.type == "xy_pad" && c.springBack) {
                     for (b in c.bindings) when (val t = b.to) {
                         is Target.Encoder -> if (g.clicks != 0) input(mapOf("t" to "encoder", "id" to t.id, "clicks" to -g.clicks))
-                        else -> t.absoluteKey?.let { k -> g.startValues[k]?.let { setValue(t, it) } }
+                        else -> t.absoluteKey?.let { k -> g.startValues[k]?.let { setValue(c, t, it) } }
                     }
                 }
             }
@@ -552,13 +583,17 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         }
     }
 
+    // controls stop sending input in edit mode: lift whatever was held when it began
+    LaunchedEffect(editing) { if (editing) grabs.keys.toList().forEach { up(it) } else edit.reset() }
+
     // ── drawing ───────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
+    if (editing) Canvas(modifier = Modifier.fillMaxSize()) { ectx?.let { edit.drawUnder(this, it, density) } }
     Canvas(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { sizePx = it }
-            .pointerInput(layout, fitted, state.page) {
+            .pointerInput(layout, fitted, state.page, editing) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Main)
@@ -566,9 +601,12 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                         for (ch in event.changes) {
                             val p = Offset(ch.position.x / density, ch.position.y / density)
                             when {
-                                ch.changedToDownIgnoreConsumed() -> down(ch.id.value, p, now)
-                                ch.changedToUpIgnoreConsumed() -> up(ch.id.value)
-                                ch.positionChanged() -> move(ch.id.value, p)
+                                ch.changedToDownIgnoreConsumed() ->
+                                    if (editingNow) ectxNow?.let { edit.down(it, ch.id.value, p) } else down(ch.id.value, p, now)
+                                ch.changedToUpIgnoreConsumed() ->
+                                    if (editingNow) ectxNow?.let { edit.up(it, ch.id.value, p) } else up(ch.id.value)
+                                ch.positionChanged() ->
+                                    if (editingNow) ectxNow?.let { edit.move(it, ch.id.value, p, now) } else move(ch.id.value, p)
                             }
                             ch.consume()
                         }
@@ -578,10 +616,11 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     ) {
         val redraw = state.ledFrame // read so the canvas redraws when the LEDs change
         if (redraw < 0) return@Canvas
-        drawRect(C.bg)
+        if (!editing) drawRect(C.bg)
         val f = fitted ?: return@Canvas
         val dr = Draw(this, density, measurer)
         for (c in controls) {
+            if (edit.hidden(c.id)) continue
             val r = rectOf(c) ?: continue
             when (c.type) {
                 "button", "key" -> dr.button(c, r, state, ledFor(c, state.leds))
@@ -589,22 +628,31 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 "slider" -> dr.slider(c, r, state)
                 "xy_pad" -> dr.xy(c, r, state)
                 "pad_grid" -> dr.pads(c, r, state)
-                "keyboard" -> dr.keyboard(c, r, state, keyboardKeys(c, r), state.leds)
+                "keyboard" -> {
+                    dr.keyboard(if (hasRail(c)) c.copy(octaveArrows = false) else c, r, state, keyboardKeys(c, r), state.leds)
+                    if (hasRail(c)) drawRail(this, r, window(c), density)
+                }
                 "strum" -> dr.strum(c, r, state)
                 "screen" -> dr.screenBezel(r, c.screenScale, shm?.valid == true, phase)
                 "label" -> dr.label(c, r)
                 "page_switcher" -> dr.switcher(c, r, layout, state.page)
                 "menu" -> dr.menu(r, state.pressed[c.id] == true)
             }
+            if (rule7.stale(c)) dimOver(this, r, density)
         }
         for ((_, p) in state.fingers) dr.finger(p)
-        if (!f.placement.fits) dr.banner("Doesn't fit this phone · tap for Classic")
+        if (!f.placement.fits && !editing) dr.banner("Doesn't fit this phone · tap for Classic")
     }
     // the firmware screen on its own layer: a new frame (up to 60 a second) redraws only this
     Canvas(modifier = Modifier.fillMaxSize()) {
         if (state.screenFrame < 0 || shm == null || !shm.valid) return@Canvas
         val dr = Draw(this, density, measurer)
-        for (c in controls) if (c.type == "screen") rectOf(c)?.let { dr.screenPixels(it, c.screenScale, shm) }
+        for (c in controls) if (c.type == "screen" && !edit.hidden(c.id)) rectOf(c)?.let { dr.screenPixels(it, c.screenScale, shm) }
+    }
+    // edit mode (grid selection, drags, pill, "Add here") and toasts, over everything
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (editing) ectx?.let { edit.drawOver(this, it, density) }
+        drawToast(this, toast, wDp, hDp, density)
     }
     }
 }
@@ -618,9 +666,12 @@ private fun ledFor(c: Control, leds: Triple<Int, Int, Int>): Boolean {
     return false
 }
 
-private fun sendValueBytes(t: Target, v: Float): Map<String, Any>? = when (t) {
-    Target.Pot -> mapOf("t" to "pot", "v" to v.toDouble())
-    is Target.Midi -> if (t.type == "cc") mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt())) else null
+private fun sendValueBytes(t: Target, v: Float, control: String): Map<String, Any>? = when (t) {
+    Target.Pot -> mapOf("t" to "pot", "v" to v.toDouble(), "c" to control)
+    is Target.Midi -> if (t.type == "cc") mapOf(
+        "t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt()),
+        "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),
+    ) else null
     else -> null
 }
 

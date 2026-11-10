@@ -6,9 +6,10 @@ defmodule FMutate.InstrumentScreen do
 
   use Mob.Screen
 
-  alias FMutate.{Instance, Layouts}
+  alias FMutate.{Editor, Instance}
 
   @instance "a"
+  @editor_events Editor.events()
 
   def mount(_params, _session, socket) do
     view =
@@ -18,14 +19,13 @@ defmodule FMutate.InstrumentScreen do
         :exit, _ -> placeholder_view()
       end
 
-    {:ok,
-     Mob.Socket.assign(socket,
-       instance: @instance,
-       view: view,
-       layout: Layouts.classic(),
-       menu: false,
-       editing: false
-     )}
+    socket =
+      socket
+      |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false)
+      # layout editing: the layout for the running firmware, pages, sheets (FMutate.Editor)
+      |> Editor.load(@instance, view.firmware)
+
+    {:ok, socket}
   end
 
   def render(assigns) do
@@ -33,15 +33,20 @@ defmodule FMutate.InstrumentScreen do
       Mob.UI.native_view(FMutate.InstrumentView,
         id: :instrument,
         instance: assigns.instance,
-        layout: assigns.layout.json,
+        layout: assigns.layout_json,
         view: assigns.view,
-        owner: self()
+        owner: self(),
+        editing: assigns.editing,
+        page: assigns.page,
+        toast: assigns.toast,
+        add_menu: Editor.add_menu_json(assigns)
       )
 
     dismiss = {self(), :menu}
     library = {self(), :library}
     edit = {self(), :edit}
     io = {self(), :io}
+    editor_sheets = Editor.sheets(assigns)
 
     ~MOB"""
     <Box background="#14121A" padding={0} fill_width={true} fill_height={true}>
@@ -53,19 +58,27 @@ defmodule FMutate.InstrumentScreen do
           <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
         </Column>
       </Sheet>
+      {editor_sheets}
     </Box>
     """
   end
 
   def handle_info({:instance, @instance, {:state, view}}, socket),
-    do: {:noreply, Mob.Socket.assign(socket, :view, view)}
+    do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> Editor.firmware(view.firmware)}
 
   def handle_info({:instance, _id, _event}, socket), do: {:noreply, socket}
 
   def handle_info({:instrument, "menu", _}, socket), do: {:noreply, Mob.Socket.assign(socket, :menu, true)}
 
-  def handle_info({:instrument, "use_classic", _}, socket),
-    do: {:noreply, Mob.Socket.assign(socket, :layout, Layouts.classic())}
+  # layout editing, pages and their sheets
+  def handle_info({:instrument, event, payload}, socket) when event in @editor_events,
+    do: {:noreply, Editor.event(event, payload, socket)}
+
+  def handle_info({kind, {:editor, _} = tag}, socket) when kind in [:tap, :dismiss],
+    do: {:noreply, Editor.dispatch(kind, tag, nil, socket)}
+
+  def handle_info({kind, {:editor, _} = tag, value}, socket) when kind in [:change, :submit],
+    do: {:noreply, Editor.dispatch(kind, tag, value, socket)}
 
   def handle_info({:instrument, _event, _payload}, socket), do: {:noreply, socket}
 
@@ -77,7 +90,6 @@ defmodule FMutate.InstrumentScreen do
   def handle_info({:tap, :io}, socket),
     do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.IOScreen)}
 
-  # the layout editor arrives with the edit mode of the instrument view
   def handle_info({:tap, :edit}, socket),
     do: {:noreply, Mob.Socket.assign(socket, menu: false, editing: true)}
 
