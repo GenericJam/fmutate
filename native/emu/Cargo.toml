@@ -1,0 +1,26 @@
+# fm1emu: any FM-1 firmware package (.fwsc) in Joakim Eriksson's fm1-emu (MIT), behind the engine protocol of
+# native/engine/fm1engine.c (docs/engine_protocol.md). Built by native/build_emu.sh, which fetches fm1-emu at a
+# pinned commit into native/build/fm1-emu and applies native/patches/fm1-emu/.
+[package]
+name = "fm1emu"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "fm1emu"
+path = "src/main.rs"
+
+[dependencies]
+fm1-core = { path = "../build/fm1-emu/crates/fm1-core" }
+fm1-soc = { path = "../build/fm1-emu/crates/fm1-soc" }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+debug = false
+strip = true
+
+# (a workspace of its own, not a member of fm1-emu's)
+[workspace]
