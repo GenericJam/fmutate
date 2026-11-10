@@ -109,7 +109,7 @@ defmodule FMutate.Instance do
   @impl true
   def handle_call({:switch, fw}, _from, state) do
     cond do
-      Firmware.cart(fw) == nil ->
+      Firmware.runnable(fw) == nil ->
         {:reply, {:error, :not_installed}, state}
 
       MapSet.member?(state.quarantined, fw) ->
@@ -191,7 +191,7 @@ defmodule FMutate.Instance do
   ## Engines
 
   defp start_engine(state, role, fw) do
-    with cart when cart != nil <- Firmware.cart(fw),
+    with {bin, cart} <- Firmware.runnable(fw) || nil,
          {:ok, slot} <- Audio.claim() do
       prefix = Paths.shm_prefix(state.id, slot)
 
@@ -199,7 +199,7 @@ defmodule FMutate.Instance do
         Engine.start_link(
           owner: self(),
           tag: {state.id, fw, slot},
-          bin: Paths.engine_bin(),
+          bin: bin,
           cart: cart,
           prefix: prefix,
           flash: Paths.flash(state.id, fw),
@@ -211,7 +211,7 @@ defmodule FMutate.Instance do
       Map.put(%{state | phase: phase}, role, eng)
     else
       nil ->
-        Logger.error("instance #{state.id}: no cartridge for #{fw}")
+        Logger.error("instance #{state.id}: #{fw} can't run here (no cartridge, package or emulator)")
         %{state | phase: :not_installed}
 
       {:error, reason} ->

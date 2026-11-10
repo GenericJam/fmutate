@@ -1,12 +1,22 @@
 defmodule FMutate.Firmware do
   @moduledoc """
-  The firmwares this build can run. v1 ships cartridges built from source (`native/build_android.sh`):
-  each is `libcart_<id>.so` in the APK. The library (download, import `.fwsc`, the emulator backend for
-  binary-only firmwares) builds on this list.
+  The firmwares this build can run, and how.
+
+  Two backends run a firmware in an engine process (docs/engine_protocol.md):
+
+    * `:native` — the firmware built from its source as a cartridge (`libcart_<id>.so`, shipped in the
+      APK, run by `libfm1engine.so`). Fast and sample-exact; only for firmwares with source.
+    * `:emu` — the firmware's own package (`.fwsc`) run in the fm1-emu emulator (`libfm1emu.so`, same
+      engine protocol and arguments, with the package where the cartridge goes). Any firmware,
+      including binary-only ones; slower.
+
+  This module knows the bundled native cartridges; `FMutate.Library` extends the list with downloaded and
+  imported packages (emulator backend) and is what the rest of the app should ask (`get/1` and `all/0`
+  delegate to it when it runs).
   """
 
   @enforce_keys [:id, :name, :version, :author, :license]
-  defstruct [:id, :name, :version, :author, :license, :about, caps: %{}]
+  defstruct [:id, :name, :version, :author, :license, :about, backend: :native, package: nil, caps: %{}]
 
   @type t :: %__MODULE__{}
 
@@ -33,9 +43,16 @@ defmodule FMutate.Firmware do
     }
   ]
 
-  @doc "Every firmware this build knows, whether or not its cartridge is present."
+  @doc "The firmwares shipped as native cartridges in this build."
+  @spec bundled() :: [t]
+  def bundled, do: Enum.map(@bundled, &struct!(__MODULE__, &1))
+
+  @doc "Every firmware the app knows (the library's list when it runs, else the bundled ones)."
   @spec all() :: [t]
-  def all, do: Enum.map(@bundled, &struct!(__MODULE__, &1))
+  def all do
+    # (the library is a process the app starts; when it isn't running, the bundled list is all there is)
+    if Process.whereis(FMutate.Library), do: apply(FMutate.Library, :firmwares, []), else: bundled()
+  end
 
   @spec get(String.t()) :: t | nil
   def get(id), do: Enum.find(all(), &(&1.id == id))
@@ -43,6 +60,22 @@ defmodule FMutate.Firmware do
   @doc "The default firmware on first run."
   def default_id, do: "obervave"
 
-  @doc "Path of the firmware's cartridge, or nil when this build doesn't carry it."
-  def cart(id), do: FMutate.Paths.bundled_cart(id)
+  @doc """
+  How to run a firmware: `{engine_executable, firmware_file}` for `FMutate.Engine`, or nil when it can't
+  run here (no cartridge in this build, no package on the phone, or no emulator engine).
+  """
+  @spec runnable(String.t()) :: {String.t(), String.t()} | nil
+  def runnable(id) do
+    case get(id) do
+      %{backend: :native} ->
+        with cart when cart != nil <- FMutate.Paths.bundled_cart(id), do: {FMutate.Paths.engine_bin(), cart}
+
+      %{backend: :emu, package: pkg} when is_binary(pkg) ->
+        emu = FMutate.Paths.emu_bin()
+        if File.exists?(emu) and File.exists?(pkg), do: {emu, pkg}
+
+      _ ->
+        nil
+    end
+  end
 end

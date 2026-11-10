@@ -1,13 +1,12 @@
 defmodule FMutate.InstrumentScreen do
   @moduledoc """
-  The instrument (HANDOFF §4, P1-a): the current layout full screen, and the creature menu (Library, Edit
-  layout, I/O). v1 milestone: the menu sheet carries a minimal library (switch firmware) and the engine's
-  test actions; the full library, the layout editor and I/O are their own screens later.
+  The instrument (HANDOFF §4, P1-a): the current layout full screen. The creature button is the only app
+  chrome: tap → menu (Library, Edit layout, I/O), long-press → page grid.
   """
 
   use Mob.Screen
 
-  alias FMutate.{Firmware, Instance, Layouts}
+  alias FMutate.{Instance, Layouts}
 
   @instance "a"
 
@@ -24,7 +23,8 @@ defmodule FMutate.InstrumentScreen do
        instance: @instance,
        view: view,
        layout: Layouts.classic(),
-       menu: false
+       menu: false,
+       editing: false
      )}
   end
 
@@ -39,60 +39,22 @@ defmodule FMutate.InstrumentScreen do
       )
 
     dismiss = {self(), :menu}
+    library = {self(), :library}
+    edit = {self(), :edit}
+    io = {self(), :io}
 
     ~MOB"""
     <Box background="#14121A" padding={0} fill_width={true} fill_height={true}>
       {instrument}
-      <Sheet id="menu" detents={[:medium, :large]} on_dismiss={dismiss} background="#1C1925" :if={@menu}>
-        {menu(assigns.view)}
+      <Sheet id="menu" detents={[:content]} on_dismiss={dismiss} background="#1C1925" :if={@menu}>
+        <Column padding={20} gap={10}>
+          <Button text="Library" on_tap={library} background="#221F2B" text_color="#F3EFF8" />
+          <Button text="Edit layout" on_tap={edit} background="#221F2B" text_color="#F3EFF8" />
+          <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
+        </Column>
       </Sheet>
     </Box>
     """
-  end
-
-  defp menu(view) do
-    rows = Enum.map(Firmware.all(), &firmware_row(&1, view))
-    crash = {self(), {:debug, :crash}}
-    hang = {self(), {:debug, :hang}}
-    kill = {self(), {:debug, :kill9}}
-    run_anyway = {self(), :run_anyway}
-    status = status_line(view)
-    quarantined = view.quarantined
-
-    ~MOB"""
-    <Scroll>
-      <Column padding={20} gap={12}>
-        <Text text="Firmware" text_size={:xl} text_color="#F3EFF8" font_weight="bold" />
-        {rows}
-        <Text text={status} text_size={:sm} text_color="#A9A3B8" />
-        <Button text="Run anyway" on_tap={run_anyway} background="#2A2636" text_color="#F3EFF8" :if={quarantined} />
-        <Text text="Engine" text_size={:lg} text_color="#F3EFF8" font_weight="bold" />
-        <Row gap={8}>
-          <Button text="Crash" on_tap={crash} background="#4A1F1A" text_color="#FFB4A3" />
-          <Button text="Hang" on_tap={hang} background="#4A1F1A" text_color="#FFB4A3" />
-          <Button text="Kill -9" on_tap={kill} background="#4A1F1A" text_color="#FFB4A3" />
-        </Row>
-      </Column>
-    </Scroll>
-    """
-  end
-
-  defp firmware_row(fw, view) do
-    current = fw.id == view.firmware
-    tap = {self(), {:switch, fw.id}}
-    label = "#{fw.name} #{fw.version} · #{fw.author}" <> if(current, do: "  ✓", else: "")
-    bg = if current, do: "#34304A", else: "#221F2B"
-    fg = if current, do: "#C6F24E", else: "#F3EFF8"
-
-    ~MOB"""
-    <Button text={label} on_tap={tap} background={bg} text_color={fg} />
-    """
-  end
-
-  defp status_line(view) do
-    base = "#{view.firmware}: #{view.phase}"
-    base = if view.restarts > 0, do: base <> " · restarted #{view.restarts}×", else: base
-    if view.last_exit, do: base <> " · last exit #{inspect(view.last_exit)}", else: base
   end
 
   def handle_info({:instance, @instance, {:state, view}}, socket),
@@ -109,20 +71,15 @@ defmodule FMutate.InstrumentScreen do
 
   def handle_info({:dismiss, :menu}, socket), do: {:noreply, Mob.Socket.assign(socket, :menu, false)}
 
-  def handle_info({:tap, {:switch, fw}}, socket) do
-    _ = Instance.switch_firmware(@instance, fw)
-    {:noreply, Mob.Socket.assign(socket, :menu, false)}
-  end
+  def handle_info({:tap, :library}, socket),
+    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.LibraryScreen)}
 
-  def handle_info({:tap, {:debug, what}}, socket) do
-    Instance.debug(@instance, what)
-    {:noreply, socket}
-  end
+  def handle_info({:tap, :io}, socket),
+    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.IOScreen)}
 
-  def handle_info({:tap, :run_anyway}, socket) do
-    _ = Instance.run_anyway(@instance)
-    {:noreply, socket}
-  end
+  # the layout editor arrives with the edit mode of the instrument view
+  def handle_info({:tap, :edit}, socket),
+    do: {:noreply, Mob.Socket.assign(socket, menu: false, editing: true)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

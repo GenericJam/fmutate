@@ -37,3 +37,24 @@ loading with `start_async/3` / `handle_async/3`), `components`, `events`,
 
 If you use [usage_rules](https://hexdocs.pm/usage_rules), `mix usage_rules.sync`
 picks up `deps/mob/usage-rules.md`.
+
+## FMutate: working on this app
+
+Read `docs/architecture.md`, `docs/engine_protocol.md` and `docs/design/HANDOFF.md` first.
+
+- **Toolchain**: always run mix through mise so the pinned Erlang/Elixir/Zig/Java are used:
+  `mise exec -- mix ...`. Zig 0.17.0 is required for native builds.
+- **Native libs** (engine + cartridges, gitignored): `native/build_android.sh` (all ABIs into jniLibs) and
+  `native/build_host.sh` (for tests). Run them once per checkout/worktree and after changing `native/`.
+- **Tests**: `mise exec -- mix test` (needs `native/build_host.sh`; runs real firmwares on the host; the host
+  Audio drains rings in real time so firmware time advances).
+- **Deploy**: `mise exec -- mix mob.deploy --native --android --device <serial>` after native/Kotlin/NIF
+  changes, `mise exec -- mix mob.deploy --android --device <serial>` for Elixir only. After a native deploy,
+  restart the app: `adb -s <serial> shell am force-stop com.genericjam.fmutate && adb -s <serial> shell am
+  start -n com.genericjam.fmutate/com.example.fmutate_app.MainActivity`.
+- **Look at it**: `adb -s <serial> shell screencap -p /sdcard/s.png && adb -s <serial> pull /sdcard/s.png <abs path>`
+  (into `tmp_shots/`, gitignored). Drive it with `adb shell input tap|swipe` (pixels).
+- **Inspect it**: `mise exec -- mix run --no-start tools/rpc.exs <serial> '<elixir expr>'` evaluates on the
+  device (e.g. `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`).
+- **Worktrees**: each parallel stream works in its own `git worktree` with its own `deps/`, `_build/`,
+  `android/local.properties` (copy from the main checkout) and its own device/emulator.

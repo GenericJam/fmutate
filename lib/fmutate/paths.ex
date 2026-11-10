@@ -20,6 +20,12 @@ defmodule FMutate.Paths do
 
   def engine_bin, do: Path.join(native_lib_dir(), "libfm1engine.so")
 
+  @doc "The emulator engine (fm1-emu behind the same protocol), for `.fwsc` packages."
+  def emu_bin, do: Path.join(native_lib_dir(), "libfm1emu.so")
+
+  @doc "Where downloaded and imported firmware packages are kept."
+  def packages_dir, do: ensure(Path.join(data_dir(), "packages"))
+
   @doc "A bundled cartridge's path, or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
     path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
