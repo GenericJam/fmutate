@@ -72,7 +72,7 @@
     </queries>
 
     <application
-        android:label="FmutateApp"
+        android:label="FMutate"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:extractNativeLibs="true"

@@ -39,7 +39,8 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
 | `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, screens |
-| `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `FMutateViews.kt` |
+| `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
+| `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
 | `tools/rpc.exs` | evaluate Elixir on a device's running app |
 
@@ -59,4 +60,6 @@ flowchart LR
 |---|---|
 | Output | 48 kHz shared, burst 240, buffer 480, ~36 ms output latency |
 | OberVave engine CPU (3-note chord) | 16–34 % of one core |
-| UI frames while playing | median 11 ms, 90th 36 ms (after moving the firmware screen to its own layer) |
+| UI frames, 6 × 300 ms key holds (`gfxinfo reset`, 6 × `input swipe 1100 600 1100 600 300`), firmware screen animating, debug build | before: 24 % / 17 % / 15 % janky, p50 10–12 ms, p90 24–25 ms, p99 32–53 ms; after: 8.4 % / 4.5 % / 4.4 % janky, p50 6–7 ms, p90 11–13 ms, p99 26–40 ms |
+| Audio underruns over those 3 runs | before 2 → 7; after 1 → 1 (no xruns either way) |
+| Remaining jank | each input event makes Mob commit the screen twice (`Mob.ComponentServer` always repaints after `handle_event`): 10–20 ms of Mob recomposition on the UI thread per commit; `InstrumentView` itself is skipped |
