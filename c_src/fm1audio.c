@@ -388,12 +388,12 @@ static ERL_NIF_TERM nif_gain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return atom(env, "ok");
 }
 
-/* stats() -> %{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns} */
+/* stats() -> %{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst, buffer} */
 static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    ERL_NIF_TERM keys[9], vals[9], fills[NSLOT], unders[NSLOT], map;
+    ERL_NIF_TERM keys[11], vals[11], fills[NSLOT], unders[NSLOT], map;
     double latency = -1;
-    int xruns = 0, running = 0, exclusive = 0;
+    int xruns = 0, running = 0, exclusive = 0, burst = 0, buffer = 0;
     (void)argc; (void)argv;
     pthread_mutex_lock(&lock);
     if (stream) {
@@ -401,6 +401,8 @@ static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
         running = 1;
         xruns = A.getXRunCount(stream);
         exclusive = A.getSharingMode(stream) == AAUDIO_SHARING_MODE_EXCLUSIVE;
+        burst = A.getFramesPerBurst(stream);
+        buffer = A.getBufferSizeInFrames(stream);
         if (A.getTimestamp(stream, CLOCK_MONOTONIC, &pos, &ns) == AAUDIO_OK) {
             /* frames written but not yet presented, plus the time since that frame was presented */
             struct timespec now;
@@ -425,7 +427,9 @@ static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     keys[6] = atom(env, "sharing");    vals[6] = atom(env, exclusive ? "exclusive" : "shared");
     keys[7] = atom(env, "fills");      vals[7] = enif_make_list_from_array(env, fills, NSLOT);
     keys[8] = atom(env, "underruns");  vals[8] = enif_make_list_from_array(env, unders, NSLOT);
-    enif_make_map_from_arrays(env, keys, vals, 9, &map);
+    keys[9] = atom(env, "burst");      vals[9] = enif_make_int(env, burst);
+    keys[10] = atom(env, "buffer");    vals[10] = enif_make_int(env, buffer);
+    enif_make_map_from_arrays(env, keys, vals, 11, &map);
     return map;
 }
 

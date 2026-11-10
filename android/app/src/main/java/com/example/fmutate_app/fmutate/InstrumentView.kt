@@ -10,6 +10,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -153,7 +154,8 @@ private class SurfaceState {
     val fingers = mutableStateMapOf<Long, Offset>()        // dp
     val bubbles = mutableStateMapOf<String, String>()      // control id -> text
     val encoderTurns = mutableStateMapOf<String, Int>()    // control id -> clicks since its grab started
-    var frame by mutableIntStateOf(0)                      // bumps when the firmware screen or LEDs change
+    var screenFrame by mutableIntStateOf(0)                // bumps on a new firmware screen frame
+    var ledFrame by mutableIntStateOf(0)                   // bumps when the LEDs change
     var leds = Triple(0, 0, 0)
 }
 
@@ -170,7 +172,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     val view = LocalView.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val measurer = rememberTextMeasurer()
+    val measurer = rememberTextMeasurer(cacheSize = 256)
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
 
     (props["master"] as? Number)?.let { m -> if ("pot:master" !in state.values) state.values["pot:master"] = m.toFloat() }
@@ -202,11 +204,11 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         while (true) {
             withFrameNanos { }
             if (shm != null) {
-                val changed = shm.poll()
+                if (shm.poll()) state.screenFrame++
                 val leds = Triple(shm.ledButtons, shm.ledKeys, shm.glowKeys)
-                if (changed || leds != state.leds) {
+                if (leds != state.leds) {
                     state.leds = leds
-                    state.frame++
+                    state.ledFrame++
                 }
             }
         }
@@ -551,6 +553,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     }
 
     // ── drawing ───────────────────────────────────────────────────────────
+    Box(modifier = Modifier.fillMaxSize()) {
     Canvas(
         modifier = Modifier
             .fillMaxSize()
@@ -573,7 +576,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 }
             },
     ) {
-        val redraw = state.frame // read so the canvas redraws when the firmware screen or LEDs change
+        val redraw = state.ledFrame // read so the canvas redraws when the LEDs change
         if (redraw < 0) return@Canvas
         drawRect(C.bg)
         val f = fitted ?: return@Canvas
@@ -588,7 +591,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 "pad_grid" -> dr.pads(c, r, state)
                 "keyboard" -> dr.keyboard(c, r, state, keyboardKeys(c, r), state.leds)
                 "strum" -> dr.strum(c, r, state)
-                "screen" -> dr.screen(r, c.screenScale, shm, phase)
+                "screen" -> dr.screenBezel(r, c.screenScale, shm?.valid == true, phase)
                 "label" -> dr.label(c, r)
                 "page_switcher" -> dr.switcher(c, r, layout, state.page)
                 "menu" -> dr.menu(r, state.pressed[c.id] == true)
@@ -596,6 +599,13 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         }
         for ((_, p) in state.fingers) dr.finger(p)
         if (!f.placement.fits) dr.banner("Doesn't fit this phone · tap for Classic")
+    }
+    // the firmware screen on its own layer: a new frame (up to 60 a second) redraws only this
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        if (state.screenFrame < 0 || shm == null || !shm.valid) return@Canvas
+        val dr = Draw(this, density, measurer)
+        for (c in controls) if (c.type == "screen") rectOf(c)?.let { dr.screenPixels(it, c.screenScale, shm) }
+    }
     }
 }
 
@@ -764,27 +774,34 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
         }
     }
 
-    fun screen(r: Grid.Rect, scale: Int, shm: FirmwareShm?, phase: String) {
+    /** Where the firmware screen goes in a control: integer device-pixel scale only (HANDOFF §7). */
+    data class ScreenBox(val x: Float, val y: Float, val side: Float, val sidePx: Int)
+
+    fun screenBox(r: Grid.Rect, scale: Int): ScreenBox {
         val bezel = 6f
         val availPx = min(r.w - 2 * bezel, r.h - 2 * bezel).px()
         var k = floor(availPx / 240f).toInt().coerceAtLeast(1)
         if (scale in 1..4) k = min(k, max(1, scale))
-        val sidePx = 240f * k
+        val sidePx = 240 * k
         val side = sidePx / d
-        val x = r.cx - side / 2
-        val y = r.cy - side / 2
-        rr(x - bezel, y - bezel, side + 2 * bezel, side + 2 * bezel, 12f, C.bezel)
-        if (shm != null && shm.valid) {
-            s.drawImage(
-                shm.bitmap.asImageBitmap(),
-                srcOffset = IntOffset.Zero, srcSize = IntSize(240, 240),
-                dstOffset = IntOffset(x.px().roundToInt(), y.px().roundToInt()), dstSize = IntSize(sidePx.toInt(), sidePx.toInt()),
-                filterQuality = FilterQuality.None,
-            )
-        } else {
-            s.drawRect(Color.Black, off(x, y), sz(side, side))
-            text(if (phase == "safe_mode") "safe mode" else "booting…", x + side / 2, y + side / 2, 12f, C.muted, mono = true)
-        }
+        return ScreenBox(r.cx - side / 2, r.cy - side / 2, side, sidePx)
+    }
+
+    fun screenBezel(r: Grid.Rect, scale: Int, live: Boolean, phase: String) {
+        val b = screenBox(r, scale)
+        rr(b.x - 6, b.y - 6, b.side + 12, b.side + 12, 12f, C.bezel)
+        s.drawRect(Color.Black, off(b.x, b.y), sz(b.side, b.side))
+        if (!live) text(if (phase == "safe_mode") "safe mode" else "booting…", b.x + b.side / 2, b.y + b.side / 2, 12f, C.muted, mono = true)
+    }
+
+    fun screenPixels(r: Grid.Rect, scale: Int, shm: FirmwareShm) {
+        val b = screenBox(r, scale)
+        s.drawImage(
+            shm.bitmap.asImageBitmap(),
+            srcOffset = IntOffset.Zero, srcSize = IntSize(240, 240),
+            dstOffset = IntOffset(b.x.px().roundToInt(), b.y.px().roundToInt()), dstSize = IntSize(b.sidePx, b.sidePx),
+            filterQuality = FilterQuality.None,
+        )
     }
 
     fun label(c: Control, r: Grid.Rect) = text(c.label, r.cx, r.cy, 11f, C.muted, mono = true)

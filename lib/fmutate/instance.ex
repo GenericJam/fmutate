@@ -202,7 +202,8 @@ defmodule FMutate.Instance do
           bin: Paths.engine_bin(),
           cart: cart,
           prefix: prefix,
-          flash: Paths.flash(state.id, fw)
+          flash: Paths.flash(state.id, fw),
+          fill: Audio.engine_fill()
         )
 
       eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false}

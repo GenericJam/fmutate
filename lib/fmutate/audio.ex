@@ -32,10 +32,26 @@ defmodule FMutate.Audio do
   def gain(slot, permille, ramp_ms \\ 0), do: GenServer.cast(__MODULE__, {:gain, slot, permille, ramp_ms})
 
   @doc """
-  The last stats: `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns}`, plus
-  `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last 100 ms.
+  The last stats: `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst,
+  buffer}`, plus `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last 100 ms;
+  `burst` the device's callback size in device frames.
   """
   def stats, do: GenServer.call(__MODULE__, :stats)
+
+  @doc """
+  How far ahead (44.1 kHz frames) an engine should keep its ring: two of the device's callbacks plus a
+  margin, at least 1024. The device takes audio in bursts; a ring shallower than two of them underruns
+  (a Moto G Power 2021 in shared mode did, at 1024).
+  """
+  def engine_fill do
+    case stats() do
+      %{burst: burst, rate: rate} when burst > 0 and rate > 0 ->
+        (2 * burst * 44_100 / rate + 512) |> round() |> max(1024) |> min(3072)
+
+      _ ->
+        1024
+    end
+  end
 
   ## Server
 
@@ -50,11 +66,11 @@ defmodule FMutate.Audio do
       end
 
       Process.send_after(self(), :poll, @poll_ms)
+      {:ok, %{native: true, owners: %{}, drains: %{}, stats: Map.put(AudioNif.stats(), :at, now())}}
     else
       Process.send_after(self(), :drain, @drain_ms)
+      {:ok, %{native: false, owners: %{}, drains: %{}, stats: empty_stats()}}
     end
-
-    {:ok, %{native: native, owners: %{}, drains: %{}, stats: empty_stats()}}
   end
 
   @impl true
@@ -142,6 +158,8 @@ defmodule FMutate.Audio do
       sharing: :none,
       fills: List.duplicate(0, @slots),
       underruns: List.duplicate(0, @slots),
+      burst: 0,
+      buffer: 0,
       at: now()
     }
   end
