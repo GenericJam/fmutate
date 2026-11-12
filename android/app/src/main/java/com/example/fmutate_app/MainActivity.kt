@@ -221,6 +221,8 @@ class MainActivity : ComponentActivity() {
 
         // FMutate's own native views (the instrument surface); see fmutate/FMutateViews.kt.
         com.example.fmutate_app.fmutate.FMutateViews.register()
+        // FMutate's I/O (MIDI ports, audio devices) for the fm1io NIF; see fmutate/FMutateIO.kt.
+        com.example.fmutate_app.fmutate.FMutateIO.init(this)
 
         // Forward launcher-supplied env vars into the BEAM process. Set BEFORE
         // nativeStartBeam below so the BEAM (and Mob.Dist in particular) sees

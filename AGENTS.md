@@ -59,6 +59,12 @@ Read `docs/architecture.md`, `docs/engine_protocol.md` and `docs/design/HANDOFF.
 - **Look at it**: `adb -s <serial> shell screencap -p /sdcard/s.png && adb -s <serial> pull /sdcard/s.png <abs path>`
   (into `tmp_shots/`, gitignored). Drive it with `adb shell input tap|swipe` (pixels).
 - **Inspect it**: `mise exec -- mix run --no-start tools/rpc.exs <serial> '<elixir expr>'` evaluates on the
-  device (e.g. `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`).
+  device (e.g. `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`). The app is node `fmutate_a@127.0.0.1` on
+  the device's 127.0.0.1:9150 (`FMutate.Dist`, no EPMD; `mix mob.connect` and dist hot-loads don't find it, deploys
+  push files and restart). Several rpc runs can target different devices at once.
+- **Drive I/O from outside**: `tools/android_probe` is a second app (same debug key) that reads the sibling cookie,
+  plays MIDI into `FMutate A`, listens to it, and offers a `FMutate Probe` MIDI device;
+  `tools/sibling_probe.exs` is a sibling node (Allow / key press / events / Disconnect);
+  `tools/midi_latency.exs` measures MIDI note → engine Port.
 - **Worktrees**: each parallel stream works in its own `git worktree` with its own `deps/`, `_build/`,
   `android/local.properties` (copy from the main checkout) and its own device/emulator.

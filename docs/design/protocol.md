@@ -85,3 +85,34 @@ code on the other node. A facade process does not prevent that. So:
 
 All calls name the instance. v1 rejects anything but `"a"` with `{:error, :no_such_instance}`.
 A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
+
+## 7. As implemented (FMutate side, v1)
+
+- **Node and port.** `FMutate.Dist` starts `fmutate_a@127.0.0.1` ~3 s after launch (Android's UI start races
+  distribution, see `Mob.Dist`), listening on `127.0.0.1:9150` (instance b: 9151) with **no EPMD**: Android
+  has none, and OTP's `erl_epmd` with `erl_epmd_node_listen_port` runs without one. This replaces Mob's
+  development node; `tools/rpc.exs` reaches the app the same way.
+- **Connecting** needs only OTP:
+  `erl -name <app>@127.0.0.1 -setcookie <cookie> -start_epmd false -erl_epmd_port 9150 -dist_listen false`
+  (a hidden node that only connects out). Retry `Node.connect/1` about once a second until the player
+  allows the app.
+- **Cookie handover (§5).** `content://com.genericjam.fmutate.siblings/node` returns `node, port, cookie,
+  protocol`. It is guarded by `com.genericjam.fmutate.permission.SIBLING` (protectionLevel `signature`), so
+  Android checks that the reading app is signed with FMutate's key. The cookie is random per install.
+- **Allow / Disconnect.** An app that isn't allowed is refused **at the handshake**: this node's default
+  cookie isn't the sibling cookie, and allowed nodes get the sibling cookie per node
+  (`Node.set_cookie/2`). The refusal is logged by OTP; `FMutate.Dist.Knock` hears it and the I/O screen lists
+  the app as "wants to connect" with Allow. Allow sets its cookie (kept across restarts). Disconnect gives
+  the node a throwaway cookie and cuts the connection; it has to be allowed again. The state machine is
+  `FMutate.Dist.Access`.
+- **Facade.** `FMutate.Remote`, registered as `:fmutate_instance` (and globally as `{:fmutate, "a"}`; global
+  names don't reach hidden nodes, so use the local name). §2 inputs, §3 subscribe/unsubscribe with `:status`,
+  `:leds`, `:screen`; §4 `list_firmware`, `list_layouts`, `get_layout`.
+- **Not yet:** `put_layout`, `switch_firmware`, `install_firmware` (they need the player-approval sheet with
+  the screen lock, not designed, and a layout store) answer `{:error, :unsupported}`. `:midi_out` and
+  `:layout` subscriptions are accepted but produce nothing: the engine protocol has no firmware MIDI out, and
+  layouts don't change from outside the editor yet. The "externally driven" indicator isn't designed; the
+  I/O screen shows "controlling this instance" for 2 s after remote input.
+- **Open (§5, HANDOFF §12 Q4):** apps not signed with FMutate's key (third-party, network) have no path in v1.
+  Any allowed app still has full Erlang trust (it can run code here); Allow is consent, the signature is the
+  security boundary. App display names come from the node name (no hello message in the protocol).

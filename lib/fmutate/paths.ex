@@ -46,6 +46,21 @@ defmodule FMutate.Paths do
   def instance_state(instance),
     do: Path.join(ensure(Path.join(data_dir(), "instances")), "#{instance}.term")
 
+  # ── I/O (FMutate.IO, FMutate.MIDI, FMutate.Dist) ──
+
+  @doc "Per-instance MIDI settings (clock mode, tempo, per-source channel)."
+  def midi_settings(instance),
+    do: Path.join(ensure(Path.join(data_dir(), "instances")), "#{instance}.midi.term")
+
+  @doc "Device-level I/O state (MIDI devices to reopen)."
+  def io_state, do: Path.join(ensure(data_dir()), "io.term")
+
+  @doc """
+  Distribution files: `sibling` (node, port and cookie for sibling apps, read by the Android provider
+  `FMutateSiblingProvider`; the path is fixed there as `files/dist/sibling`) and `allowed.term`.
+  """
+  def dist_dir, do: ensure(Path.join(data_dir(), "dist"))
+
   defp ensure(dir) do
     File.mkdir_p!(dir)
     dir

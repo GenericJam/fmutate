@@ -40,7 +40,8 @@ config :mob_dev,
   # Android ignores it. The per-window navigation needs a mob release with
   # Mob.Scene (not released yet, mob#184): keep false until then.
   multi_window: false,
-  static_nifs: [%{module: :fm1audio, archs: [:all]}]
+  # fm1audio: the AAudio mixer. fm1io: the JNI bridge to fmutate/FMutateIO.kt (MIDI, audio devices).
+  static_nifs: [%{module: :fm1audio, archs: [:all]}, %{module: :fm1io, archs: [:android]}]
 
 # Activated capability plugins (the packages added in mix.exs). Each contributes
 # its native code, permissions, and any demo screens at build time. Drop a name

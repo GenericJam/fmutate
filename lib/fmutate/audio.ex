@@ -33,8 +33,9 @@ defmodule FMutate.Audio do
 
   @doc """
   The last stats: `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst,
-  buffer}`, plus `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last 100 ms;
-  `burst` the device's callback size in device frames.
+  buffer, device_id}`, plus `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last
+  100 ms; `burst` the device's callback size in device frames; `device_id` the Android audio device the
+  stream plays to (`AudioDeviceInfo` id, 0 when unknown; `FMutate.IO.audio_route/0` names it).
   """
   def stats, do: GenServer.call(__MODULE__, :stats)
 
@@ -160,6 +161,7 @@ defmodule FMutate.Audio do
       underruns: List.duplicate(0, @slots),
       burst: 0,
       buffer: 0,
+      device_id: 0,
       at: now()
     }
   end

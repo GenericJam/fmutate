@@ -46,6 +46,23 @@
     <!-- Haptic feedback -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- ── FMutate I/O (fmutate/FMutateIO.kt) ─────────────────────────────────── -->
+    <!-- MIDI: the instances' virtual ports and USB/Bluetooth/app devices. required=false: no MIDI, no
+         virtual port, the rest works. -->
+    <uses-feature android:name="android.software.midi" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+    <!-- Bluetooth MIDI scan ("Scan Bluetooth" on the I/O screen), asked for when first used. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
+    <!-- Sibling apps (protocol.md §5): only apps signed with this app's key get the distribution cookie. -->
+    <permission android:name="${applicationId}.permission.SIBLING"
+        android:label="Drive FMutate over Erlang distribution"
+        android:protectionLevel="signature" />
+
     <!-- Package visibility (API 30+): apps we want to launch via Mob.Device.open_url. -->
     <queries>
         <intent>
@@ -118,6 +135,23 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_provider_paths" />
         </provider>
+
+        <!-- Instance A's virtual MIDI port, "FMutate A" (fmutate/FMutateMidiService.kt) -->
+        <service android:name=".fmutate.FMutateMidiService"
+            android:exported="true"
+            android:permission="android.permission.BIND_MIDI_DEVICE_SERVICE">
+            <intent-filter>
+                <action android:name="android.media.midi.MidiDeviceService" />
+            </intent-filter>
+            <meta-data android:name="android.media.midi.MidiDeviceService"
+                android:resource="@xml/fmutate_midi_a" />
+        </service>
+
+        <!-- Node name, port and cookie for sibling apps signed with this key (fmutate/FMutateSiblingProvider.kt) -->
+        <provider android:name=".fmutate.FMutateSiblingProvider"
+            android:authorities="${applicationId}.siblings"
+            android:exported="true"
+            android:readPermission="${applicationId}.permission.SIBLING" />
 
     </application>
 </manifest>

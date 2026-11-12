@@ -1,0 +1,31 @@
+// A second app on the phone, signed with the same debug key as FMutate, used to exercise FMutate's I/O
+// from outside: it reads the sibling cookie from FMutate's signature-protected provider, plays notes into
+// the "FMutate A" virtual MIDI port, listens to its output, and offers a virtual port of its own
+// ("FMutate Probe") that FMutate can open as a MIDI device.
+//
+//   android/gradlew -p tools/android_probe assembleDebug
+//   adb -s <serial> install -r tools/android_probe/build/outputs/apk/debug/android_probe-debug.apk
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies { classpath 'com.android.tools.build:gradle:9.3.3' }
+}
+allprojects { repositories { google(); mavenCentral() } }
+
+apply plugin: 'com.android.application'
+
+android {
+    namespace = 'com.genericjam.fmutate.probe'
+    compileSdk 35
+    defaultConfig {
+        applicationId "com.genericjam.fmutate.probe"
+        minSdk 28
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+    }
+    sourceSets { main { manifest.srcFile 'src/main/AndroidManifest.xml' } }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
