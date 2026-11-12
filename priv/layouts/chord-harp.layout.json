@@ -1,0 +1,611 @@
+{
+  "format": "fmutate.layout/1",
+  "id": "chord-harp",
+  "name": "Chord harp",
+  "firmware": {
+    "id": "fomni"
+  },
+  "frame": "landscape",
+  "grid": {
+    "cols": 14,
+    "rows": 6
+  },
+  "switcher": "hidden",
+  "dock": [
+    {
+      "id": "menu",
+      "type": "menu",
+      "at": {
+        "col": 2,
+        "row": 0,
+        "w": 1,
+        "h": 1
+      }
+    },
+    {
+      "id": "screen",
+      "type": "screen",
+      "at": {
+        "col": 0,
+        "row": 0,
+        "w": 2,
+        "h": 2
+      },
+      "screen": {
+        "scale": 1
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "harp",
+      "name": "Harp",
+      "controls": [
+        {
+          "id": "rhythm",
+          "type": "button",
+          "label": "Rhythm",
+          "at": {
+            "col": 3,
+            "row": 0,
+            "w": 2,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "play"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sustain",
+          "type": "button",
+          "label": "Sustain",
+          "at": {
+            "col": 5,
+            "row": 0,
+            "w": 2,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "glo"
+              },
+              "mode": "toggle"
+            }
+          ]
+        },
+        {
+          "id": "tempo",
+          "type": "button",
+          "label": "Tempo",
+          "at": {
+            "col": 7,
+            "row": 0,
+            "w": 2,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "seq"
+              }
+            }
+          ]
+        },
+        {
+          "id": "row_maj",
+          "type": "label",
+          "label": "MAJ",
+          "at": {
+            "col": 0,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          }
+        },
+        {
+          "id": "chord_0_0",
+          "type": "button",
+          "label": "E♭",
+          "at": {
+            "col": 1,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 0
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_1",
+          "type": "button",
+          "label": "B♭",
+          "at": {
+            "col": 2,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 1
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_2",
+          "type": "button",
+          "label": "F",
+          "at": {
+            "col": 3,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 2
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_3",
+          "type": "button",
+          "label": "C",
+          "at": {
+            "col": 4,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 3
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_4",
+          "type": "button",
+          "label": "G",
+          "at": {
+            "col": 5,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 4
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_5",
+          "type": "button",
+          "label": "D",
+          "at": {
+            "col": 6,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 5
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_6",
+          "type": "button",
+          "label": "A",
+          "at": {
+            "col": 7,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 6
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_0_7",
+          "type": "button",
+          "label": "E",
+          "at": {
+            "col": 8,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 7
+              }
+            }
+          ]
+        },
+        {
+          "id": "row_min",
+          "type": "label",
+          "label": "MIN",
+          "at": {
+            "col": 0,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          }
+        },
+        {
+          "id": "chord_1_0",
+          "type": "button",
+          "label": "E♭m",
+          "at": {
+            "col": 1,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 8
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_1",
+          "type": "button",
+          "label": "B♭m",
+          "at": {
+            "col": 2,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 9
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_2",
+          "type": "button",
+          "label": "Fm",
+          "at": {
+            "col": 3,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 10
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_3",
+          "type": "button",
+          "label": "Cm",
+          "at": {
+            "col": 4,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 11
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_4",
+          "type": "button",
+          "label": "Gm",
+          "at": {
+            "col": 5,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 12
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_5",
+          "type": "button",
+          "label": "Dm",
+          "at": {
+            "col": 6,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 13
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_6",
+          "type": "button",
+          "label": "Am",
+          "at": {
+            "col": 7,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 14
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_1_7",
+          "type": "button",
+          "label": "Em",
+          "at": {
+            "col": 8,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 15
+              }
+            }
+          ]
+        },
+        {
+          "id": "row_7th",
+          "type": "label",
+          "label": "7TH",
+          "at": {
+            "col": 0,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          }
+        },
+        {
+          "id": "chord_2_0",
+          "type": "button",
+          "label": "E♭7",
+          "at": {
+            "col": 1,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 16
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_1",
+          "type": "button",
+          "label": "B♭7",
+          "at": {
+            "col": 2,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 17
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_2",
+          "type": "button",
+          "label": "F7",
+          "at": {
+            "col": 3,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 18
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_3",
+          "type": "button",
+          "label": "C7",
+          "at": {
+            "col": 4,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 19
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_4",
+          "type": "button",
+          "label": "G7",
+          "at": {
+            "col": 5,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 20
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_5",
+          "type": "button",
+          "label": "D7",
+          "at": {
+            "col": 6,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 21
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_6",
+          "type": "button",
+          "label": "A7",
+          "at": {
+            "col": 7,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 22
+              }
+            }
+          ]
+        },
+        {
+          "id": "chord_2_7",
+          "type": "button",
+          "label": "E7",
+          "at": {
+            "col": 8,
+            "row": 4,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "key": 23
+              }
+            }
+          ]
+        },
+        {
+          "id": "caption",
+          "type": "label",
+          "label": "chords → keys",
+          "at": {
+            "col": 0,
+            "row": 5,
+            "w": 9,
+            "h": 1
+          }
+        },
+        {
+          "id": "strum",
+          "type": "strum",
+          "label": "STRUM",
+          "at": {
+            "col": 9,
+            "row": 0,
+            "w": 5,
+            "h": 6
+          },
+          "strum": {
+            "keys": [
+              2,
+              4,
+              6,
+              7,
+              9,
+              11,
+              13,
+              14,
+              16,
+              18,
+              19,
+              21,
+              23,
+              25
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "made_by": "preset",
+    "note": "Chord buttons map to keys 0-23 in order and Rhythm/Sustain/Tempo to PLAY/GLO/SEQ: placeholders until FoMni's own chord map and controls are known (Layout-Harp board)."
+  }
+}

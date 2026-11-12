@@ -111,6 +111,29 @@ defmodule FMutate.Style do
 
   def colors, do: @colors
   def color(name), do: Map.fetch!(@colors, name)
+
+  # Mob's Android renderer takes node colours (`background`, `text_color`, …) as ARGB integers or theme atoms;
+  # "#RRGGBB" strings are dropped. Canvas ops still take hex.
+
+  @doc "A colour token (`:fm`) or `\"#RRGGBB\"` as the ARGB integer Mob's nodes take."
+  def argb(name) when is_atom(name), do: argb(color(name))
+  def argb("#" <> hex) when byte_size(hex) == 6, do: 0xFF000000 + String.to_integer(hex, 16)
+
+  @color_props Mob.Renderer.color_props()
+
+  @doc "Convert every `\"#RRGGBB\"` colour prop in a rendered `~MOB` tree to ARGB (templates keep the boards' hex)."
+  def native_colors(%{props: props, children: children} = node) do
+    props =
+      Map.new(props, fn
+        {k, "#" <> hex = v} when k in @color_props and byte_size(hex) == 6 -> {k, argb(v)}
+        kv -> kv
+      end)
+
+    %{node | props: props, children: Enum.map(children, &native_colors/1)}
+  end
+
+  def native_colors(list) when is_list(list), do: Enum.map(list, &native_colors/1)
+  def native_colors(other), do: other
   def space(name), do: Map.fetch!(@space, name)
   def edge_gutter, do: @edge_gutter
   def top_bottom_inset, do: @top_bottom_inset

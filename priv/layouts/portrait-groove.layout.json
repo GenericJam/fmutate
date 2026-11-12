@@ -1,0 +1,564 @@
+{
+  "format": "fmutate.layout/1",
+  "id": "portrait-groove",
+  "name": "Portrait groove",
+  "firmware": {
+    "id": "x0x"
+  },
+  "frame": "portrait",
+  "grid": {
+    "cols": 6,
+    "rows": 14
+  },
+  "switcher": "names",
+  "dock": [
+    {
+      "id": "menu",
+      "type": "menu",
+      "at": {
+        "col": 0,
+        "row": 0,
+        "w": 1,
+        "h": 1
+      }
+    },
+    {
+      "id": "pages",
+      "type": "page_switcher",
+      "at": {
+        "col": 1,
+        "row": 0,
+        "w": 5,
+        "h": 1
+      },
+      "page_switcher": {
+        "look": "names"
+      }
+    },
+    {
+      "id": "screen",
+      "type": "screen",
+      "at": {
+        "col": 0,
+        "row": 1,
+        "w": 3,
+        "h": 3
+      },
+      "screen": {
+        "scale": 2
+      }
+    }
+  ],
+  "pages": [
+    {
+      "id": "beat",
+      "name": "Beat",
+      "controls": [
+        {
+          "id": "play",
+          "type": "button",
+          "label": "PLAY",
+          "at": {
+            "col": 3,
+            "row": 1,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "play"
+              }
+            }
+          ]
+        },
+        {
+          "id": "rec",
+          "type": "button",
+          "label": "REC",
+          "at": {
+            "col": 3,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "rec"
+              }
+            }
+          ]
+        },
+        {
+          "id": "seq",
+          "type": "button",
+          "label": "SEQ",
+          "at": {
+            "col": 3,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "seq"
+              }
+            }
+          ]
+        },
+        {
+          "id": "pads",
+          "type": "pad_grid",
+          "at": {
+            "col": 0,
+            "row": 4,
+            "w": 4,
+            "h": 4
+          },
+          "pad_grid": {
+            "cols": 4,
+            "rows": 4,
+            "pads": [
+              {
+                "label": "FX 1",
+                "color": "violet",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 12
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "FX 2",
+                "color": "violet",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 13
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "FX 3",
+                "color": "violet",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 14
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "FX 4",
+                "color": "violet",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 15
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "CYM",
+                "color": "sky",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 8
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "COW",
+                "color": "sky",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 9
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "PERC 1",
+                "color": "sky",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 10
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "PERC 2",
+                "color": "sky",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 11
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "HAT C",
+                "color": "amber",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 4
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "HAT O",
+                "color": "amber",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 5
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "TOM L",
+                "color": "amber",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 6
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "TOM H",
+                "color": "amber",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 7
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "KICK",
+                "color": "coral",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 0
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "SNARE",
+                "color": "coral",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 1
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "CLAP",
+                "color": "coral",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 2
+                    }
+                  }
+                ]
+              },
+              {
+                "label": "RIM",
+                "color": "coral",
+                "bindings": [
+                  {
+                    "to": {
+                      "key": 3
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "tempo",
+          "type": "slider",
+          "label": "Tempo",
+          "at": {
+            "col": 0,
+            "row": 8,
+            "w": 4,
+            "h": 1
+          },
+          "slider": {
+            "orientation": "horizontal"
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "swing",
+          "type": "slider",
+          "label": "Swing",
+          "at": {
+            "col": 0,
+            "row": 9,
+            "w": 4,
+            "h": 1
+          },
+          "slider": {
+            "orientation": "horizontal"
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob2"
+              }
+            }
+          ]
+        },
+        {
+          "id": "side_keys",
+          "type": "keyboard",
+          "at": {
+            "col": 4,
+            "row": 1,
+            "w": 2,
+            "h": 13
+          },
+          "keyboard": {
+            "from_key": 0,
+            "to_key": 24,
+            "octave_arrows": false,
+            "orientation": "vertical",
+            "pitch_colors": true,
+            "glide": "glissando"
+          }
+        }
+      ]
+    },
+    {
+      "id": "keys",
+      "name": "Keys",
+      "controls": [
+        {
+          "id": "k1",
+          "type": "knob",
+          "label": "KNOB1",
+          "at": {
+            "col": 3,
+            "row": 1,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob1"
+              }
+            }
+          ]
+        },
+        {
+          "id": "k2",
+          "type": "knob",
+          "label": "KNOB2",
+          "at": {
+            "col": 4,
+            "row": 1,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob2"
+              }
+            }
+          ]
+        },
+        {
+          "id": "k3",
+          "type": "knob",
+          "label": "KNOB3",
+          "at": {
+            "col": 5,
+            "row": 1,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob3"
+              }
+            }
+          ]
+        },
+        {
+          "id": "k4",
+          "type": "knob",
+          "label": "KNOB4",
+          "at": {
+            "col": 3,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "knob4"
+              }
+            }
+          ]
+        },
+        {
+          "id": "sel_enc",
+          "type": "knob",
+          "label": "SELECT",
+          "at": {
+            "col": 4,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "encoder": "select"
+              }
+            }
+          ]
+        },
+        {
+          "id": "master",
+          "type": "knob",
+          "label": "MASTER",
+          "at": {
+            "col": 5,
+            "row": 2,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "on": "value",
+              "to": {
+                "pot": "master"
+              }
+            }
+          ]
+        },
+        {
+          "id": "oct_down",
+          "type": "button",
+          "label": "OCT−",
+          "at": {
+            "col": 3,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "oct_down"
+              }
+            }
+          ]
+        },
+        {
+          "id": "oct_up",
+          "type": "button",
+          "label": "OCT+",
+          "at": {
+            "col": 4,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "oct_up"
+              }
+            }
+          ]
+        },
+        {
+          "id": "home",
+          "type": "button",
+          "label": "HOME",
+          "at": {
+            "col": 5,
+            "row": 3,
+            "w": 1,
+            "h": 1
+          },
+          "bindings": [
+            {
+              "to": {
+                "button": "home"
+              }
+            }
+          ]
+        },
+        {
+          "id": "keys",
+          "type": "keyboard",
+          "at": {
+            "col": 0,
+            "row": 4,
+            "w": 6,
+            "h": 10
+          },
+          "keyboard": {
+            "from_key": 0,
+            "to_key": 24,
+            "octave_arrows": false,
+            "orientation": "vertical",
+            "pitch_colors": true,
+            "glide": "glissando"
+          }
+        }
+      ]
+    }
+  ],
+  "meta": {
+    "made_by": "preset",
+    "note": "Portrait-Groove board without the pattern tile (a host app feature). Pad → key mapping as in Drum pads: placeholders."
+  }
+}

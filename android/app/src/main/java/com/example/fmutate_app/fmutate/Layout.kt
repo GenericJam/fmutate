@@ -201,12 +201,22 @@ data class Grid(val cols: Int, val rows: Int, val cellW: Float, val cellH: Float
     }
 }
 
-/** Minimum sizes in cells (HANDOFF §5). */
+/**
+ * Minimum sizes in cells (HANDOFF §5; FMutate.LayoutEdit.min_size/1 is the same rule). Sliders and keyboard
+ * strips are measured along their own orientation; the firmware screen needs 2×2 (240 px at 1× on a 3× phone).
+ */
+fun minSize(c: Control): Pair<Int, Int> = when (c.type) {
+    "slider" -> if (c.sliderVertical) 1 to 2 else 2 to 1
+    "keyboard" -> if (c.vertical) 2 to 4 else 4 to 2
+    else -> minSize(c.type)
+}
+
 fun minSize(type: String): Pair<Int, Int> = when (type) {
     "slider" -> 1 to 2
-    "xy_pad", "pad_grid" -> 2 to 2
+    "xy_pad", "pad_grid", "screen" -> 2 to 2
     "strum" -> 1 to 3
     "keyboard" -> 4 to 2
+    "page_switcher" -> 2 to 1
     else -> 1 to 1
 }
 
@@ -231,7 +241,7 @@ fun place(layout: Layout, page: Page, grid: Grid): Placement {
         }
     }
     val inside = cells.values.all { it.col >= 0 && it.row >= 0 && it.col + it.w <= grid.cols && it.row + it.h <= grid.rows }
-    val bigEnough = all.all { c -> val m = minSize(c.type); cells[c.id]!!.let { it.w >= m.first && it.h >= m.second } }
+    val bigEnough = all.all { c -> val m = minSize(c); cells[c.id]!!.let { it.w >= m.first && it.h >= m.second } }
     val list = cells.values.toList()
     val noOverlap = list.indices.all { i -> (i + 1 until list.size).none { j -> list[i].overlaps(list[j]) } }
     return Placement(cells, inside && bigEnough && noOverlap)

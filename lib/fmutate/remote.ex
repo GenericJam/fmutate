@@ -203,7 +203,7 @@ defmodule FMutate.Remote do
   defp call({:get_layout, layout_id}, state) do
     case Layouts.preset(layout_id) do
       nil -> {:reply, {:error, :not_found}, state}
-      layout -> {:reply, {:ok, layout.json}, state}
+      layout -> {:reply, {:ok, Layouts.encode(layout.data)}, state}
     end
   end
 
@@ -213,8 +213,8 @@ defmodule FMutate.Remote do
   end
 
   defp made_by(layout) do
-    case JSON.decode(layout.json) do
-      {:ok, %{"made_by" => by}} when is_binary(by) -> by
+    case layout.data do
+      %{"meta" => %{"made_by" => by}} when is_binary(by) -> by
       _ -> "FMutate"
     end
   end

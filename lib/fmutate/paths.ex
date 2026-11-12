@@ -61,6 +61,10 @@ defmodule FMutate.Paths do
   """
   def dist_dir, do: ensure(Path.join(data_dir(), "dist"))
 
+  @doc "The current layout of one instance for one firmware (HANDOFF §3, §5)."
+  def layout(instance, firmware_id),
+    do: Path.join(ensure(Path.join([data_dir(), "layouts", instance])), "#{firmware_id}.layout.json")
+
   defp ensure(dir) do
     File.mkdir_p!(dir)
     dir

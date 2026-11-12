@@ -74,10 +74,9 @@ defmodule FMutate.IOScreen do
     """
   end
 
-  # Mob's Android renderer takes node colours as ARGB integers (hex strings are dropped); canvas ops take hex
-  defp c(name), do: argb(Style.color(name))
+  # node colours as ARGB integers (FMutate.Style.argb/1); canvas ops take hex
+  defp c(name), do: Style.argb(name)
   defp hex(name), do: Style.color(name)
-  defp argb("#" <> rgb), do: 0xFF000000 + String.to_integer(rgb, 16)
 
   defp section_label(text) do
     ~MOB"""

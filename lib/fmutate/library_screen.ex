@@ -103,28 +103,8 @@ defmodule FMutate.LibraryScreen do
       </Column>
     </Box>
     """
-    |> argb()
+    |> FMutate.Style.native_colors()
   end
-
-  # Mob's native side takes colours as ARGB integers (or theme atoms), not "#RRGGBB" strings: the
-  # templates keep the board's hex values and the tree is converted once here.
-  @color_props Mob.Renderer.color_props()
-
-  defp argb(%{props: props, children: children} = node) do
-    props =
-      Map.new(props, fn
-        {k, "#" <> hex} when k in @color_props and byte_size(hex) == 6 ->
-          {k, 0xFF000000 + String.to_integer(hex, 16)}
-
-        kv ->
-          kv
-      end)
-
-    %{node | props: props, children: Enum.map(children, &argb/1)}
-  end
-
-  defp argb(list) when is_list(list), do: Enum.map(list, &argb/1)
-  defp argb(other), do: other
 
   defp top_tags(firmwares) do
     firmwares
