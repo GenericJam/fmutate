@@ -91,7 +91,8 @@ flowchart LR
 | Audio underruns over those 3 runs | before 2 → 7; after 1 → 1 (no xruns either way) |
 | Same, after the system states (master 2b354af + `states`: health per STATUS, screen-area messages, Opling breath) | 0 % / 0 % / 0 % janky (180 / 169 / 171 frames), p50 5–6 ms, p90 7–8 ms, p99 9–10 ms; underruns 172 → 172, no xruns |
 | OberVave's package on `libfm1emu.so` (the emulator engine) | speed 81–84 %, too slow from the 6th second; auto fill 1024 → 3840 in 10 s; underruns ~66/s at 1024 and ~60/s at 3840 (47 → 123 in s 1–4; 791 → 3481 in s 15–60): more fill can't make up a slower-than-real-time engine, as expected |
-| Remaining jank | each input event makes Mob commit the screen twice (`Mob.ComponentServer` always repaints after `handle_event`): 10–20 ms of Mob recomposition on the UI thread per commit; `InstrumentView` itself is skipped |
+| Merged master d0e1e64 (all streams), same procedure | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 12–13 ms |
+| With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Switch the `mob` dep to the release that includes #236 once published |
 
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 
