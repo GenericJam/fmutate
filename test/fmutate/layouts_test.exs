@@ -57,20 +57,22 @@ defmodule FMutate.LayoutsTest do
     end
 
     test "a saved layout comes back for its instance and firmware only" do
-      {:ok, l} = LayoutEdit.move(Layouts.current("a", "obervave"), "fx", 12, 1)
+      # (7, 1) is free in the classic layout, beside FX
+      {:ok, l} = LayoutEdit.move(Layouts.current("a", "obervave"), "fx", 7, 1)
       assert :ok = Layouts.save("a", "obervave", l)
 
       assert Layouts.current("a", "obervave") |> LayoutEdit.find("fx") |> elem(1) |> Map.get("at") ==
-               LayoutEdit.cell(12, 1, 1, 1)
+               LayoutEdit.cell(7, 1, 1, 1)
 
       # another firmware, another instance: still classic
-      assert Layouts.current("a", "shineon") |> LayoutEdit.find("fx") |> elem(1) |> get_in(["at", "col"]) == 6
-      assert Layouts.current("b", "obervave") |> LayoutEdit.find("fx") |> elem(1) |> get_in(["at", "col"]) == 6
+      assert Layouts.current("a", "shineon") |> LayoutEdit.find("fx") |> elem(1) |> get_in(["at", "col"]) == 8
+      assert Layouts.current("b", "obervave") |> LayoutEdit.find("fx") |> elem(1) |> get_in(["at", "col"]) == 8
     end
 
     test "an invalid layout is not saved" do
       l = Layouts.current("a", "obervave")
-      overlapping = update_in(l, ["pages", Access.at(0), "controls"], fn cs -> Enum.map(cs, &if(&1["id"] == "fx", do: put_in(&1, ["at", "col"], 7), else: &1)) end)
+      # FX onto SEL's cell
+      overlapping = update_in(l, ["pages", Access.at(0), "controls"], fn cs -> Enum.map(cs, &if(&1["id"] == "fx", do: put_in(&1, ["at", "col"], 9), else: &1)) end)
       assert {:error, [msg | _]} = Layouts.save("a", "obervave", overlapping)
       assert msg =~ "overlaps"
       refute Layouts.saved?("a", "obervave")

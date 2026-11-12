@@ -1,6 +1,11 @@
 package com.example.fmutate_app.fmutate
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.Rect
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import java.io.Closeable
 import java.io.RandomAccessFile
 import java.nio.ByteOrder
@@ -58,5 +63,32 @@ class FirmwareShm(path: String) : Closeable {
 
     override fun close() {
         file.close()
+    }
+}
+
+/**
+ * Sharp scaling for a firmware screen drawn at a size that isn't a whole multiple of 240: the frame is first
+ * blown up nearest-neighbour to the next whole multiple (this), then drawn bilinear down to the target. Every
+ * firmware pixel comes out the same size (no doubled rows or columns, as plain nearest-neighbour gives), and
+ * edges soften by at most one device pixel. One buffer per factor, reused: no allocation per frame.
+ */
+class ScreenScaler(private val src: Bitmap) {
+    private var factor = 0
+    private var canvas: Canvas? = null
+    private var image: ImageBitmap? = null
+    private val nearest = Paint().apply { isFilterBitmap = false }
+    private val dst = Rect()
+
+    /** The current frame of [src] at ×[k] (nearest-neighbour). Call when drawing a new frame. */
+    fun prescaled(k: Int): ImageBitmap {
+        if (k != factor) {
+            val big = Bitmap.createBitmap(src.width * k, src.height * k, Bitmap.Config.RGB_565)
+            canvas = Canvas(big)
+            image = big.asImageBitmap()
+            dst.set(0, 0, big.width, big.height)
+            factor = k
+        }
+        canvas!!.drawBitmap(src, null, dst, nearest)
+        return image!!
     }
 }

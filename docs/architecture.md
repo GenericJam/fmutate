@@ -79,6 +79,12 @@ flowchart LR
   read the same view.
 - **Root background**: the theme background is the flat skin's `bg` (`Mob.Theme.set/1` in `FmutateApp.App`), so
   the strips Mob insets a screen by (display cutout, hidden bars) match the instrument.
+- **Firmware screen size** (overrides HANDOFF §7's whole multiples, at the player's request: on a small phone a
+  whole multiple leaves the screen at 1×): a screen control fills its cells by default, the largest square inside
+  the bezel, drawn sharp (nearest-neighbour up to the next whole multiple, then bilinear down: `ScreenScaler` in
+  `FirmwareShm.kt`), so firmware pixels stay square and even. `screen.scale` 1–4 in a layout asks for pixel-exact
+  whole multiples instead (Edit → screen → Size). The classic layout gives the screen 4×3 cells: 310 px (1.29×)
+  on the Moto G Power instead of 240.
 - **Firmware inputs**: FM-1 keys have no velocity; velocity-sensitive bindings send MIDI notes.
 
 ## Measured (Moto G Power 2021, SD662, Android 11)
@@ -93,6 +99,7 @@ flowchart LR
 | OberVave's package on `libfm1emu.so` (the emulator engine) | speed 81–84 %, too slow from the 6th second; auto fill 1024 → 3840 in 10 s; underruns ~66/s at 1024 and ~60/s at 3840 (47 → 123 in s 1–4; 791 → 3481 in s 15–60): more fill can't make up a slower-than-real-time engine, as expected |
 | Merged master d0e1e64 (all streams), same procedure | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 12–13 ms |
 | With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Switch the `mob` dep to the release that includes #236 once published |
+| Classic rearranged, screen filled and sharp-scaled (310 px, ×2 prescale per frame) | 2.5 % / 0 % / 0 % janky, p90 10–11 ms, p99 13–19 ms |
 
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 

@@ -269,6 +269,10 @@ defmodule FMutate.Editor do
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"orientation" => if(v == true, do: "vertical", else: "horizontal")}) end)
 
   # other control settings
+  # 0: fill the cells (no `scale`); 1..4: pixel-exact, up to that multiple
+  def ui(:tap, {:editor, {:screen_scale, 0}}, _v, socket),
+    do: with_control(socket, fn l, c, _ -> LayoutEdit.put(l, c["id"], %{"screen" => %{}}) end)
+
   def ui(:tap, {:editor, {:screen_scale, n}}, _v, socket),
     do: with_control(socket, fn l, c, _ -> LayoutEdit.put(l, c["id"], %{"screen" => %{"scale" => n}}) end)
 
@@ -876,8 +880,13 @@ defmodule FMutate.Editor do
 
   defp other_settings(%{"type" => "screen"} = c) do
     scale = get_in(c, ["screen", "scale"]) || 0
-    opts = for n <- 1..4, do: {"#{n}×", {:screen_scale, n}, n}
-    [section("Scale (device pixels per firmware pixel)"), segmented(opts, scale), caption("Drawn at a whole multiple only; the largest that fits the cells is used up to this.")]
+    opts = [{"Fill", {:screen_scale, 0}, 0} | for(n <- 1..4, do: {"#{n}×", {:screen_scale, n}, n})]
+
+    [
+      section("Size"),
+      segmented(opts, scale),
+      caption("Fill: as big as the cells allow, sharp-scaled. 1×–4×: whole device-pixel multiples only, the largest that fits up to that.")
+    ]
   end
 
   defp other_settings(%{"type" => "page_switcher"} = c) do

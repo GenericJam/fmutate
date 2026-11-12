@@ -280,7 +280,7 @@ defmodule FMutate.LayoutEdit do
   end
 
   defp defaults("strum", _name, _at), do: %{"strum" => %{"keys" => [7, 11, 14, 19, 23, 26]}}
-  defp defaults("screen", _name, _at), do: %{"screen" => %{"scale" => 2}}
+  defp defaults("screen", _name, _at), do: %{"screen" => %{}}
 
   defp defaults("slider", name, %{"w" => w, "h" => h}),
     do: %{"label" => name, "slider" => %{"orientation" => if(w > h, do: "horizontal", else: "vertical")}}

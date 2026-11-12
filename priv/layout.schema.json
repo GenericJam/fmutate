@@ -150,7 +150,7 @@
         },
         "screen": {
           "type": "object",
-          "properties": { "scale": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Device-pixel multiple of 240. Cell span must fit it." } }
+          "properties": { "scale": { "type": "integer", "enum": [1, 2, 3, 4], "description": "Pixel-exact: the largest whole multiple of 240 device pixels that fits, up to this. Absent: fill (the largest square that fits the cells, sharp-scaled)." } }
         },
         "page_switcher": {
           "type": "object",

@@ -3,7 +3,10 @@ defmodule FMutate.LayoutEditTest do
 
   alias FMutate.{LayoutEdit, Layouts}
 
-  defp classic, do: Layouts.classic()
+  # a fixed 14×6 panel (the classic layout as it was when these tests were written), so the coordinates below
+  # don't move when the classic preset is rearranged
+  @panel "test/fixtures/panel.layout.json" |> File.read!() |> JSON.decode!()
+  defp classic, do: @panel
   defp at(layout, id), do: layout |> LayoutEdit.find(id) |> elem(1) |> Map.get("at")
   defp valid!(layout), do: assert(Layouts.validate(layout) == :ok)
 

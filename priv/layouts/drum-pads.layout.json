@@ -8,7 +8,7 @@
   "switcher": "names",
   "dock": [
     { "id": "menu", "type": "menu", "at": { "col": 11, "row": 0, "w": 1, "h": 1 } },
-    { "id": "screen", "type": "screen", "at": { "col": 8, "row": 0, "w": 3, "h": 3 }, "screen": { "scale": 2 } },
+    { "id": "screen", "type": "screen", "at": { "col": 8, "row": 0, "w": 3, "h": 3 } },
     { "id": "play", "type": "button", "label": "PLAY", "at": { "col": 8, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "play" } }] },
     { "id": "rec", "type": "button", "label": "REC", "at": { "col": 10, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "rec" } }] },
     { "id": "seq", "type": "button", "label": "SEQ", "at": { "col": 12, "row": 3, "w": 2, "h": 1 }, "bindings": [{ "to": { "button": "seq" } }] }

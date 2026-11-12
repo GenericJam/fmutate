@@ -296,6 +296,7 @@ private fun InstrumentSurface(
         }
     }
     val screenImage = remember(shm) { shm?.bitmap?.asImageBitmap() }
+    val screenScaler = remember(shm) { shm?.let { ScreenScaler(it.bitmap) } }
     val message = screenMessage(phase, restarts, slow, speed)
 
     val page = layout.pages[state.page.coerceIn(0, layout.pages.size - 1)]
@@ -740,7 +741,7 @@ private fun InstrumentSurface(
         if (!live && message == null) return@Canvas
         val dr = Draw(this, density, ink)
         for (c in controls) if (c.type == "screen" && !edit.hidden(c.id)) rectOf(c)?.let { r ->
-            if (live) dr.screenPixels(r, c.screenScale, screenImage!!)
+            if (live) dr.screenPixels(r, c.screenScale, screenImage!!, screenScaler!!)
             message?.let { dr.screenMessage(r, c.screenScale, it, live) }
         }
     }
@@ -972,15 +973,18 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         }
     }
 
-    /** Where the firmware screen goes in a control: integer device-pixel scale only (HANDOFF §7). */
+    /**
+     * Where the firmware screen goes in a control: the largest square that fits inside the bezel ([scale] 0,
+     * "fill"), or pixel-exact, the largest whole multiple of 240 device pixels up to [scale] (1..4).
+     */
     data class ScreenBox(val x: Float, val y: Float, val side: Float, val sidePx: Int)
 
     fun screenBox(r: Grid.Rect, scale: Int): ScreenBox {
         val bezel = 6f
-        val availPx = min(r.w - 2 * bezel, r.h - 2 * bezel).px()
-        var k = floor(availPx / 240f).toInt().coerceAtLeast(1)
-        if (scale in 1..4) k = min(k, max(1, scale))
-        val sidePx = 240 * k
+        val availPx = floor(min(r.w - 2 * bezel, r.h - 2 * bezel).px()).toInt().coerceAtLeast(1)
+        val sidePx =
+            if (scale in 1..4) 240 * min((availPx / 240).coerceAtLeast(1), scale)
+            else availPx
         val side = sidePx / d
         return ScreenBox(r.cx - side / 2, r.cy - side / 2, side, sidePx)
     }
@@ -1031,13 +1035,17 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         text(m.action, x0 + wTitle + (w - wTitle) / 2, cy, size, C.dangerText, mono = true)
     }
 
-    fun screenPixels(r: Grid.Rect, scale: Int, image: ImageBitmap) {
+    fun screenPixels(r: Grid.Rect, scale: Int, image: ImageBitmap, scaler: ScreenScaler) {
         val b = screenBox(r, scale)
+        val exact = b.sidePx % 240 == 0
+        // a whole multiple: nearest-neighbour straight; smaller than 240: bilinear down; between: sharp scaling
+        val k = if (exact || b.sidePx < 240) 1 else (b.sidePx + 239) / 240
+        val src = if (k == 1) image else scaler.prescaled(k)
         s.drawImage(
-            image,
-            srcOffset = IntOffset.Zero, srcSize = IntSize(240, 240),
+            src,
+            srcOffset = IntOffset.Zero, srcSize = IntSize(240 * k, 240 * k),
             dstOffset = IntOffset(b.x.px().roundToInt(), b.y.px().roundToInt()), dstSize = IntSize(b.sidePx, b.sidePx),
-            filterQuality = FilterQuality.None,
+            filterQuality = if (exact) FilterQuality.None else FilterQuality.Low,
         )
     }
 
