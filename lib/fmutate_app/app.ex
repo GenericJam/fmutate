@@ -32,6 +32,15 @@ defmodule FmutateApp.App do
     # distribution node sibling apps (and tools/rpc.exs) connect to (FMutate.Supervisor, FMutate.Dist)
     {:ok, _} = FMutate.Supervisor.start_link()
 
+    # the root behind every screen (Mob's nav host paints the theme background) shows where a screen is inset:
+    # a display cutout, hidden system bars. The flat skin's background, so it reads as the instrument's.
+    Mob.Theme.set(
+      background: FMutate.Style.argb(:bg),
+      on_background: FMutate.Style.argb(:text),
+      surface: FMutate.Style.argb(:surface),
+      on_surface: FMutate.Style.argb(:text)
+    )
+
     Mob.Screen.start_root(FMutate.InstrumentScreen)
     # (no Mob.Dist.ensure_started/1: FMutate.Dist owns distribution as fmutate_a@127.0.0.1, see protocol.md)
   end

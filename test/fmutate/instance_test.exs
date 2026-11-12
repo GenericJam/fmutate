@@ -110,6 +110,63 @@ defmodule FMutate.InstanceTest do
     refute view.quarantined
   end
 
+  test "the view carries the engine's speed; a fixed buffer reaches the running engine and is saved" do
+    start_instance()
+    view = await_state(running?("obervave"))
+    assert view.buffer == :auto and view.fill == FMutate.Audio.engine_fill() and view.slow == false
+    # (two warm-up windows, then a second per measurement; the host drains the ring in real time)
+    view = await_state(&is_integer(&1.clock_pct), 6_000)
+    assert view.clock_pct in 90..110
+    refute view.slow
+
+    :ok = Instance.set_buffer("a", 3072)
+    assert %{buffer: 3072, fill: 3072} = Instance.view("a")
+    assert_eventually_fill(&(&1 > 2048))
+
+    stop_supervised!({:instance, "a"})
+    start_instance()
+    view = await_state(running?("obervave"))
+    assert view.buffer == 3072 and view.fill == 3072
+  end
+
+  test "run anyway from safe mode, as the instrument's screen area asks for it" do
+    start_instance()
+    await_state(running?("obervave"))
+    Instance.debug("a", :crash)
+    await_state(running?("obervave"))
+    Instance.debug("a", :crash)
+    await_state(&(&1.phase == :safe_mode))
+
+    socket = %Mob.Socket{assigns: %{instance: "a"}}
+    assert {:noreply, _} = FMutate.InstrumentView.handle_event("run_anyway", %{}, socket)
+    view = await_state(running?("obervave"))
+    refute view.quarantined
+  end
+
+  # within `tries` STATUS messages (100 ms apart) after the ones already queued
+  defp assert_eventually_fill(pred) do
+    flush_statuses()
+    assert_eventually_fill(pred, 30)
+  end
+
+  defp assert_eventually_fill(_pred, 0), do: flunk("the engine's fill never got there")
+
+  defp assert_eventually_fill(pred, tries) do
+    receive do
+      {:instance, "a", {:status, %{fill: fill}}} -> if pred.(fill), do: :ok, else: assert_eventually_fill(pred, tries - 1)
+    after
+      1_000 -> flunk("no status")
+    end
+  end
+
+  defp flush_statuses do
+    receive do
+      {:instance, _, {:status, _}} -> flush_statuses()
+    after
+      0 -> :ok
+    end
+  end
+
   test "the chosen firmware and the quarantine survive a restart of the instance" do
     start_instance()
     await_state(running?("obervave"))

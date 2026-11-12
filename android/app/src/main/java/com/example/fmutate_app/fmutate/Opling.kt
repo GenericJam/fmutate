@@ -58,7 +58,9 @@ import kotlin.math.sin
  *
  * Moods FMutate can see (creature.md "Moods"): idle (blinks every 3–6 s, pupils follow tilt), playing (bobs on
  * each note, ticks either side), booting (eggshell), crashed (pupils crossed, three amber dots circling),
- * safe mode (asleep, "zZ"). The pose only changes when something moves, so a still Opling costs no frames.
+ * safe mode (asleep, "zZ"), too slow (out of breath: pupils down, mouth open, a sweat drop, two puffs; still, so an
+ * overloaded phone draws no extra frames). The pose only changes when something moves, so a still Opling costs no
+ * frames.
  */
 
 /** Ops per column (carrier at the bottom), the head column, and "twins": one eye on each of the first two columns. */
@@ -78,7 +80,7 @@ class OplingForm(val cols: IntArray, val head: Int, val split: Boolean = false) 
     }
 }
 
-enum class OplingMood { Idle, Play, Hatch, Dizzy, Sleep }
+enum class OplingMood { Idle, Play, Hatch, Dizzy, Sleep, Breath }
 
 // anatomy, s = 1 (creature.md)
 private const val OP_W = 22f
@@ -105,6 +107,7 @@ private val TICK = Color(0xFFA9A3B8)
 private val WARM = Color(0xFFFFB547)
 private val SHELL = Color(0xFFF3EBD6)
 private val SHELL_EDGE = Color(0xFFCDBF9C)
+private val SWEAT = Color(0xFF8FD8FF)
 
 // the menu button (Flat-Instrument board): a 48 dp raised circle, the Opling at 0.62
 private val BUTTON = Color(0xFF221F2B)
@@ -138,6 +141,7 @@ private class OplingAnim(var restarts: Int) {
     // inputs
     var phase = ""
     var quarantined = false
+    var slow = false
     var held = 0
     var beatAt = Long.MIN_VALUE / 2
     var lastNoteAt = Long.MIN_VALUE / 2
@@ -156,11 +160,12 @@ private class OplingAnim(var restarts: Int) {
     private var last = 0L
     private var signature = 0L
 
-    fun inputs(phase: String, quarantined: Boolean, restarts: Int, now: Long) {
+    fun inputs(phase: String, quarantined: Boolean, restarts: Int, slow: Boolean, now: Long) {
         if (restarts > this.restarts) dizzyUntil = now + DIZZY_MS
         this.restarts = restarts
         this.phase = phase
         this.quarantined = quarantined
+        this.slow = slow
         wake.trySend(Unit)
     }
 
@@ -179,6 +184,7 @@ private class OplingAnim(var restarts: Int) {
             phase == "safe_mode" || quarantined -> OplingMood.Sleep
             phase == "crashed" || now < dizzyUntil -> OplingMood.Dizzy
             phase == "booting" -> OplingMood.Hatch
+            slow -> OplingMood.Breath
             held > 0 || now - lastNoteAt < PLAY_LINGER_MS -> OplingMood.Play
             else -> OplingMood.Idle
         }
@@ -188,7 +194,7 @@ private class OplingAnim(var restarts: Int) {
 
         // blink: eye height 100 % → 20 % → 100 % over 90 ms, every 3–6 s
         blink = 1f
-        if (mood == OplingMood.Idle || mood == OplingMood.Play || mood == OplingMood.Hatch) {
+        if (mood == OplingMood.Idle || mood == OplingMood.Play || mood == OplingMood.Hatch || mood == OplingMood.Breath) {
             if (blinkAt == 0L) blinkAt = now + nextBlink()
             val u = now - blinkAt
             when {
@@ -201,7 +207,7 @@ private class OplingAnim(var restarts: Int) {
         // pupils: sprung towards the tilt (looking up from the eggshell)
         val follow = mood == OplingMood.Idle || mood == OplingMood.Play
         val tx = if (follow) tiltX else 0f
-        val ty = if (follow) tiltY else if (mood == OplingMood.Hatch) -1f else 0f
+        val ty = if (follow) tiltY else if (mood == OplingMood.Hatch) -1f else if (mood == OplingMood.Breath) 1f else 0f
         val k = 1f - exp(-dt / PUPIL_TAU_MS)
         lookX += (tx - lookX) * k
         lookY += (ty - lookY) * k
@@ -246,13 +252,14 @@ internal fun OplingMenuButton(
     phase: String,
     quarantined: Boolean,
     restarts: Int,
+    slow: Boolean,
 ) {
     val form = OplingForm.TWINS
     val anim = remember { OplingAnim(restarts) }
     val painter = remember { OplingPainter() }
     val held by rememberUpdatedState(notesHeld)
 
-    SideEffect { anim.inputs(phase, quarantined, restarts, SystemClock.uptimeMillis()) }
+    SideEffect { anim.inputs(phase, quarantined, restarts, slow, SystemClock.uptimeMillis()) }
     LaunchedEffect(anim) { snapshotFlow { held() }.collect { anim.notes(it, SystemClock.uptimeMillis()) } }
     LaunchedEffect(anim) {
         var wait = 0L
@@ -407,6 +414,13 @@ private class OplingPainter {
                 shell.close()
                 drawPath(shell, SHELL)
                 drawPath(shell, SHELL_EDGE, style = Stroke(1.5f * density))
+            }
+            OplingMood.Breath -> {
+                // out of breath (Creature board "breath"): mouth open on the head op, a sweat drop beside it, two puffs
+                rr(headX + OP_W / 2 - 2.25f, headTop + OP_H - 3f - 1.6f, 4.5f, 3f, 1.5f, PUPIL)
+                rr(headX + OP_W + 1.5f, headTop + 0.5f, 3f, 4.4f, 1.5f, SWEAT)
+                dot(headX - 4f, headTop + 9f, 2.4f, TICK.copy(alpha = 0.6f))
+                dot(headX - 7.5f, headTop + 7f, 1.8f, TICK.copy(alpha = 0.4f))
             }
             OplingMood.Idle -> {}
         }

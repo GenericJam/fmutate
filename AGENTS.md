@@ -62,6 +62,14 @@ Read `docs/architecture.md`, `docs/engine_protocol.md` and `docs/design/HANDOFF.
   device (e.g. `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`). The app is node `fmutate_a@127.0.0.1` on
   the device's 127.0.0.1:9150 (`FMutate.Dist`, no EPMD; `mix mob.connect` and dist hot-loads don't find it, deploys
   push files and restart). Several rpc runs can target different devices at once.
+  rpc calls time out after 30 s: for longer sampling, `spawn` a sampler on the device that writes to
+  `:persistent_term` and read it with a second call.
+- **A package on a device** (emulator backend): `adb push native/build/packages/obervave.fwsc /data/local/tmp/`,
+  `adb shell run-as com.genericjam.fmutate cp /data/local/tmp/obervave.fwsc files/`, then over rpc
+  `FMutate.Library.import_package("/data/user/0/com.genericjam.fmutate/files/obervave.fwsc", "obervave.fwsc")` and
+  `FMutate.Instance.switch_firmware("a", "imported:obervave.fwsc")` (on the Moto G Power it is too slow: ~82 %).
+- **System states** last only a READY's time (Starting…, Restarting…): catch them with `adb shell screenrecord`
+  and `ffmpeg` frames; `FMutate.Instance.debug("a", :crash)` twice within a minute gives safe mode.
 - **Drive I/O from outside**: `tools/android_probe` is a second app (same debug key) that reads the sibling cookie,
   plays MIDI into `FMutate A`, listens to it, and offers a `FMutate Probe` MIDI device;
   `tools/sibling_probe.exs` is a sibling node (Allow / key press / events / Disconnect);

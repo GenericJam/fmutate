@@ -11,7 +11,8 @@ defmodule FMutate.InstrumentView do
   (JSON text of the open "Add here" menu, or "").
 
   Inputs go through `FMutate.Bindings` (HANDOFF §6 rule 7): absolute moves carry the control that made
-  them (`"c"`), and a control that hasn't picked up the current value is ignored.
+  them (`"c"`), and a control that hasn't picked up the current value is ignored. `run_anyway` (a tap on
+  the screen area in safe mode) is `FMutate.Instance.run_anyway/1`.
   """
 
   use Mob.Component
@@ -37,9 +38,11 @@ defmodule FMutate.InstrumentView do
       phase: to_string(view.phase),
       master: view.master,
       bend: pitch_bend?(view.firmware),
-      # the Opling's mood (docs/design/creature.md)
+      # the Opling's mood (docs/design/creature.md) and the message in the screen area
       quarantined: view.quarantined,
       restarts: view.restarts,
+      slow: view[:slow] == true,
+      speed: if(view[:slow] == true, do: view[:clock_pct] || 0, else: 0),
       editing: assigns[:editing] == true,
       page: assigns[:page] || "",
       toast: toast,
@@ -53,6 +56,12 @@ defmodule FMutate.InstrumentView do
     {event, bindings} = arbitrate(socket.assigns.bindings, payload)
     if event, do: Instance.input(socket.assigns.instance, event)
     {:noreply, Mob.Socket.assign(socket, :bindings, bindings)}
+  end
+
+  # safe mode: a tap on the screen area is "Run anyway"
+  def handle_event("run_anyway", _payload, socket) do
+    _ = Instance.run_anyway(socket.assigns.instance)
+    {:noreply, socket}
   end
 
   def handle_event(event, payload, socket) do

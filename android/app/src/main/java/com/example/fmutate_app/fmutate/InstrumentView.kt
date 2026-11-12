@@ -81,7 +81,8 @@ import kotlin.math.sin
  * button (its own animation) and an overlay (fingers, bubbles, banner).
  *
  * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
- * (instance phase), quarantined, restarts (both for the Opling's mood).
+ * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %): the Opling's
+ * mood and the message in the firmware screen area (Starting…, Restarting…, Crashed twice · Run anyway, Too slow).
  */
 
 private object C {
@@ -105,6 +106,7 @@ private object C {
     val led = Color(0xFFFF9F2E)
     val sliderFill = Color(0xFF3A3450)
     val warn = Color(0xFFFFB547)
+    val dangerText = Color(0xFFFFB4A3)
     val ink = Color(0xFF14121A)
     val bezel = Color(0xFF0B0A0F)
     val buttonFg = Color(0xFFE4DFEE)
@@ -188,6 +190,8 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         master = (props["master"] as? Number)?.toFloat() ?: -1f,
         quarantined = props["quarantined"] == true,
         restarts = (props["restarts"] as? Number)?.toInt() ?: 0,
+        slow = props["slow"] == true,
+        speed = (props["speed"] as? Number)?.toInt() ?: 0,
         editing = props["editing"] == true,
         pageProp = props["page"] as? String ?: "",
         addMenuJson = props["add_menu"] as? String,
@@ -206,6 +210,8 @@ private fun InstrumentSurface(
     master: Float,
     quarantined: Boolean,
     restarts: Int,
+    slow: Boolean,
+    speed: Int,
     editing: Boolean,
     pageProp: String,
     addMenuJson: String?,
@@ -269,7 +275,15 @@ private fun InstrumentSurface(
     val shm = remember(fbPath) { fbPath?.let { runCatching { FirmwareShm(it) }.getOrNull() } }
     DisposableEffect(shm) { onDispose { shm?.close() } }
     LaunchedEffect(shm) {
-        if (shm == null) return@LaunchedEffect
+        if (shm == null) {
+            // no screen file (safe mode, booting, stopped): no LEDs either, not the last engine's
+            if (state.leds != Triple(0, 0, 0)) {
+                state.leds = Triple(0, 0, 0)
+                state.buttonLedFrame++
+                state.keyLedFrame++
+            }
+            return@LaunchedEffect
+        }
         while (true) {
             withFrameNanos { }
             if (shm.poll()) state.screenFrame++
@@ -282,6 +296,7 @@ private fun InstrumentSurface(
         }
     }
     val screenImage = remember(shm) { shm?.bitmap?.asImageBitmap() }
+    val message = screenMessage(phase, restarts, slow, speed)
 
     val page = layout.pages[state.page.coerceIn(0, layout.pages.size - 1)]
     val wDp = sizePx.width / density
@@ -319,6 +334,7 @@ private fun InstrumentSurface(
     }
     val ectxNow by rememberUpdatedState(ectx)
     val editingNow by rememberUpdatedState(editing)
+    val phaseNow by rememberUpdatedState(phase)
 
     /** Press or release a discrete target (keys, buttons, notes, page). */
     fun fire(t: Target, down: Boolean) {
@@ -641,6 +657,7 @@ private fun InstrumentSurface(
                     }
                 }
             }
+            "screen" -> if (!g.moved && phaseNow == "safe_mode") { haptic(HapticFeedbackConstants.VIRTUAL_KEY); emit("run_anyway") }
             else -> {}
         }
     }
@@ -693,7 +710,7 @@ private fun InstrumentSurface(
                 "slider" -> dr.slider(c, r, state)
                 "xy_pad" -> dr.xy(c, r, state)
 
-                "screen" -> dr.screenBezel(r, c.screenScale, shm?.valid == true, phase)
+                "screen" -> dr.screenBezel(r, c.screenScale)
                 "label" -> dr.label(c, r)
                 "page_switcher" -> dr.switcher(c, r, layout, state.page)
             }
@@ -716,11 +733,16 @@ private fun InstrumentSurface(
             }
         }
     }
-    // the firmware screen: a new engine frame (up to 60 a second) redraws only this layer
+    // the firmware screen: a new engine frame (up to 60 a second) redraws only this layer; the instance's state
+    // (starting, restarting, safe mode, too slow) is a message inside the screen area
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
-        if (state.screenFrame < 0 || shm == null || screenImage == null || !shm.valid) return@Canvas
+        val live = state.screenFrame >= 0 && shm != null && screenImage != null && shm.valid
+        if (!live && message == null) return@Canvas
         val dr = Draw(this, density, ink)
-        for (c in controls) if (c.type == "screen" && !edit.hidden(c.id)) rectOf(c)?.let { dr.screenPixels(it, c.screenScale, screenImage) }
+        for (c in controls) if (c.type == "screen" && !edit.hidden(c.id)) rectOf(c)?.let { r ->
+            if (live) dr.screenPixels(r, c.screenScale, screenImage!!)
+            message?.let { dr.screenMessage(r, c.screenScale, it, live) }
+        }
     }
     // ── menu: the Opling (Opling.kt), on its own layer ──
     controls.firstOrNull { it.type == "menu" && !edit.hidden(it.id) }?.let { m ->
@@ -729,7 +751,7 @@ private fun InstrumentSurface(
                 r.x, r.y, r.w, r.h,
                 pressed = { state.pressed[m.id] == true },
                 notesHeld = { state.held.size },
-                phase = phase, quarantined = quarantined, restarts = restarts,
+                phase = phase, quarantined = quarantined, restarts = restarts, slow = slow,
             )
         }
     }
@@ -748,6 +770,18 @@ private fun InstrumentSurface(
         drawToast(this, toast, wDp, hDp, density)
     }
     }
+}
+
+/** What the firmware screen area says about the instance: a title, an action (tap the screen) and a hint. */
+private data class ScreenMessage(val title: String, val color: Color, val action: String = "", val hint: String = "")
+
+private fun screenMessage(phase: String, restarts: Int, slow: Boolean, speed: Int): ScreenMessage? = when (phase) {
+    "booting" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Starting…", C.muted)
+    "crashed" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Crashed", C.muted)
+    "safe_mode" -> ScreenMessage("Crashed twice", C.muted, action = "Run anyway")
+    "not_installed" -> ScreenMessage("Doesn't run here yet", C.warn)
+    "running" -> if (slow) ScreenMessage("Too slow · $speed % speed", C.warn, hint = "Raise the buffer in I/O") else null
+    else -> null
 }
 
 private fun ledFor(c: Control, leds: Triple<Int, Int, Int>): Boolean {
@@ -951,11 +985,50 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         return ScreenBox(r.cx - side / 2, r.cy - side / 2, side, sidePx)
     }
 
-    fun screenBezel(r: Grid.Rect, scale: Int, live: Boolean, phase: String) {
+    fun screenBezel(r: Grid.Rect, scale: Int) {
         val b = screenBox(r, scale)
         rr(b.x - 6, b.y - 6, b.side + 12, b.side + 12, 12f, C.bezel)
         s.drawRect(Color.Black, off(b.x, b.y), sz(b.side, b.side))
-        if (!live) text(if (phase == "safe_mode") "safe mode" else "booting…", b.x + b.side / 2, b.y + b.side / 2, 12f, C.muted, mono = true)
+    }
+
+    /** Text at most [maxW] dp wide: [size] dp, smaller (down to 8) when it doesn't fit. */
+    private fun fitSize(t: String, size: Float, maxW: Float, mono: Boolean, weight: Int): Float {
+        var sz = size
+        while (sz > 8f && ink.style(sz, mono, weight).paint.measureText(t) / d > maxW) sz -= 1f
+        return sz
+    }
+
+    /**
+     * The instance's state inside the screen area (flat skin): centred on the dark screen while the firmware isn't
+     * showing; a strip along the bottom over its pixels when it is (too slow).
+     */
+    fun screenMessage(r: Grid.Rect, scale: Int, m: ScreenMessage, live: Boolean) {
+        val b = screenBox(r, scale)
+        val maxW = b.side - 12f
+        val cx = b.x + b.side / 2
+        if (live) {
+            val h = if (m.hint.isEmpty()) 22f else 36f
+            rr(b.x + 4, b.y + b.side - h - 4, b.side - 8, h, 8f, C.raised)
+            val y = b.y + b.side - h - 4
+            text(m.title, cx, y + 11f, fitSize(m.title, 11f, maxW, true, 700), m.color, mono = true, weight = 700)
+            if (m.hint.isNotEmpty()) text(m.hint, cx, y + 26f, fitSize(m.hint, 10f, maxW, false, 600), C.muted)
+            return
+        }
+        val cy = b.y + b.side / 2
+        if (m.action.isEmpty()) {
+            text(m.title, cx, cy, fitSize(m.title, 12f, maxW, true, 600), m.color, mono = true)
+            return
+        }
+        // "Crashed twice · Run anyway": the action in the quarantine colour (Flat-Library)
+        val sep = " · "
+        val line = m.title + sep + m.action
+        val size = fitSize(line, 12f, maxW, true, 600)
+        val p = ink.style(size, true, 600).paint
+        val w = p.measureText(line) / d
+        val wTitle = p.measureText(m.title + sep) / d
+        val x0 = cx - w / 2
+        text(m.title + sep, x0 + wTitle / 2, cy, size, m.color, mono = true)
+        text(m.action, x0 + wTitle + (w - wTitle) / 2, cy, size, C.dangerText, mono = true)
     }
 
     fun screenPixels(r: Grid.Rect, scale: Int, image: ImageBitmap) {

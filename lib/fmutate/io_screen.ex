@@ -14,6 +14,7 @@ defmodule FMutate.IOScreen do
   import Mob.Canvas, only: [rect: 5, circle: 4]
 
   alias FMutate.{Audio, Dist, Firmware, IO, Instance, MIDI, Style}
+  alias FMutate.Instance.Health
 
   @instance "a"
   @refresh_ms 250
@@ -30,8 +31,6 @@ defmodule FMutate.IOScreen do
        dist: if(Process.whereis(Dist), do: Dist.subscribe(), else: nil),
        midi: MIDI.settings(@instance),
        latency: nil,
-       clock: nil,
-       clock_pct: nil,
        sheet: nil
      )}
   end
@@ -107,7 +106,7 @@ defmodule FMutate.IOScreen do
   defp instance_card(assigns) do
     v = assigns.view
     fw = (v.firmware && Firmware.get(v.firmware)) || %{name: v.firmware || "no firmware"}
-    clock = if assigns.clock_pct, do: " · clock #{round(assigns.clock_pct)}%", else: ""
+    clock = clock_label(v)
     node = node_label(assigns.dist)
     sub = "#{node} · #{phase_label(v.phase)}#{clock}"
     title = "Instance #{String.upcase(@instance)} · #{fw.name}"
@@ -149,6 +148,11 @@ defmodule FMutate.IOScreen do
   defp phase_label(:safe_mode), do: "safe mode"
   defp phase_label(:not_installed), do: "can't run here"
   defp phase_label(phase), do: to_string(phase)
+
+  # the instance's speed (FMutate.Instance.Health): one source for this card, the instrument and sibling apps
+  defp clock_label(%{slow: true, clock_pct: pct}), do: " · too slow, clock #{pct}%"
+  defp clock_label(%{clock_pct: pct}) when is_integer(pct), do: " · clock #{pct}%"
+  defp clock_label(_view), do: ""
 
   # the Opling "twins" form (creature.md): two columns of two ops, one eye on each head op, lime tint
   defp creature do
@@ -231,8 +235,68 @@ defmodule FMutate.IOScreen do
       """,
       ~MOB"""
       <Text text={detail} text_size={11} text_color={0xFFA9A3B8} font="monospace" />
-      """
+      """,
+      buffer_row(assigns)
     ])
+  end
+
+  # the engine's ring fill (FMutate.Instance.set_buffer/2): Auto, or a fixed larger one; each choice shows
+  # the latency it gives. The instrument's "too slow" hint points here.
+  defp buffer_row(assigns) do
+    a = assigns.audio
+    v = assigns.view
+    current = Map.get(v, :buffer, :auto)
+    out = if is_number(a.latency_ms), do: a.latency_ms, else: 0
+    ms = fn frames -> "#{round(out + frames * 1000 / 44_100)} ms" end
+
+    {row1, row2} =
+      ([buffer_chip("Auto", current == :auto, :auto)] ++
+         for(frames <- Health.fixed_buffers(), do: buffer_chip(ms.(frames), current == frames, frames)))
+      |> Enum.split(2)
+
+    note =
+      case v do
+        %{fill: fill} when is_integer(fill) and current == :auto ->
+          "Auto: #{ms.(fill)} now (engine #{fill} frames); rises while the engine underruns"
+
+        %{fill: fill} when is_integer(fill) ->
+          "Fixed: engine #{fill} frames. Larger plays later but rides out a slow phone"
+
+        _ ->
+          "Larger plays later but rides out a slow phone"
+      end
+
+    ~MOB"""
+    <Column gap={6}>
+      <Text text="Buffer" text_size={13} text_color={0xFFF3EFF8} />
+      <Row align={:center} gap={6}>
+        {row1}
+      </Row>
+      <Row align={:center} gap={6}>
+        {row2}
+      </Row>
+      <Text text={note} text_size={11} text_color={0xFFA9A3B8} font="monospace" />
+    </Column>
+    """
+  end
+
+  # two to a row on a phone: equal widths, as the route segments
+  defp buffer_chip(label, selected, buffer) do
+    tap = {self(), {:buffer, buffer}}
+    {bg, fg} = if selected, do: {c(:selected), c(:fm)}, else: {c(:raised), c(:text)}
+
+    ~MOB"""
+    <Button
+      text={label}
+      on_tap={tap}
+      background={bg}
+      text_color={fg}
+      text_size={12}
+      corner_radius={9}
+      padding={4}
+      weight={1}
+    />
+    """
   end
 
   defp route(%{io: %{audio: devices}, audio: %{device_id: id}}), do: IO.route_of(devices, id)
@@ -915,24 +979,9 @@ defmodule FMutate.IOScreen do
   def handle_info({:instance, @instance, {:state, view}}, socket),
     do: {:noreply, Mob.Socket.assign(socket, :view, view)}
 
-  # the firmware clock against wall time, over ~1 s
-  def handle_info({:instance, @instance, {:status, %{ms: fw_ms}}}, socket) do
-    wall = System.monotonic_time(:millisecond)
-
-    case socket.assigns.clock do
-      {w0, f0} when wall - w0 >= 1_000 ->
-        {:noreply,
-         Mob.Socket.assign(socket,
-           clock: {wall, fw_ms},
-           clock_pct: (fw_ms - f0) * 100 / (wall - w0)
-         )}
-
-      nil ->
-        {:noreply, Mob.Socket.assign(socket, :clock, {wall, fw_ms})}
-
-      _ ->
-        {:noreply, socket}
-    end
+  def handle_info({:tap, {:buffer, buffer}}, socket) do
+    :ok = Instance.set_buffer(@instance, buffer)
+    {:noreply, socket}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}

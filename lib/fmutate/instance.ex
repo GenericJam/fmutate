@@ -24,6 +24,14 @@ defmodule FMutate.Instance do
 
   Keys held when the engine changes are released first, so nothing sticks.
 
+  ## Health
+
+  The running engine's speed and its ring fill (`FMutate.Instance.Health`): the view carries `clock_pct`
+  (firmware time against wall time, whole percent, nil until measured), `slow` (too slow, with hysteresis),
+  `fill` (the engine's target ring fill, frames) and `buffer` (`:auto` or a fixed fill, `set_buffer/2`,
+  saved with the instance). On `:auto` the fill rises when the slot underruns and settles back when it
+  stops; it is set on the running engine (port op `0x07`), no restart.
+
   ## Subscribers
 
   `subscribe/1` delivers `{:instance, id, event}`: `{:state, view}` whenever `view/1` changes and
@@ -34,6 +42,7 @@ defmodule FMutate.Instance do
   require Logger
 
   alias FMutate.{Audio, Engine, Firmware, Inputs, Paths}
+  alias FMutate.Instance.Health
 
   @crossfade_ms 150
   @restart_window_ms 60_000
@@ -52,7 +61,9 @@ defmodule FMutate.Instance do
             last_exit: nil,
             status: nil,
             subscribers: %{},
-            stopping: %{}
+            stopping: %{},
+            buffer: :auto,
+            health: nil
 
   ## API
 
@@ -81,6 +92,13 @@ defmodule FMutate.Instance do
   @doc "Debug: crash, hang or kill -9 the running engine."
   def debug(id, what) when what in [:crash, :hang, :kill9], do: GenServer.cast(via(id), {:debug, what})
 
+  @doc """
+  The engine buffer: `:auto` (the computed fill, raised while the engine underruns) or a fixed ring fill in
+  frames (`FMutate.Instance.Health.fixed_buffers/0`). Applies to the running engine at once; saved.
+  """
+  def set_buffer(id, buffer) when buffer == :auto or (is_integer(buffer) and buffer > 0),
+    do: GenServer.call(via(id), {:buffer, buffer})
+
   # --- library hooks (FMutate.Library / LibraryScreen) ---
   @doc "The firmwares quarantined on this instance (any, not only the current one)."
   @spec quarantined(String.t()) :: [String.t()]
@@ -106,7 +124,8 @@ defmodule FMutate.Instance do
       id: id,
       firmware: saved[:firmware] || Firmware.default_id(),
       master: saved[:master] || 1.0,
-      quarantined: MapSet.new(saved[:quarantined] || [])
+      quarantined: MapSet.new(saved[:quarantined] || []),
+      buffer: saved[:buffer] || :auto
     }
 
     {:ok, state, {:continue, :boot}}
@@ -148,6 +167,24 @@ defmodule FMutate.Instance do
   end
 
   def handle_call(:view, _from, state), do: {:reply, view_of(state), state}
+
+  def handle_call({:buffer, buffer}, _from, state) do
+    state = %{state | buffer: buffer}
+    save_state(state)
+
+    state =
+      case {state.health, state.live} do
+        {%Health{} = h, %{ready: true, pid: pid}} ->
+          {h, fill} = Health.buffer(h, buffer)
+          Engine.commands(pid, [{:fill, fill}])
+          %{state | health: h}
+
+        _ ->
+          state
+      end
+
+    {:reply, :ok, publish(state)}
+  end
 
   # library hooks
   def handle_call(:quarantined, _from, state), do: {:reply, MapSet.to_list(state.quarantined), state}
@@ -212,10 +249,12 @@ defmodule FMutate.Instance do
 
   ## Engines
 
-  defp start_engine(state, role, fw) do
+  # `carry`: the fill the previous engine of this firmware ended with (a restart keeps what auto learnt)
+  defp start_engine(state, role, fw, carry \\ nil) do
     with {bin, cart} <- Firmware.runnable(fw) || nil,
          {:ok, slot} <- Audio.claim() do
       prefix = Paths.shm_prefix(state.id, slot)
+      fill = Health.start_fill(state.buffer, Audio.engine_fill(), carry)
 
       {:ok, pid} =
         Engine.start_link(
@@ -225,10 +264,10 @@ defmodule FMutate.Instance do
           cart: cart,
           prefix: prefix,
           flash: Paths.flash(state.id, fw),
-          fill: Audio.engine_fill()
+          fill: fill
         )
 
-      eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false}
+      eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false, fill: fill}
       phase = if role == :live, do: :booting, else: state.phase
       Map.put(%{state | phase: phase}, role, eng)
     else
@@ -275,10 +314,12 @@ defmodule FMutate.Instance do
     eng = %{eng | ready: true}
     Engine.commands(eng.pid, [{:master, round(state.master * 1024)}])
 
+    health = Health.new(state.buffer, Audio.engine_fill(), eng.fill)
+
     case role do
       :live ->
         Audio.gain(eng.slot, 1000, 20)
-        publish(%{state | live: eng, phase: :running})
+        publish(%{state | live: eng, phase: :running, health: health})
 
       :next ->
         old = state.live
@@ -287,13 +328,16 @@ defmodule FMutate.Instance do
         Audio.gain(old.slot, 0, @crossfade_ms)
         Process.send_after(self(), {:finish_switch, old.pid}, @crossfade_ms + 50)
         state = %{state | stopping: Map.put(state.stopping, old.pid, old)}
-        publish(%{state | live: eng, next: nil, phase: :running})
+        publish(%{state | live: eng, next: nil, phase: :running, health: health})
     end
   end
 
+  # (published only when the health shows something new: the view also carries `master`, which pot moves
+  # change without a publish, and a publish re-renders the instrument)
   defp engine_event(state, :live, {:status, status}) do
     for {pid, _} <- state.subscribers, do: send(pid, {:instance, state.id, {:status, status}})
-    %{state | status: status}
+    new = health(%{state | status: status}, status)
+    if health_view(new) != health_view(state), do: publish(new), else: new
   end
 
   defp engine_event(state, _role, {:status, _}), do: state
@@ -321,10 +365,39 @@ defmodule FMutate.Instance do
         publish(state)
 
       true ->
+        carry = state.health && state.health.fill
         state = %{state | restarts: state.restarts + 1, phase: :crashed}
-        state |> publish() |> start_engine(:live, eng.firmware) |> publish()
+        state |> publish() |> start_engine(:live, eng.firmware, carry) |> publish()
     end
   end
+
+  # the engine's speed every window, and its fill from the slot's underruns (FMutate.Instance.Health)
+  defp health(%{health: %Health{} = h, live: %{ready: true} = eng} = state, status) do
+    now = System.monotonic_time(:millisecond)
+
+    case Health.status(h, now, status.ms) do
+      {h, :none} ->
+        %{state | health: h}
+
+      {h, :window} ->
+        case Audio.stats() do
+          %{running: true, underruns: underruns} ->
+            {h, fill} = Health.underruns(h, now, Enum.at(underruns, eng.slot, 0))
+
+            if fill do
+              Logger.info("instance #{state.id}: engine fill #{fill} frames (underruns #{h.underruns})")
+              Engine.commands(eng.pid, [{:fill, fill}])
+            end
+
+            %{state | health: h}
+
+          _ ->
+            %{state | health: Health.pause(h)}
+        end
+    end
+  end
+
+  defp health(state, _status), do: state
 
   defp quarantine_if(state, fw) do
     if length(state.failures) >= @quarantine_after do
@@ -413,17 +486,25 @@ defmodule FMutate.Instance do
   ## View, persistence
 
   defp view_of(state) do
-    %{
-      id: state.id,
-      firmware: state.firmware,
-      phase: state.phase,
-      fb: state.live && state.live.ready && Paths.fb(state.live.prefix),
-      quarantined: MapSet.member?(state.quarantined, state.firmware),
-      restarts: state.restarts,
-      last_exit: state.last_exit,
-      master: state.master
-    }
+    Map.merge(
+      %{
+        id: state.id,
+        firmware: state.firmware,
+        phase: state.phase,
+        fb: state.live && state.live.ready && Paths.fb(state.live.prefix),
+        quarantined: MapSet.member?(state.quarantined, state.firmware),
+        restarts: state.restarts,
+        last_exit: state.last_exit,
+        master: state.master,
+        buffer: state.buffer
+      },
+      health_view(state)
+    )
   end
+
+  # speed and fill of the running engine (nil / false while nothing runs)
+  defp health_view(%{phase: :running, health: %Health{} = h}), do: %{clock_pct: h.pct, slow: h.slow, fill: h.fill}
+  defp health_view(_state), do: %{clock_pct: nil, slow: false, fill: nil}
 
   defp publish(state) do
     view = view_of(state)
@@ -446,7 +527,13 @@ defmodule FMutate.Instance do
   end
 
   defp save_state(state) do
-    data = %{firmware: state.firmware, master: state.master, quarantined: MapSet.to_list(state.quarantined)}
+    data = %{
+      firmware: state.firmware,
+      master: state.master,
+      quarantined: MapSet.to_list(state.quarantined),
+      buffer: state.buffer
+    }
+
     File.write!(Paths.instance_state(state.id), :erlang.term_to_binary(data))
   end
 end

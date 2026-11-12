@@ -37,6 +37,7 @@ Elixir → engine:
 | `0x04` | `status:u8 d1:u8 d2:u8` | MIDI into the firmware's MIDI in, now |
 | `0x05` | `master:u16` | MASTER pot 0..1024 (1024 = unity) |
 | `0x06` | `frame:u64 status:u8 d1:u8 d2:u8` | MIDI at mixer frame `frame` (see the clock below); delivered half a firmware block early so notes land on the nearest 256-frame block (desktop: −1.7…+3.6 ms) |
+| `0x07` | `fill:u16` | target ring fill in frames, from now on (as the `[fill]` argument; clamped to 512..3840). Lowering it plays out what is queued; raising it renders ahead. Both engines |
 | `0x10` | – | debug: crash (SIGSEGV in the firmware thread) |
 | `0x11` | – | debug: hang (the firmware loop stops yielding) |
 
@@ -45,7 +46,7 @@ Engine → Elixir:
 | Op | Payload | Meaning |
 |---|---|---|
 | `0x81` | `ms:u32` | READY |
-| `0x82` | `ms:u32 fill:u32 fb_seq:u32 led_buttons:u32 led_keys:u32 glow_keys:u32` | STATUS every 100 ms of wall time. No STATUS for 1 s = hung: kill -9 |
+| `0x82` | `ms:u32 fill:u32 fb_seq:u32 led_buttons:u32 led_keys:u32 glow_keys:u32` | STATUS every 100 ms of wall time. No STATUS for 1 s = hung: kill -9. `ms` against wall time is the firmware's speed, `fill` the ring's fill when sent |
 | `0x84` | `bytes:u32` | FLASH_SAVED |
 
 ## `<prefix>.ring` (little-endian)
@@ -114,6 +115,22 @@ interprets.
 The mixer (`c_src/fm1audio.c`) counts `frame`: frames mixed at 44.1 kHz since the stream started. The
 device may run at another rate; the mixer resamples. Timed MIDI (`0x06`) and, later, sibling apps'
 `midi_at` use this clock; `FMutate.Audio.stats/0` reports it.
+
+## Speed and fill (`FMutate.Instance.Health`)
+
+The instance judges its live engine from STATUS (`ms`) and `FMutate.Audio.stats/0` (`underruns` of its slot), over
+windows of ≥ 1 s of wall time; the first two windows after READY are warm-up. Nothing is judged while the
+output isn't running (firmware time stands still then).
+
+| What | Rule |
+|---|---|
+| Speed (`clock_pct` in the view) | firmware ms per wall ms × 100, whole percent; the shown value moves when the measurement moves ≥ 2 points |
+| Too slow (`slow`) | on after 3 windows in a row < 95 %; off after 3 in a row ≥ 98 % (in between keeps the state) |
+| Auto fill (buffer `:auto`) | starts at `FMutate.Audio.engine_fill/0` (a crash restart keeps what the last engine reached). Underruns grew in 2 of the last 5 windows: +512 frames (op `0x07`), up to 3840, then 5 fresh windows judge again. 60 s without underruns: −512, not below the default; a step down that brings underruns back within 60 s is undone and stays the floor for that engine. Not saved: a new engine starts from the default |
+| Fixed buffer | the I/O screen's choice (2048 / 3072 / 3840 frames), saved with the instance; set on the running engine at once |
+
+More fill only absorbs jitter: an engine slower than real time underruns at any fill, so auto fill climbs to the
+maximum and the instrument shows "Too slow" (with the speed) and points at the buffer in I/O.
 
 ## Measured
 

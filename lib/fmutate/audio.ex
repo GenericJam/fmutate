@@ -97,7 +97,7 @@ defmodule FMutate.Audio do
       {:ok, fd} ->
         {:ok, <<w::little-64>>} = :file.pread(fd, 16, 8)
         :ok = :file.pwrite(fd, 24, <<w::little-64>>)
-        {:reply, :ok, %{state | drains: Map.put(drains, slot, {fd, now()})}}
+        {:reply, :ok, %{state | drains: Map.put(drains, slot, {fd, now(), 0})}}
 
       {:error, reason} ->
         {:reply, {:error, reason}, %{state | drains: drains}}
@@ -118,21 +118,22 @@ defmodule FMutate.Audio do
     {:noreply, %{state | stats: Map.put(AudioNif.stats(), :at, now())}}
   end
 
-  # host: consume each attached ring at 44.1 kHz (the audio is discarded)
+  # host: consume each attached ring at 44.1 kHz (the audio is discarded). Frames are counted from the attach
+  # time, so rounding doesn't drift the rate; like an output, it doesn't wait for an engine that is behind.
   def handle_info(:drain, state) do
     Process.send_after(self(), :drain, @drain_ms)
     t = now()
 
     drains =
-      Map.new(state.drains, fn {slot, {fd, last}} ->
-        frames = div((t - last) * 44_100, 1000)
+      Map.new(state.drains, fn {slot, {fd, t0, taken}} ->
+        due = div((t - t0) * 44_100, 1000)
 
-        with true <- frames > 0,
+        with true <- due > taken,
              {:ok, <<w::little-64, r::little-64>>} <- :file.pread(fd, 16, 16) do
-          :file.pwrite(fd, 24, <<min(w, r + frames)::little-64>>)
-          {slot, {fd, last + div(frames * 1000, 44_100)}}
+          :file.pwrite(fd, 24, <<min(w, r + due - taken)::little-64>>)
+          {slot, {fd, t0, due}}
         else
-          _ -> {slot, {fd, last}}
+          _ -> {slot, {fd, t0, taken}}
         end
       end)
 
@@ -142,7 +143,7 @@ defmodule FMutate.Audio do
   defp close_drain(drains, slot) do
     case Map.pop(drains, slot) do
       {nil, drains} -> drains
-      {{fd, _}, drains} -> :file.close(fd) && drains
+      {{fd, _, _}, drains} -> :file.close(fd) && drains
     end
   end
 
@@ -155,7 +156,8 @@ defmodule FMutate.Audio do
       peak: 0,
       latency_ms: nil,
       xruns: 0,
-      running: false,
+      # (the host drain consumes the rings as an output would)
+      running: true,
       sharing: :none,
       fills: List.duplicate(0, @slots),
       underruns: List.duplicate(0, @slots),

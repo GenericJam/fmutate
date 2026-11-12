@@ -59,6 +59,14 @@ static struct {
 
 static int port_out = -1;
 static const char *flash_path;
+static uint32_t target_fill = TARGET_FILL;      /* frames kept queued ahead of the mixer (argv, op 0x07) */
+
+static uint32_t clamp_fill(uint32_t f)
+{
+    if (f < 2u * BLOCK) return 2u * BLOCK;
+    if (f > RING_FRAMES - BLOCK) return RING_FRAMES - BLOCK;
+    return f;
+}
 
 static void die(const char *what)
 {
@@ -137,6 +145,7 @@ static void handle(const uint8_t *m, uint32_t n)
         }
         break;
     case 0x05: if (n >= 3) c.master((uint32_t)m[1] << 8 | m[2]); break;
+    case 0x07: if (n >= 3) target_fill = clamp_fill((uint32_t)m[1] << 8 | m[2]); break;
     case 0x10: c.debug(1); break;
     case 0x11: c.debug(2); break;
     default: fprintf(stderr, "fm1engine: unknown op 0x%02x\n", m[0]);
@@ -209,18 +218,14 @@ int main(int argc, char **argv)
     void *h;
     int16_t *ring_data;
     uint8_t *fbm;
-    uint32_t last_fb = 0, fb_seq = 0, last_store, target_fill = TARGET_FILL;
+    uint32_t last_fb = 0, fb_seq = 0, last_store;
     double last_fb_t = 0, last_status_t = 0;
 
     if (argc != 4 && argc != 5) {
         fprintf(stderr, "usage: fm1engine <cart.so> <shm_prefix> <flash_file> [target_fill_frames]\n");
         return 2;
     }
-    if (argc == 5) {
-        target_fill = (uint32_t)strtoul(argv[4], NULL, 10);
-        if (target_fill < 2u * BLOCK) target_fill = 2u * BLOCK;
-        if (target_fill > RING_FRAMES - BLOCK) target_fill = RING_FRAMES - BLOCK;
-    }
+    if (argc == 5) target_fill = clamp_fill((uint32_t)strtoul(argv[4], NULL, 10));
     flash_path = argv[3];
     port_out = dup(1);                          /* the port: keep it, and send the firmware's stdout to stderr */
     dup2(2, 1);

@@ -11,6 +11,7 @@ defmodule FMutate.Engine.Wire do
           | {:midi, 0..255, 0..255, 0..255}
           | {:master, 0..1024}
           | {:midi_at, non_neg_integer, 0..255, 0..255, 0..255}
+          | {:fill, pos_integer}
           | :crash
           | :hang
 
@@ -29,6 +30,9 @@ defmodule FMutate.Engine.Wire do
   def encode({:midi_at, frame, st, d1, d2})
       when is_integer(frame) and frame >= 0 and st in 0..255 and d1 in 0..255 and d2 in 0..255,
       do: <<0x06, frame::64, st, d1, d2>>
+
+  # the engine's target ring fill, now; it clamps to 512..3840 itself
+  def encode({:fill, frames}) when is_integer(frames), do: <<0x07, clamp(frames, 0, 0xFFFF)::16>>
 
   def encode(:crash), do: <<0x10>>
   def encode(:hang), do: <<0x11>>

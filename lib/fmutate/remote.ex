@@ -40,7 +40,6 @@ defmodule FMutate.Remote do
   @topics [:screen, :leds, :midi_out, :status, :layout]
   @frame_ms 33
   @fb_bytes 240 * 240 * 2
-  @slow_below_pct 95
 
   def start_link(opts) do
     id = Keyword.fetch!(opts, :id)
@@ -74,14 +73,10 @@ defmodule FMutate.Remote do
   def to_input(_), do: nil
 
   @doc false
-  # Instance phase + firmware clock → the §3 status
-  def status_of(phase, clock_pct)
-
-  def status_of(:running, pct) when is_number(pct) and pct < @slow_below_pct,
-    do: {:slow, round(pct)}
-
-  def status_of(phase, _pct) when phase in [:booting, :running, :crashed, :safe_mode], do: phase
-  def status_of(_phase, _pct), do: :crashed
+  # the instance's view → the §3 status (too slow is the instance's call: FMutate.Instance.Health)
+  def status_of(%{phase: :running, slow: true, clock_pct: pct}) when is_integer(pct), do: {:slow, pct}
+  def status_of(%{phase: phase}) when phase in [:booting, :running, :crashed, :safe_mode], do: phase
+  def status_of(_view), do: :crashed
 
   @doc false
   def leds_of(%{led_keys: keys, led_buttons: buttons}) do
@@ -109,8 +104,6 @@ defmodule FMutate.Remote do
        subs: %{},
        last_status: nil,
        last_leds: nil,
-       clock: nil,
-       clock_pct: nil,
        fb_seq: nil,
        frame_timer: nil
      }}
@@ -141,7 +134,7 @@ defmodule FMutate.Remote do
     do: {:noreply, push_status(%{state | view: view})}
 
   def handle_info({:instance, id, {:status, status}}, %{id: id} = state) do
-    state = state |> clock(status) |> push_status() |> push_leds(status)
+    state = push_leds(state, status)
     {:noreply, state}
   end
 
@@ -251,23 +244,7 @@ defmodule FMutate.Remote do
     end
   end
 
-  # firmware ms per wall ms over ~1 s windows
-  defp clock(state, %{ms: fw_ms}) do
-    wall = System.monotonic_time(:millisecond)
-
-    case state.clock do
-      nil ->
-        %{state | clock: {wall, fw_ms}}
-
-      {w0, f0} when wall - w0 >= 1_000 ->
-        %{state | clock: {wall, fw_ms}, clock_pct: (fw_ms - f0) * 100 / (wall - w0)}
-
-      _ ->
-        state
-    end
-  end
-
-  defp current_status(state), do: status_of(state.view.phase, state.clock_pct)
+  defp current_status(state), do: status_of(state.view)
 
   defp push_status(state) do
     status = current_status(state)

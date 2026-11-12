@@ -76,6 +76,12 @@ struct Engine {
     flash_rev: u32,
     flash_changed_at: f64,
     flash_saved_rev: u32,
+    /// Frames kept queued ahead of the mixer (argv, op 0x07).
+    target_fill: u32,
+}
+
+fn clamp_fill(f: u32) -> u32 {
+    f.clamp(2 * BLOCK, RING_FRAMES - BLOCK)
 }
 
 fn put32(b: &mut [u8], v: u32) {
@@ -114,6 +120,7 @@ impl Engine {
             (Some(0x03), 3..) => self.m.enc(m[1], m[2] as i8),
             (Some(0x04), 4..) => self.m.midi(m[1], m[2], m[3]),
             (Some(0x05), 3..) => self.m.master(u16::from_be_bytes([m[1], m[2]])),
+            (Some(0x07), 3..) => self.target_fill = clamp_fill(u16::from_be_bytes([m[1], m[2]]) as u32),
             (Some(0x06), 12..) => {
                 let frame = u64::from_be_bytes(m[1..9].try_into().unwrap());
                 if self.q.len() < QMAX {
@@ -206,10 +213,7 @@ fn main() {
         eprintln!("usage: fm1emu <package.fwsc> <shm_prefix> <flash_file> [target_fill_frames]\n       fm1emu --bench <package.fwsc> [seconds] [key ...]");
         std::process::exit(2);
     }
-    let target_fill = match args.get(4) {
-        Some(s) => s.parse::<u32>().unwrap_or(TARGET_FILL).clamp(2 * BLOCK, RING_FRAMES - BLOCK),
-        None => TARGET_FILL,
-    };
+    let target_fill = args.get(4).map_or(TARGET_FILL, |s| clamp_fill(s.parse::<u32>().unwrap_or(TARGET_FILL)));
     let port = sys::take_port();
 
     let pkg = std::fs::read(&args[1]).unwrap_or_else(|e| die(&format!("{}: {e}", args[1])));
@@ -253,6 +257,7 @@ fn main() {
         flash_rev,
         flash_changed_at: 0.0,
         flash_saved_rev: flash_rev,
+        target_fill,
     };
     let mut ready = [0x81u8, 0, 0, 0, 0];
     put32(&mut ready[1..5], e.m.ms() as u32);
@@ -272,7 +277,7 @@ fn main() {
         let w = e.ring.w.load(Ordering::Relaxed);
         let r = e.ring.r.load(Ordering::Acquire);
         let fill = w.wrapping_sub(r) as u32;
-        let revents = if fill + BLOCK <= target_fill {
+        let revents = if fill + BLOCK <= e.target_fill {
             // a block straight into the ring
             e.render(w, &mut blk);
             let pos = (w % RING_FRAMES as u64) as usize;

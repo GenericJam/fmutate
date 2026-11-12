@@ -136,6 +136,18 @@ defmodule FMutate.EmuEngineTest do
     assert next_status(pid).ms > 0
   end
 
+  test "the target fill changes at runtime (op 0x07), clamped to the ring", ctx do
+    {pid, _} = start_engine(ctx)
+    assert status_after(pid, 1_500).fill <= 1024
+
+    Engine.commands(pid, [{:fill, 3072}])
+    assert status_after(pid, 1_000).fill > 2048
+
+    Engine.commands(pid, [{:fill, 60_000}])
+    fill = status_after(pid, 1_000).fill
+    assert fill > 3072 and fill <= 3840
+  end
+
   test "a file that is no FM-1 package fails to boot", ctx do
     bad = Path.join(Paths.data_dir(), "bad.fwsc")
     File.write!(bad, :crypto.strong_rand_bytes(4096))

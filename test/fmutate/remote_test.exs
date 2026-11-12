@@ -31,11 +31,13 @@ defmodule FMutate.RemoteTest do
     end
   end
 
-  test "status: phases, and slow when the firmware clock lags" do
-    assert Remote.status_of(:running, 100.0) == :running
-    assert Remote.status_of(:running, 80.4) == {:slow, 80}
-    assert Remote.status_of(:booting, nil) == :booting
-    assert Remote.status_of(:not_installed, nil) == :crashed
+  test "status: phases, and slow when the instance says so" do
+    assert Remote.status_of(%{phase: :running, slow: false, clock_pct: 100}) == :running
+    # the instance's hysteresis decides: a dip below 95 % isn't slow yet
+    assert Remote.status_of(%{phase: :running, slow: false, clock_pct: 90}) == :running
+    assert Remote.status_of(%{phase: :running, slow: true, clock_pct: 80}) == {:slow, 80}
+    assert Remote.status_of(%{phase: :booting, slow: false, clock_pct: nil}) == :booting
+    assert Remote.status_of(%{phase: :not_installed, slow: false, clock_pct: nil}) == :crashed
   end
 
   test "LEDs: 27 key bits and the 14 buttons by name" do

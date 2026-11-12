@@ -105,7 +105,11 @@ defmodule FMutate.InstrumentScreen do
       quarantined: false,
       restarts: 0,
       last_exit: nil,
-      master: 1.0
+      master: 1.0,
+      buffer: :auto,
+      clock_pct: nil,
+      slow: false,
+      fill: nil
     }
   end
 end
