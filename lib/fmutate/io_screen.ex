@@ -733,7 +733,40 @@ defmodule FMutate.IOScreen do
       ~MOB"""
       <Text text={tools} text_size={11} text_color={0xFFC9C3D6} font="monospace" />
       """
-    ])
+    ] ++ input_diagnostics(assigns))
+  end
+
+  # what the firmware is holding down right now, and what the instrument surface had to let go of by itself
+  defp input_diagnostics(assigns) do
+    release = {self(), :release_all}
+
+    held =
+      case assigns[:held] do
+        %{keys: [], buttons: []} -> "Held by the firmware: nothing"
+        %{keys: k, buttons: b} -> "Held by the firmware: keys #{inspect(k)} · buttons #{Enum.join(b, ", ")}"
+        _ -> "Held by the firmware: —"
+      end
+
+    notes =
+      for {ms, :surface, what, _} <- assigns[:surface_notes] || [] do
+        line = "#{div(System.monotonic_time(:millisecond) - ms, 1000)} s ago: #{inspect(what)}"
+
+        ~MOB"""
+        <Text text={line} text_size={11} text_color={0xFFFFB547} font="monospace" />
+        """
+      end
+
+    [
+      ~MOB"""
+      <Text text={held} text_size={11} text_color={0xFFC9C3D6} font="monospace" />
+      """
+    ] ++
+      notes ++
+      [
+        ~MOB"""
+        <Button text="Release all (stuck notes or buttons)" on_tap={release} background={0xFF2A2636} text_color={0xFFF3EFF8} text_size={13} corner_radius={10} />
+        """
+      ]
   end
 
   defp midi_latency(%{n: n, to_beam: %{median: med, max: max}}) when n > 0,
@@ -920,7 +953,15 @@ defmodule FMutate.IOScreen do
 
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
-    {:noreply, Mob.Socket.assign(socket, audio: Audio.stats(), latency: MIDI.latency(@instance))}
+    surface = Instance.journal(@instance, 300) |> Enum.filter(&match?({_, :surface, _, _}, &1)) |> Enum.take(3)
+
+    {:noreply,
+     Mob.Socket.assign(socket,
+       audio: Audio.stats(),
+       latency: MIDI.latency(@instance),
+       held: Instance.held(@instance),
+       surface_notes: surface
+     )}
   catch
     # Audio or the instance's MIDI restarting: keep the last figures until the next poll
     :exit, _ -> {:noreply, socket}
@@ -930,6 +971,11 @@ defmodule FMutate.IOScreen do
 
   def handle_info({:tap, {:debug, what}}, socket) do
     Instance.debug(@instance, what)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tap, :release_all}, socket) do
+    Instance.release_all(@instance)
     {:noreply, socket}
   end
 

@@ -38,8 +38,8 @@ defmodule FMutate.Firmware do
 
   @type t :: %__MODULE__{}
 
-  # `caps`: what the firmware does with MIDI beyond notes, for bindings like keyboard wobble
-  # (pitch bend). Unknown = false.
+  # `caps`: what the firmware does beyond plain notes, for bindings: `pitch_bend` (keyboard bend),
+  # `octave_reset_both` (OCT− and OCT+ pressed together set its octave to 0). Unknown = false.
   @bundled [
     %{
       id: "obervave",
@@ -48,7 +48,7 @@ defmodule FMutate.Firmware do
       author: "zvenson",
       license: "GPL-3.0",
       about: "An 8-voice analog-style poly after the classic American polys of 1979-84.",
-      caps: %{pitch_bend: true}
+      caps: %{pitch_bend: true, octave_reset_both: true}
     },
     %{
       id: "shineon",
@@ -57,7 +57,7 @@ defmodule FMutate.Firmware do
       author: "zvenson",
       license: "GPL-3.0",
       about: "A string ensemble in the spirit of the late-70s machines.",
-      caps: %{pitch_bend: true}
+      caps: %{pitch_bend: true, octave_reset_both: true}
     }
   ]
 

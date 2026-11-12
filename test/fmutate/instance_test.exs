@@ -177,4 +177,21 @@ defmodule FMutate.InstanceTest do
     start_instance()
     await_state(running?("shineon"))
   end
+
+  test "what the firmware holds is tracked, Release all lets go of it, and inputs with no engine are journaled as dropped" do
+    start_instance()
+    await_state(running?("obervave"))
+    Instance.input("a", {:key, 7, :down})
+    Instance.input("a", {:button, :sel, :down})
+    assert Instance.held("a") == %{keys: [7], buttons: [:sel]}
+
+    Instance.release_all("a")
+    assert Instance.held("a") == %{keys: [], buttons: []}
+    assert [{_, :in, {:midi, <<0xB0, 123, 0, _::binary>>}, :sent} | _] = Instance.journal("a", 5)
+
+    Instance.debug("a", :kill9)
+    await_state(&(&1.phase != :running))
+    Instance.input("a", {:button, :fx, :down})
+    assert {_, :in, {:button, :fx, :down}, :dropped} = hd(Instance.journal("a", 1))
+  end
 end

@@ -55,6 +55,10 @@ defmodule FMutate.Instance do
             next: nil,
             master: 1.0,
             held_keys: MapSet.new(),
+            held_buttons: MapSet.new(),
+            # the last inputs and surface diagnostics, newest first (journal/2); trimmed to @journal_keep
+            journal: [],
+            journal_n: 0,
             restarts: 0,
             failures: [],
             quarantined: MapSet.new(),
@@ -91,6 +95,24 @@ defmodule FMutate.Instance do
 
   @doc "Debug: crash, hang or kill -9 the running engine."
   def debug(id, what) when what in [:crash, :hang, :kill9], do: GenServer.cast(via(id), {:debug, what})
+
+  @doc """
+  Diagnostics: the last `n` inputs (and surface reports) as `{ms, kind, event, outcome}`, newest first. `ms` is
+  monotonic milliseconds; `outcome` is `:sent` (to the running engine) or `:dropped` (no engine ready).
+  """
+  def journal(id, n \\ 100), do: GenServer.call(via(id), {:journal, n})
+
+  @doc "Diagnostics: the keys and buttons the firmware currently has held down (sent down, not yet up)."
+  def held(id), do: GenServer.call(via(id), :held)
+
+  @doc "Diagnostics from the instrument surface (stuck fingers it let go of, …), kept in the journal and logged."
+  def note(id, what), do: GenServer.cast(via(id), {:note, what})
+
+  @doc """
+  Let go of everything: up for every held key and button, MIDI all notes off, pitch bend centred, volume full.
+  The way out when something is stuck.
+  """
+  def release_all(id), do: GenServer.cast(via(id), :release_all)
 
   @doc """
   The engine buffer: `:auto` (the computed fill, raised while the engine underruns) or a fixed ring fill in
@@ -200,8 +222,27 @@ defmodule FMutate.Instance do
     {:reply, view_of(state), %{state | subscribers: Map.put(state.subscribers, pid, ref)}}
   end
 
+  def handle_call({:journal, n}, _from, state), do: {:reply, Enum.take(state.journal, n), state}
+
+  def handle_call(:held, _from, state),
+    do: {:reply, %{keys: Enum.sort(state.held_keys), buttons: Enum.sort(state.held_buttons)}, state}
+
   @impl true
   def handle_cast({:input, event}, state), do: {:noreply, apply_input(state, event)}
+
+  def handle_cast({:note, what}, state) do
+    Logger.warning("instance #{state.id}: surface: #{inspect(what)}")
+    {:noreply, journal(state, :surface, what, :noted)}
+  end
+
+  def handle_cast(:release_all, state) do
+    ups =
+      Enum.map(state.held_keys, &{:key, &1, :up}) ++ Enum.map(state.held_buttons, &{:button, &1, :up}) ++
+        [{:midi, <<0xB0, 123, 0, 0xB0, 7, 127, 0xE0, 0, 64>>}]
+
+    state = journal(state, :surface, :release_all, :noted)
+    {:noreply, Enum.reduce(ups, state, &apply_input(&2, &1))}
+  end
 
   def handle_cast({:debug, what}, %{live: %{pid: pid}} = state) do
     case what do
@@ -352,7 +393,8 @@ defmodule FMutate.Instance do
     state = Map.put(state, role, nil)
     now = System.monotonic_time(:millisecond)
     failures = [now | Enum.filter(state.failures, &(now - &1 < @restart_window_ms))]
-    state = %{state | failures: failures, last_exit: reason, held_keys: MapSet.new()}
+    state = %{state | failures: failures, last_exit: reason, held_keys: MapSet.new(), held_buttons: MapSet.new()}
+    state = journal(state, :engine, {:exit, role, reason}, :noted)
 
     cond do
       role == :next ->
@@ -414,11 +456,22 @@ defmodule FMutate.Instance do
   defp apply_input(%{live: %{ready: true} = eng} = state, event) do
     {cmds, state} = to_commands(event, state)
     Engine.commands(eng.pid, cmds)
-    state
+    journal(state, :in, event, :sent)
   end
 
-  defp apply_input(state, {:pot, :master, v}), do: %{state | master: clamp01(v)}
-  defp apply_input(state, _event), do: state
+  defp apply_input(state, {:pot, :master, v} = event), do: journal(%{state | master: clamp01(v)}, :in, event, :dropped)
+  defp apply_input(state, event), do: journal(state, :in, event, :dropped)
+
+  @journal_keep 300
+
+  # newest first; trimmed in batches so an input costs O(1)
+  defp journal(state, kind, event, outcome) do
+    entry = {System.monotonic_time(:millisecond), kind, event, outcome}
+
+    if state.journal_n >= 2 * @journal_keep,
+      do: %{state | journal: [entry | Enum.take(state.journal, @journal_keep)], journal_n: @journal_keep + 1},
+      else: %{state | journal: [entry | state.journal], journal_n: state.journal_n + 1}
+  end
 
   defp to_commands({:key, n, :down}, state) when n in 0..26,
     do: {[{:key, n, true}], %{state | held_keys: MapSet.put(state.held_keys, n)}}
@@ -426,8 +479,10 @@ defmodule FMutate.Instance do
   defp to_commands({:key, n, :up}, state) when n in 0..26,
     do: {[{:key, n, false}], %{state | held_keys: MapSet.delete(state.held_keys, n)}}
 
-  defp to_commands({:button, id, dir}, state) when dir in [:down, :up],
-    do: {[{:button, Inputs.button(id), dir == :down}], state}
+  defp to_commands({:button, id, dir}, state) when dir in [:down, :up] do
+    held = if dir == :down, do: MapSet.put(state.held_buttons, id), else: MapSet.delete(state.held_buttons, id)
+    {[{:button, Inputs.button(id), dir == :down}], %{state | held_buttons: held}}
+  end
 
   defp to_commands({:encoder, id, clicks}, state) when is_integer(clicks),
     do: {[{:enc, Inputs.encoder(id), clicks}], state}
@@ -478,7 +533,8 @@ defmodule FMutate.Instance do
 
   defp release_keys(state, eng) do
     Engine.commands(eng.pid, for(k <- state.held_keys, do: {:key, k, false}))
-    %{state | held_keys: MapSet.new()}
+    Engine.commands(eng.pid, for(b <- state.held_buttons, do: {:button, Inputs.button(b), false}))
+    %{state | held_keys: MapSet.new(), held_buttons: MapSet.new()}
   end
 
   defp clamp01(v) when is_number(v), do: v |> max(0.0) |> min(1.0)

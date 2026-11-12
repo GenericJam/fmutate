@@ -37,7 +37,9 @@ defmodule FMutate.InstrumentView do
       fb: view.fb,
       phase: to_string(view.phase),
       master: view.master,
-      bend: pitch_bend?(view.firmware),
+      bend: cap?(view.firmware, :pitch_bend),
+      # pressing OCT− and OCT+ together sets the firmware's octave to 0 (strike-velocity strips start in step)
+      oct0: cap?(view.firmware, :octave_reset_both),
       # the Opling's mood (docs/design/creature.md) and the message in the screen area
       quarantined: view.quarantined,
       restarts: view.restarts,
@@ -61,6 +63,12 @@ defmodule FMutate.InstrumentView do
   # safe mode: a tap on the screen area is "Run anyway"
   def handle_event("run_anyway", _payload, socket) do
     _ = Instance.run_anyway(socket.assigns.instance)
+    {:noreply, socket}
+  end
+
+  # the surface let go of fingers it never saw lift (a cancelled gesture, …): kept in the instance's journal
+  def handle_event("diag", payload, socket) do
+    Instance.note(socket.assigns.instance, payload)
     {:noreply, socket}
   end
 
@@ -125,9 +133,9 @@ defmodule FMutate.InstrumentView do
   defp dir(true), do: :down
   defp dir(false), do: :up
 
-  defp pitch_bend?(firmware_id) do
+  defp cap?(firmware_id, cap) do
     case FMutate.Firmware.get(firmware_id) do
-      %{caps: caps} -> Map.get(caps, :pitch_bend, false)
+      %{caps: caps} -> Map.get(caps, cap, false)
       nil -> false
     end
   end

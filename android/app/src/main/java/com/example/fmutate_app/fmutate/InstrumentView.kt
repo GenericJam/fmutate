@@ -141,6 +141,8 @@ private const val POT_RANGE_DP = 200f
 private const val ARROW_DP = 36f
 /** The firmware's own pitch-bend range (OberVave's and ShineOn's BEND in every factory program). */
 private const val FIRMWARE_BEND_ST = 2f
+/** How long after an engine runs its firmware takes to listen (OberVave's package ~2 s, the cartridge ~1.5 s). */
+private const val FIRMWARE_BOOT_MS = 2000L
 
 /** What one finger is doing: it belongs to the control it first touched until it lifts (rule 1). */
 private class Grab(
@@ -194,6 +196,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         layoutJson = props["layout"] as? String ?: return,
         fbPath = props["fb"] as? String,
         bendOk = props["bend"] == true,
+        oct0 = props["oct0"] == true,
         phase = props["phase"] as? String ?: "",
         master = (props["master"] as? Number)?.toFloat() ?: -1f,
         quarantined = props["quarantined"] == true,
@@ -214,6 +217,7 @@ private fun InstrumentSurface(
     layoutJson: String,
     fbPath: String?,
     bendOk: Boolean,
+    oct0: Boolean,
     phase: String,
     master: Float,
     quarantined: Boolean,
@@ -746,17 +750,47 @@ private fun InstrumentSurface(
         }
     }
 
+    /** Release a finger that didn't lift normally: its control lets go, but a tap (the creature's menu) doesn't fire. */
+    fun letGo(id: Long) {
+        grabs[id]?.longFired = true
+        up(id)
+    }
+
+    // the pointer loop runs once for the surface's lifetime: it calls the current handlers through these
+    val onDown by rememberUpdatedState<(Long, Offset, Long) -> Unit> { id, p, now -> down(id, p, now) }
+    val onMove by rememberUpdatedState<(Long, Offset) -> Unit> { id, p -> move(id, p) }
+    val onUp by rememberUpdatedState<(Long) -> Unit> { id -> up(id) }
+    val onLetGo by rememberUpdatedState<(Long) -> Unit> { id -> letGo(id) }
+    val onDiag by rememberUpdatedState<(Map<String, Any>) -> Unit> { p -> emit("diag", p) }
+
     // controls stop sending input in edit mode: lift whatever was held when it began
-    LaunchedEffect(editing) { if (editing) grabs.keys.toList().forEach { up(it) } else edit.reset() }
+    LaunchedEffect(editing) { if (editing) grabs.keys.toList().forEach { letGo(it) } else edit.reset() }
 
     // toggled bindings (a sustain toggle, say) live in the firmware: a new engine (restart, firmware switch) starts
     // without them, so they're sent again once it runs; leaving this layout lets them go
     fun toggled(): List<Target> = controls.flatMap { c ->
         if (state.toggles[c.id] == true) c.bindings.filter { it.mode == "toggle" }.map { it.to } else emptyList()
     }
-    LaunchedEffect(phase) { if (phase == "running") toggled().forEach { fire(it, true) } }
+    // once a new engine's firmware is up (its own boot takes ~1.5-2 s after the engine runs): toggles again, and
+    // strike-velocity strips' octave and the firmware's put in step at 0 (OCT− and OCT+ together, where the
+    // firmware does that)
+    LaunchedEffect(phase) {
+        if (phase != "running") return@LaunchedEffect
+        delay(FIRMWARE_BOOT_MS)
+        toggled().forEach { fire(it, true) }
+        if (hasVelocityStrip && oct0) {
+            input(mapOf("t" to "button", "id" to "oct_down", "d" to true))
+            input(mapOf("t" to "button", "id" to "oct_up", "d" to true))
+            delay(60)
+            input(mapOf("t" to "button", "id" to "oct_down", "d" to false))
+            input(mapOf("t" to "button", "id" to "oct_up", "d" to false))
+            state.noteOct = 0
+        }
+    }
     DisposableEffect(state) {
         onDispose {
+            // fingers still down when the surface goes (a sheet over it, another screen): let go of what they hold
+            grabs.keys.toList().forEach { letGo(it) }
             toggled().forEach { fire(it, false) }
             // a swell leaves the firmware's volume where the last finger was: full again
             if (hasVelocityStrip) input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
@@ -773,23 +807,41 @@ private fun InstrumentSurface(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { sizePx = it }
-            .pointerInput(layout, fitted, state.page, editing) {
+            // one pointer loop for the surface's lifetime (it reads the current handlers), so a layout, size, page
+            // or mode change never restarts it in the middle of a held finger
+            .pointerInput(Unit) {
                 awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Main)
-                        val now = System.currentTimeMillis()
-                        for (ch in event.changes) {
-                            val p = Offset(ch.position.x / density, ch.position.y / density)
-                            when {
-                                ch.changedToDownIgnoreConsumed() ->
-                                    if (editingNow) ectxNow?.let { edit.down(it, ch.id.value, p) } else down(ch.id.value, p, now)
-                                ch.changedToUpIgnoreConsumed() ->
-                                    if (editingNow) ectxNow?.let { edit.up(it, ch.id.value, p) } else up(ch.id.value)
-                                ch.positionChanged() ->
-                                    if (editingNow) ectxNow?.let { edit.move(it, ch.id.value, p, now) } else move(ch.id.value, p)
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Main)
+                            val now = System.currentTimeMillis()
+                            val ectxE = ectxNow
+                            for (ch in event.changes) {
+                                val p = Offset(ch.position.x / density, ch.position.y / density)
+                                when {
+                                    ch.changedToDownIgnoreConsumed() ->
+                                        if (editingNow) ectxE?.let { edit.down(it, ch.id.value, p) } else onDown(ch.id.value, p, now)
+                                    ch.changedToUpIgnoreConsumed() ->
+                                        if (editingNow) ectxE?.let { edit.up(it, ch.id.value, p) } else onUp(ch.id.value)
+                                    ch.positionChanged() ->
+                                        if (editingNow) ectxE?.let { edit.move(it, ch.id.value, p, now) } else onMove(ch.id.value, p)
+                                }
+                                ch.consume()
                             }
-                            ch.consume()
+                            // every finger still down is in the event: a grab whose finger isn't never saw its lift
+                            // (a cancelled gesture, a missed up): let go of it rather than hold a key or button forever
+                            if (grabs.isNotEmpty()) {
+                                val down = event.changes.filter { it.pressed }.map { it.id.value }.toSet()
+                                val stale = grabs.keys.filter { it !in down }
+                                if (stale.isNotEmpty()) {
+                                    val what = stale.mapNotNull { grabs[it]?.control?.id }
+                                    stale.forEach { onLetGo(it) }
+                                    onDiag(mapOf("stale_fingers" to stale.size, "controls" to what.joinToString(",")))
+                                }
+                            }
                         }
+                    } finally {
+                        grabs.keys.toList().forEach { onLetGo(it) }
                     }
                 }
             }
