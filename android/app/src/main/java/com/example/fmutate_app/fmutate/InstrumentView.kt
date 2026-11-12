@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
+import android.graphics.Paint
+import android.graphics.Typeface
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
@@ -15,6 +17,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -29,11 +33,16 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToDownIgnoreConsumed
 import androidx.compose.ui.input.pointer.changedToUpIgnoreConsumed
@@ -43,15 +52,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -74,8 +76,12 @@ import kotlin.math.sin
  *
  * The firmware's screen and LEDs come from the engine's shared memory (FirmwareShm), not from props.
  *
- * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), state
- * (instance phase, for the screen placeholder).
+ * Drawing is split into layers so a frame redraws only what changed: the controls (an offscreen layer,
+ * re-rendered on presses, values and LEDs), the firmware screen (each new engine frame), the Opling menu
+ * button (its own animation) and an overlay (fingers, bubbles, banner).
+ *
+ * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
+ * (instance phase), quarantined, restarts (both for the Opling's mood).
  */
 
 private object C {
@@ -114,12 +120,16 @@ private object C {
 
 private val BUTTON_IDS = listOf("oct_down", "oct_up", "fx", "sel", "env", "lfo", "edit", "glo", "home", "save", "arp", "seq", "play", "rec")
 private val NOTE_NAMES = listOf("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
-private fun isBlack(key: Int) = ((53 + key) % 12) in setOf(1, 3, 6, 8, 10)
-private fun noteName(key: Int): String {
+private fun isBlack(key: Int) = when ((53 + key) % 12) { 1, 3, 6, 8, 10 -> true; else -> false }
+private val KEY_NAMES = Array(27) { key ->
     val n = 53 + key
     val name = NOTE_NAMES[n % 12]
-    return if (name == "C") "C${n / 12 - 1}" else name
+    if (name == "C") "C${n / 12 - 1}" else name
 }
+private fun noteName(key: Int): String = KEY_NAMES[key]
+
+/** Controls drawn on the keys layer: they change on every note and key LED. */
+private val PLAYING_TYPES = setOf("keyboard", "pad_grid", "strum")
 
 private const val FINE_HOLD_MS = 400L
 private const val LONG_PRESS_MS = 500L
@@ -145,9 +155,13 @@ private class Grab(
     var longFired = false
 }
 
+/** A keyboard strip's key rects for one window of firmware keys in one rect. */
+private class KeyGeometry(val window: IntRange, val rect: Grid.Rect, val keys: List<Pair<Int, Grid.Rect>>)
+
 private class SurfaceState {
     var page by mutableIntStateOf(0)
-    val pressed = mutableStateMapOf<String, Boolean>()     // "id" or "id#sub"
+    val pressed = mutableStateMapOf<String, Boolean>()     // control id: buttons, knobs, sliders, menu
+    val held = mutableStateMapOf<String, Boolean>()        // "id#sub": keys, pads, strings (their own layer)
     val toggles = mutableStateMapOf<String, Boolean>()
     val values = mutableStateMapOf<String, Float>()        // absolute targets ("pot:master", "cc:1:74")
     val kbOffset = mutableStateMapOf<String, Int>()        // keyboard window shift, in firmware keys
@@ -155,27 +169,54 @@ private class SurfaceState {
     val bubbles = mutableStateMapOf<String, String>()      // control id -> text
     val encoderTurns = mutableStateMapOf<String, Int>()    // control id -> clicks since its grab started
     var screenFrame by mutableIntStateOf(0)                // bumps on a new firmware screen frame
-    var ledFrame by mutableIntStateOf(0)                   // bumps when the LEDs change
-    var leds = Triple(0, 0, 0)
+    var buttonLedFrame by mutableIntStateOf(0)             // bumps when a button LED changes
+    var keyLedFrame by mutableIntStateOf(0)                // bumps when a key LED changes
+    var leds = Triple(0, 0, 0)                             // replaced only when an LED changes
+}
+
+/**
+ * Mob hands a fresh props map (and `send`) on every commit of the screen, including the two that follow each
+ * input event; unpacking it into stable values lets Compose skip [InstrumentSurface] when nothing changed.
+ */
+@Composable
+fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) -> Unit) {
+    InstrumentSurface(
+        layoutJson = props["layout"] as? String ?: return,
+        fbPath = props["fb"] as? String,
+        bendOk = props["bend"] == true,
+        phase = props["phase"] as? String ?: "",
+        master = (props["master"] as? Number)?.toFloat() ?: -1f,
+        quarantined = props["quarantined"] == true,
+        restarts = (props["restarts"] as? Number)?.toInt() ?: 0,
+        send = rememberUpdatedState(send),
+    )
 }
 
 @Composable
-fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) -> Unit) {
-    val layoutJson = props["layout"] as? String ?: return
+private fun InstrumentSurface(
+    layoutJson: String,
+    fbPath: String?,
+    bendOk: Boolean,
+    phase: String,
+    master: Float,
+    quarantined: Boolean,
+    restarts: Int,
+    send: State<(String, Map<String, Any>) -> Unit>,
+) {
     val layout = remember(layoutJson) { runCatching { Layout.parse(layoutJson) }.getOrNull() } ?: return
-    val fbPath = props["fb"] as? String
-    val bendOk = props["bend"] == true
-    val phase = props["phase"] as? String ?: ""
     val state = remember(layout.id) { SurfaceState() }
-    val sendNow by rememberUpdatedState(send)
+    val sendNow by send
     val density = LocalDensity.current.density
     val view = LocalView.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val measurer = rememberTextMeasurer(cacheSize = 256)
+    val ink = remember(density) { Ink(density) }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
 
-    (props["master"] as? Number)?.let { m -> if ("pot:master" !in state.values) state.values["pot:master"] = m.toFloat() }
+    // seed the pot from the instance once; not a tracked read, or every value change would recompose the surface
+    Snapshot.withoutReadObservation {
+        if (master >= 0f && "pot:master" !in state.values) state.values["pot:master"] = master
+    }
 
     // the layout's frame never rotates while playing (HANDOFF §5), and the instrument takes the whole screen:
     // system bars hidden (a swipe brings them back for a moment), drawn under a display cutout. The 28 dp
@@ -185,12 +226,14 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         val window = activity?.window
         activity?.requestedOrientation =
             if (layout.landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
-        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        bars?.hide(WindowInsetsCompat.Type.systemBars())
+        // window attributes first: on Android 11 setting them afterwards resets the bars' behaviour to "show on
+        // first touch", and the first note then brings the bars back and resizes the whole surface
         window?.attributes = window?.attributes?.apply {
             layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
+        val bars = window?.let { WindowCompat.getInsetsController(it, it.decorView) }
+        bars?.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        bars?.hide(WindowInsetsCompat.Type.systemBars())
         onDispose {
             bars?.show(WindowInsetsCompat.Type.systemBars())
             activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -201,24 +244,29 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
     val shm = remember(fbPath) { fbPath?.let { runCatching { FirmwareShm(it) }.getOrNull() } }
     DisposableEffect(shm) { onDispose { shm?.close() } }
     LaunchedEffect(shm) {
+        if (shm == null) return@LaunchedEffect
         while (true) {
             withFrameNanos { }
-            if (shm != null) {
-                if (shm.poll()) state.screenFrame++
-                val leds = Triple(shm.ledButtons, shm.ledKeys, shm.glowKeys)
-                if (leds != state.leds) {
-                    state.leds = leds
-                    state.ledFrame++
-                }
+            if (shm.poll()) state.screenFrame++
+            val (b, k, g) = state.leds
+            if (shm.ledButtons != b || shm.ledKeys != k || shm.glowKeys != g) {
+                state.leds = Triple(shm.ledButtons, shm.ledKeys, shm.glowKeys)
+                if (shm.ledButtons != b) state.buttonLedFrame++
+                if (shm.ledKeys != k || shm.glowKeys != g) state.keyLedFrame++
             }
         }
     }
+    val screenImage = remember(shm) { shm?.bitmap?.asImageBitmap() }
 
     val page = layout.pages[state.page.coerceIn(0, layout.pages.size - 1)]
     val wDp = sizePx.width / density
     val hDp = sizePx.height / density
     val fitted = remember(layout, page, wDp, hDp) { if (wDp > 0) fit(layout, page, wDp, hDp) else null }
-    val controls = layout.dock + page.controls
+    val controls = remember(layout, page) { layout.dock + page.controls }
+    // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
+    val restKeyLeds = remember(controls) {
+        controls.any { c -> c.type !in PLAYING_TYPES && c.bindings.any { it.to is Target.Key } }
+    }
 
     fun haptic(kind: Int) = view.performHapticFeedback(kind)
     fun emit(event: String, payload: Map<String, Any> = emptyMap()) = sendNow(event, payload)
@@ -270,7 +318,8 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 }
             } else fire(b.to, down)
         }
-        if (down) state.pressed[key] = true else state.pressed.remove(key)
+        val map = if ('#' in key) state.held else state.pressed
+        if (down) map[key] = true else map.remove(key)
     }
 
     fun sendValue(t: Target, v: Float) {
@@ -320,8 +369,12 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         return start..(start + n)
     }
 
+    // per strip: its key rects for the last window and rect (rebuilt only after an octave shift or a refit)
+    val keyGeometry = remember(layout) { HashMap<String, KeyGeometry>() }
+
     fun keyboardKeys(c: Control, r: Grid.Rect): List<Pair<Int, Grid.Rect>> {
         val keys = window(c)
+        keyGeometry[c.id]?.let { g -> if (g.window == keys && g.rect == r) return g.keys }
         val arrows = if (c.octaveArrows) ARROW_DP else 0f
         val len = (if (c.vertical) r.h else r.w) - 2 * arrows
         val across = if (c.vertical) r.w else r.h
@@ -341,6 +394,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
             val bw = ww * 0.62f
             out += k to rectAlong(i * ww - bw / 2, bw, across * 0.6f)
         }
+        keyGeometry[c.id] = KeyGeometry(keys, r, out)
         return out
     }
 
@@ -435,9 +489,9 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
             "keyboard" -> {
                 val arrow = arrowAt(c, r, p)
                 if (arrow != 0) { shiftOctave(c, arrow); return }
-                keyAt(c, r, p)?.let { k -> g.sub = k; state.pressed["${c.id}#$k"] = true; fire(Target.Key(k), true) }
+                keyAt(c, r, p)?.let { k -> g.sub = k; state.held["${c.id}#$k"] = true; fire(Target.Key(k), true) }
             }
-            "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.pressed["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
+            "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
             "page_switcher" -> {
                 val n = layout.pages.size
                 val i = ((p.x - r.x) / r.w * n).toInt().coerceIn(0, n - 1)
@@ -489,19 +543,19 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 if (c.wobble && bendOk) { bend(c, g, r, p); return }
                 val k = keyAt(c, r, p)
                 if (k != null && k != g.sub) {
-                    state.pressed.remove("${c.id}#${g.sub}")
+                    state.held.remove("${c.id}#${g.sub}")
                     fire(Target.Key(g.sub), false)
                     g.sub = k
-                    state.pressed["${c.id}#$k"] = true
+                    state.held["${c.id}#$k"] = true
                     fire(Target.Key(k), true)
                 }
             }
             "strum" -> {
                 val s = stringAt(c, r, p)
                 if (s != g.sub) {
-                    if (g.sub >= 0) { state.pressed.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
+                    if (g.sub >= 0) { state.held.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
                     g.sub = s ?: -1
-                    if (s != null) { state.pressed["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
+                    if (s != null) { state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
                 }
             }
             "knob" -> c.binding("value")?.let { turn(c, g, it, d.x - d.y) }
@@ -532,11 +586,11 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
             "button", "key", "label" -> pressBindings(c.id, c.bindings, false)
             "pad_grid" -> if (g.sub >= 0) pressBindings("${c.id}#${g.sub}", c.pads[g.sub].bindings, false)
             "keyboard" -> if (g.sub >= 0) {
-                state.pressed.remove("${c.id}#${g.sub}")
+                state.held.remove("${c.id}#${g.sub}")
                 fire(Target.Key(g.sub), false)
                 if (c.wobble && bendOk) input(mapOf("t" to "midi", "bytes" to listOf(0xE0, 0, 64)))
             }
-            "strum" -> if (g.sub >= 0) { state.pressed.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
+            "strum" -> if (g.sub >= 0) { state.held.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
             "knob", "slider", "xy_pad" -> {
                 state.pressed.remove(c.id)
                 state.bubbles.remove(c.id)
@@ -554,6 +608,9 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
 
     // ── drawing ───────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
+    // the controls on two layers, each re-recorded only when what it shows changes: the rest (buttons, knobs,
+    // labels; an offscreen layer, so other frames composite it as one texture) and the playing ones (keys,
+    // pads, strings: they change on every note and key LED, so a plain layer that is cheap to re-record)
     Canvas(
         modifier = Modifier
             .fillMaxSize()
@@ -574,13 +631,13 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                         }
                     }
                 }
-            },
+            }
+            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
     ) {
-        val redraw = state.ledFrame // read so the canvas redraws when the LEDs change
-        if (redraw < 0) return@Canvas
+        if (state.buttonLedFrame < 0 || (restKeyLeds && state.keyLedFrame < 0)) return@Canvas
         drawRect(C.bg)
-        val f = fitted ?: return@Canvas
-        val dr = Draw(this, density, measurer)
+        if (fitted == null) return@Canvas
+        val dr = Draw(this, density, ink)
         for (c in controls) {
             val r = rectOf(c) ?: continue
             when (c.type) {
@@ -588,23 +645,49 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
                 "knob" -> dr.knob(c, r, state)
                 "slider" -> dr.slider(c, r, state)
                 "xy_pad" -> dr.xy(c, r, state)
-                "pad_grid" -> dr.pads(c, r, state)
-                "keyboard" -> dr.keyboard(c, r, state, keyboardKeys(c, r), state.leds)
-                "strum" -> dr.strum(c, r, state)
                 "screen" -> dr.screenBezel(r, c.screenScale, shm?.valid == true, phase)
                 "label" -> dr.label(c, r)
                 "page_switcher" -> dr.switcher(c, r, layout, state.page)
-                "menu" -> dr.menu(r, state.pressed[c.id] == true)
             }
         }
+    }
+    Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
+        if (state.keyLedFrame < 0 || fitted == null) return@Canvas
+        val dr = Draw(this, density, ink)
+        for (c in controls) {
+            val r = rectOf(c) ?: continue
+            when (c.type) {
+                "pad_grid" -> dr.pads(c, r, state)
+                "keyboard" -> dr.keyboard(c, r, state, keyboardKeys(c, r), state.leds)
+                "strum" -> dr.strum(c, r, state)
+            }
+        }
+    }
+    // the firmware screen: a new engine frame (up to 60 a second) redraws only this layer
+    Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
+        if (state.screenFrame < 0 || shm == null || screenImage == null || !shm.valid) return@Canvas
+        val dr = Draw(this, density, ink)
+        for (c in controls) if (c.type == "screen") rectOf(c)?.let { dr.screenPixels(it, c.screenScale, screenImage) }
+    }
+    // ── menu: the Opling (Opling.kt), on its own layer ──
+    controls.firstOrNull { it.type == "menu" }?.let { m ->
+        rectOf(m)?.let { r ->
+            OplingMenuButton(
+                r.x, r.y, r.w, r.h,
+                pressed = { state.pressed[m.id] == true },
+                notesHeld = { state.held.size },
+                phase = phase, quarantined = quarantined, restarts = restarts,
+            )
+        }
+    }
+    // ── end menu ──
+    // fingers, value bubbles and the banner: redrawn on every finger move without touching the controls
+    Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
+        val f = fitted ?: return@Canvas
+        val dr = Draw(this, density, ink)
+        for ((id, t) in state.bubbles) controls.firstOrNull { it.id == id }?.let { c -> rectOf(c)?.let { dr.bubbleFor(c, it, t) } }
         for ((_, p) in state.fingers) dr.finger(p)
         if (!f.placement.fits) dr.banner("Doesn't fit this phone · tap for Classic")
-    }
-    // the firmware screen on its own layer: a new frame (up to 60 a second) redraws only this
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        if (state.screenFrame < 0 || shm == null || !shm.valid) return@Canvas
-        val dr = Draw(this, density, measurer)
-        for (c in controls) if (c.type == "screen") rectOf(c)?.let { dr.screenPixels(it, c.screenScale, shm) }
     }
     }
 }
@@ -624,23 +707,40 @@ private fun sendValueBytes(t: Target, v: Float): Map<String, Any>? = when (t) {
     else -> null
 }
 
+/**
+ * Text on the instrument in fixed dp (HANDOFF §11: fixed geometry, no dynamic type), with android Paints made
+ * once per style, so recording a frame never lays text out.
+ */
+private class Ink(private val d: Float) {
+    class Style(val paint: Paint, val dy: Float)
+
+    private val styles = HashMap<Int, Style>()
+
+    fun style(size: Float, mono: Boolean, weight: Int): Style =
+        styles.getOrPut((size * 10).roundToInt() * 10_000 + weight * 2 + (if (mono) 1 else 0)) {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                textSize = size * d
+                textAlign = Paint.Align.CENTER
+                typeface = Typeface.create(if (mono) Typeface.MONOSPACE else Typeface.SANS_SERIF, weight, false)
+            }
+            val fm = p.fontMetrics
+            Style(p, -(fm.ascent + fm.descent) / 2)
+        }
+}
+
 /** Draws in dp: every coordinate is multiplied by the density here. */
-private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
+private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
     fun Float.px() = this * d
     private fun off(x: Float, y: Float) = Offset(x.px(), y.px())
     private fun sz(w: Float, h: Float) = Size(w.px(), h.px())
     private fun rr(x: Float, y: Float, w: Float, h: Float, r: Float, color: Color) =
         s.drawRoundRect(color, off(x, y), sz(w, h), CornerRadius(r.px()))
 
-    fun text(t: String, cx: Float, cy: Float, size: Float, color: Color, mono: Boolean = false, bold: Boolean = true) {
+    fun text(t: String, cx: Float, cy: Float, size: Float, color: Color, mono: Boolean = false, weight: Int = 600) {
         if (t.isEmpty()) return
-        val style = TextStyle(
-            color = color, fontSize = size.sp,
-            fontFamily = if (mono) FontFamily.Monospace else FontFamily.SansSerif,
-            fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal,
-        )
-        val l = m.measure(t, style)
-        s.drawText(l, topLeft = Offset(cx.px() - l.size.width / 2f, cy.px() - l.size.height / 2f))
+        val st = ink.style(size, mono, weight)
+        st.paint.color = color.toArgb()
+        s.drawContext.canvas.nativeCanvas.drawText(t, cx.px(), cy.px() + st.dy, st.paint)
     }
 
     fun button(c: Control, r: Grid.Rect, st: SurfaceState, lit: Boolean) {
@@ -681,15 +781,20 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
             s.drawCircle(C.text, 2.6f * k * d, pt(135f + 270f * v, 10f))
         }
         text(c.label, cx, r.y + r.h - labelH / 2, 10f, if (active) C.fm else C.muted, mono = true)
-        st.bubbles[c.id]?.let { bubble(it, cx, cy - 34 * k) }
     }
 
-    fun bubble(t: String, cx: Float, cy: Float) {
-        val style = TextStyle(color = C.ink, fontSize = 10.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-        val l = m.measure(t, style)
-        val w = l.size.width / d + 12
+    /** A control's value bubble (overlay layer): above a knob's dial, above sliders and XY pads. */
+    fun bubbleFor(c: Control, r: Grid.Rect, t: String) {
+        if (c.type == "knob") {
+            val k = min(56f, min(r.w, r.h - 14f)) / 56f
+            bubble(t, r.cx, r.y + (r.h - 14f) / 2 - 34 * k)
+        } else bubble(t, r.cx, r.y - 4)
+    }
+
+    private fun bubble(t: String, cx: Float, cy: Float) {
+        val w = ink.style(10f, true, 700).paint.measureText(t) / d + 12
         rr(cx - w / 2, cy - 9, w, 18f, 6f, C.fm)
-        s.drawText(l, topLeft = Offset(cx.px() - l.size.width / 2f, cy.px() - l.size.height / 2f))
+        text(t, cx, cy, 10f, C.ink, mono = true, weight = 700)
     }
 
     fun slider(c: Control, r: Grid.Rect, st: SurfaceState) {
@@ -702,7 +807,6 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
             else rr(r.x, r.y, r.w * v, r.h, 14f, if (active) C.fmTint else C.sliderFill)
         } else if (active) rr(r.x, r.y, r.w, r.h, 14f, C.fmTint)
         text(c.label, r.cx, if (c.sliderVertical) r.y + r.h - 12 else r.cy, 10f, if (active) C.fm else C.muted, mono = true)
-        st.bubbles[c.id]?.let { bubble(it, r.cx, r.y - 4) }
     }
 
     fun xy(c: Control, r: Grid.Rect, st: SurfaceState) {
@@ -711,7 +815,6 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
         s.drawLine(C.lineSoft, off(r.cx, r.y + 8), off(r.cx, r.y + r.h - 8), 1f.px())
         s.drawLine(C.lineSoft, off(r.x + 8, r.cy), off(r.x + r.w - 8, r.cy), 1f.px())
         text(c.label, r.cx, r.y + 12, 10f, C.muted, mono = true)
-        st.bubbles[c.id]?.let { bubble(it, r.cx, r.y - 4) }
     }
 
     fun pads(c: Control, r: Grid.Rect, st: SurfaceState) {
@@ -722,7 +825,7 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
             val col = i % c.padCols
             val row = i / c.padCols
             if (row >= c.padRows) break
-            val pressed = st.pressed["${c.id}#$i"] == true
+            val pressed = st.held["${c.id}#$i"] == true
             val x = r.x + col * (pw + gap)
             val y = r.y + row * (ph + gap) + if (pressed) 2 else 0
             val base = if (pad.color == "default") C.raised else C.pad(pad.color)
@@ -733,7 +836,7 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
 
     fun keyboard(c: Control, r: Grid.Rect, st: SurfaceState, keys: List<Pair<Int, Grid.Rect>>, leds: Triple<Int, Int, Int>) {
         for ((k, kr) in keys) {
-            val pressed = st.pressed["${c.id}#$k"] == true
+            val pressed = st.held["${c.id}#$k"] == true
             val lit = (leds.second shr k) and 1 == 1
             val glow = (leds.third shr k) and 1 == 1
             val dy = if (pressed) 2f else 0f
@@ -769,7 +872,7 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
         val n = c.strings.size
         for (i in 0 until n) {
             val y = r.y + r.h - (i + 0.5f) * r.h / n
-            val pressed = st.pressed["${c.id}#$i"] == true
+            val pressed = st.held["${c.id}#$i"] == true
             s.drawLine(if (pressed) C.fm else C.text2, off(r.x + 8, y), off(r.x + r.w - 8, y), (if (pressed) 3f else 1.5f).px())
         }
     }
@@ -794,10 +897,10 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
         if (!live) text(if (phase == "safe_mode") "safe mode" else "booting…", b.x + b.side / 2, b.y + b.side / 2, 12f, C.muted, mono = true)
     }
 
-    fun screenPixels(r: Grid.Rect, scale: Int, shm: FirmwareShm) {
+    fun screenPixels(r: Grid.Rect, scale: Int, image: ImageBitmap) {
         val b = screenBox(r, scale)
         s.drawImage(
-            shm.bitmap.asImageBitmap(),
+            image,
             srcOffset = IntOffset.Zero, srcSize = IntSize(240, 240),
             dstOffset = IntOffset(b.x.px().roundToInt(), b.y.px().roundToInt()), dstSize = IntSize(b.sidePx, b.sidePx),
             filterQuality = FilterQuality.None,
@@ -819,37 +922,13 @@ private class Draw(val s: DrawScope, val d: Float, val m: TextMeasurer) {
         }
     }
 
-    /** The menu button: an Opling ("twins" form) in a 48 dp circle; moods come later. */
-    fun menu(r: Grid.Rect, pressed: Boolean) {
-        val side = min(48f, min(r.w, r.h))
-        val cx = r.cx
-        val cy = r.cy + if (pressed) 2 else 0
-        s.drawCircle(if (pressed) C.selected else C.raised, (side / 2).px(), off(cx, cy))
-        val sc = side / 48f * 0.62f
-        val ow = 22 * sc
-        val oh = 14 * sc
-        val gap = 3 * sc
-        for (col in 0..1) {
-            val x = cx - ow - gap / 2 + col * (ow + gap)
-            for (row in 0..1) {
-                val y = cy - oh - 1.25f * sc + row * (oh + 2.5f * sc)
-                rr(x, y, ow, oh, 4 * sc, if (row == 1) Color(0xFF93CF32) else C.fm)
-            }
-            // one eye on each top operator ("twins")
-            s.drawCircle(Color.White, (4 * sc).px(), off(x + ow / 2, cy - oh - 1.25f * sc + 2 * sc))
-            s.drawCircle(Color(0xFF17141F), (1.9f * sc).px(), off(x + ow / 2, cy - oh - 1.25f * sc + 2 * sc))
-        }
-    }
-
     fun finger(p: Offset) = s.drawCircle(C.fm.copy(alpha = 0.35f), 18f.px(), off(p.x, p.y), style = Stroke(2f.px()))
 
     fun banner(t: String) {
-        val style = TextStyle(color = C.ink, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-        val l = m.measure(t, style)
-        val w = l.size.width / d + 24
+        val w = ink.style(12f, false, 600).paint.measureText(t) / d + 24
         val cx = s.size.width / d / 2
         rr(cx - w / 2, 4f, w, 24f, 12f, C.warn)
-        s.drawText(l, topLeft = Offset(cx.px() - l.size.width / 2f, (16f).px() - l.size.height / 2f))
+        text(t, cx, 16f, 12f, C.ink)
     }
 
     /** FMutate.Style.pitch_color/1: hue 0..300 across the 88 keys. */

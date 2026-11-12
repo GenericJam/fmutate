@@ -25,6 +25,7 @@ class FirmwareShm(path: String) : Closeable {
     private val buf: MappedByteBuffer =
         file.channel.map(FileChannel.MapMode.READ_ONLY, 0, minOf(file.length(), BYTES.toLong()))
     private val hasTrailer = file.length() >= BYTES
+    private val pixels = buf.duplicate().apply { position(minOf(capacity(), PIXELS)); limit(minOf(capacity(), PIXELS + W * H * 2)) }.slice()
     private var seq = Int.MIN_VALUE
 
     init {
@@ -36,16 +37,17 @@ class FirmwareShm(path: String) : Closeable {
     /** The screen as last copied; replaced in place by poll(). */
     val bitmap: Bitmap = Bitmap.createBitmap(W, H, Bitmap.Config.RGB_565)
 
-    /** Copies a new frame into [bitmap] if the engine wrote one. True when the pixels changed. */
+    /**
+     * Copies a new frame into [bitmap] only if the engine's frame counter moved since the last copy (no
+     * allocation). True when the pixels changed.
+     */
     fun poll(): Boolean {
         if (!valid) return false
         val s = buf.getInt(4)
         if (s == seq) return false
         // Android's RGB_565 is the same little-endian 5-6-5 the engine writes: a straight copy
-        val px = buf.duplicate()
-        px.position(PIXELS)
-        px.limit(PIXELS + W * H * 2)
-        bitmap.copyPixelsFromBuffer(px.slice())
+        pixels.rewind()
+        bitmap.copyPixelsFromBuffer(pixels)
         seq = s
         return true
     }

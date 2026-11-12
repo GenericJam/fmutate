@@ -27,7 +27,10 @@ defmodule FMutate.InstrumentView do
       fb: view.fb,
       phase: to_string(view.phase),
       master: view.master,
-      bend: pitch_bend?(view.firmware)
+      bend: pitch_bend?(view.firmware),
+      # the Opling's mood (docs/design/creature.md)
+      quarantined: view.quarantined,
+      restarts: view.restarts
     }
   end
 
