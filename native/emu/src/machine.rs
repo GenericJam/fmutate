@@ -13,6 +13,18 @@ const SECTOR: usize = 4096;
 const RECORD: usize = 4 + SECTOR;
 /// fm1-emu's matrix ids: buttons 0..13 (the engine wire's order), note keys 14..40 (F3..G5).
 const KEY_BASE: u8 = 14;
+
+/// Key 0 = F3 .. 26 = G5 (the engine wire's numbers, docs/engine_protocol.md): its matrix id.
+pub fn key_id(k: u8) -> Option<u8> {
+    (k < 27).then_some(KEY_BASE + k)
+}
+
+/// 0 OCT- 1 OCT+ 2 FX 3 SEL 4 ENV 5 LFO 6 EDIT 7 GLO 8 HOME 9 SAVE 10 ARP 11 SEQ 12 PLAY 13 REC: fm1-emu's button
+/// ids are the same.
+pub fn button_id(b: u8) -> Option<u8> {
+    (b < KEY_BASE).then_some(b)
+}
+
 /// The MASTER pot's ADC channel.
 const MASTER_ADC: u8 = 4;
 /// LED on-fractions: the matrix lights a column at a time, so a fully lit LED is on about 1/11 of the time
@@ -66,26 +78,26 @@ impl Machine {
         self.soc.periph.ms()
     }
 
+    /// Emulated CPU cycles since boot (the emulated clock).
+    pub fn cycles(&self) -> u64 {
+        self.soc.periph.cycles
+    }
+
+    /// `ms` of emulated time in CPU cycles.
+    pub fn cycles_of_ms(&self, ms: u64) -> u64 {
+        self.soc.periph.cycle_of_ms(ms)
+    }
+
     /// Frames the DAC has clocked since boot (44117.6 Hz of emulated time, whether the firmware plays or not).
     pub fn dac_frames(&self) -> u64 {
         self.soc.periph.audio_frames_so_far()
     }
 
-    // ---- the panel, in the engine wire's numbers (docs/engine_protocol.md)
+    // ---- the panel
 
-    /// Key 0 = F3 .. 26 = G5.
-    pub fn key(&mut self, k: u8, down: bool) {
-        if k < 27 {
-            self.soc.periph.apply(&Action::Key { id: KEY_BASE + k, down });
-        }
-    }
-
-    /// 0 OCT- 1 OCT+ 2 FX 3 SEL 4 ENV 5 LFO 6 EDIT 7 GLO 8 HOME 9 SAVE 10 ARP 11 SEQ 12 PLAY 13 REC: fm1-emu's
-    /// button ids are the same.
-    pub fn button(&mut self, b: u8, down: bool) {
-        if b < KEY_BASE {
-            self.soc.periph.apply(&Action::Key { id: b, down });
-        }
+    /// A key or button (its matrix id: key_id, button_id) closed or open, from now.
+    pub fn press(&mut self, id: u8, down: bool) {
+        self.soc.periph.apply(&Action::Key { id, down });
     }
 
     /// 0 SELECT 1 ALGORITHM 2-5 KNOB1-4 6 PRESETS (fm1-emu's encoder numbers are the same); + = clockwise.
