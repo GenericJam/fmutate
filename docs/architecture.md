@@ -108,6 +108,23 @@ flowchart LR
   slide on a held key sends pitch bend instead of playing the next key; half a key width is the strip's
   `bend_range` (a quarter tone by default, 1 or 2 semitones), scaled on the assumption that the firmware's own
   bend range is ±2 semitones (every OberVave/ShineOn factory program). Only changes are sent; release recentres.
+- **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
+  presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
+  (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
+
+## Inputs: what can lose a press, and how to see it
+
+| Where | What went wrong | Now |
+|---|---|---|
+| Engines | A press and its release in one batch of port messages were applied before the firmware scanned its keys (keys always; buttons on a double tap; everything in the emulator, worst when it runs slow) | Each key/button edge is queued and spaced 16 ms of firmware time (`docs/engine_protocol.md` "Panel edges") |
+| Surface | A finger whose lift Android never delivered (a cancelled gesture, a sheet or another screen over the instrument) kept its key/button held, and a held function button is a firmware layer: other buttons then do other jobs | One pointer loop for the surface's lifetime; every event checks that each grabbed finger is still down and lets go of those that aren't; leaving the surface lets go of everything. Each such release is reported |
+| Instance | Inputs while no engine is ready (booting, restarting) are dropped | Unchanged (the new engine starts with nothing held), but journaled |
+
+When something seems stuck: I/O → Developer shows what the firmware holds now, the surface's last reports
+("stale_fingers"), and **Release all** (up for every held key and button, MIDI all notes off, pitch bend centred,
+volume full). From a computer: `mise exec -- mix run --no-start tools/rpc.exs <serial> 'FMutate.Instance.journal("a", 50)'`
+lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :noted}` (kinds `:in`, `:surface`,
+`:engine`), and `FMutate.Instance.held("a")` the held keys and buttons.
 
 ## Measured (Moto G Power 2021, SD662, Android 11)
 
