@@ -33,8 +33,8 @@ Elixir → engine:
 
 | Op | Payload | Meaning |
 |---|---|---|
-| `0x01` | `key:u8 down:u8` | key 0..26 (0 = F3 … 26 = G5); FM-1 keys carry no velocity |
-| `0x02` | `button:u8 down:u8` | 0 oct_down 1 oct_up 2 fx 3 sel 4 env 5 lfo 6 edit 7 glo 8 home 9 save 10 arp 11 seq 12 play 13 rec |
+| `0x01` | `key:u8 down:u8` | key 0..26 (0 = F3 … 26 = G5); FM-1 keys carry no velocity. Spaced per key (panel edges, below) |
+| `0x02` | `button:u8 down:u8` | 0 oct_down 1 oct_up 2 fx 3 sel 4 env 5 lfo 6 edit 7 glo 8 home 9 save 10 arp 11 seq 12 play 13 rec. Spaced per button (panel edges, below) |
 | `0x03` | `enc:u8 clicks:i8` | 0 select 1 algorithm 2-5 knob1-4 6 presets; + = clockwise |
 | `0x04` | `status:u8 d1:u8 d2:u8` | MIDI into the firmware's MIDI in, now |
 | `0x05` | `master:u16` | MASTER pot 0..1024 (1024 = unity) |
@@ -50,6 +50,28 @@ Engine → Elixir:
 | `0x81` | `ms:u32` | READY |
 | `0x82` | `ms:u32 fill:u32 fb_seq:u32 led_buttons:u32 led_keys:u32 glow_keys:u32` | STATUS every 100 ms of wall time. No STATUS for 1 s = hung: kill -9. `ms` against wall time is the firmware's speed, `fill` the ring's fill when sent |
 | `0x84` | `bytes:u32` | FLASH_SAVED |
+
+### Panel edges (`0x01`, `0x02`)
+
+The engine reads whatever port messages have arrived at once, so a press and its release (a quick tap, a busy
+phone, a slow firmware) can reach it together, between two of the firmware's looks at its panel; applied as they
+come, the firmware would never see the press. Both engines therefore queue each key's and each button's edges in
+order and put each on the panel only once that input's previous edge has been there for **16 ms of firmware time**
+(the native engine counts the firmware's main-loop passes, one per millisecond; the emulator engine the emulated
+CPU clock), so a slow engine spaces them as a fast one does. An edge with nothing queued before it, on an input
+steady for 16 ms, is applied at once: no added latency. Inputs are independent: OCT− and OCT+ tapped together
+are down in the same scan (OberVave's and Shine On's "both: octave 0"). An edge that doesn't change the state the
+input is heading to is dropped; past 32 queued edges on one input, a new one cancels the last one queued (the
+state still ends where the port left it).
+
+Why 16 ms: the firmwares debounce their own matrix (`hal/fm1_input.h`, Felucca's): a press counts after
+`FM1_DEB_PRESS` (2) frames of the 11-column scan (~1.1 ms a frame) closed, a release after `FM1_DEB_RELEASE` (8)
+frames open, up to ~10 ms with the scan's phase. In the emulator engine the firmware runs that scan on fm1-emu's
+matrix, which shows a key exactly from its press to its release (`fm1-soc` `periph.rs`), so a release shorter than
+that is never seen and a quick second tap merges with the first. The native cartridges read `fm1_in` every pass,
+and 16 passes give each edge what the device gives it (a debounced key is down ≥ ~9 ms however short the touch).
+16 ms leaves a margin over both and is shorter than any human double tap. Code: `native/engine/live.c` (in the
+cartridge, before each pass; it replaces the cartridge's old tap latch for buttons) and `native/emu/src/edges.rs`.
 
 ## `<prefix>.ring` (little-endian)
 
@@ -87,8 +109,9 @@ SoC, the screen, the panel matrix, the DAC), with everything above unchanged: ar
 What differs inside:
 
 - **Panel**: keys go to fm1-emu's matrix ids 14 + key, buttons to the same numbers (fm1-emu's ids 0..13 are the
-  wire's order), encoders the same numbers; MASTER 0..1024 sets the pot's ADC (channel 4) to 0..1023 and the
-  firmware applies its own curve. MASTER is at unity until set, as in the native engine.
+  wire's order), spaced as above (between emulator slices, on the emulated clock); encoders the same numbers;
+  MASTER 0..1024 sets the pot's ADC (channel 4) to 0..1023 and the firmware applies its own curve. MASTER is at
+  unity until set, as in the native engine.
 - **MIDI** goes in byte by byte through the emulated MIDI IN jack (a message's own length: a program change is
   two bytes). Timed MIDI is delivered when the emulator's output reaches the frame (less `MIDI_LEAD`), so it lands
   within a DMA half of the firmware's.

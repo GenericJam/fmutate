@@ -14,9 +14,11 @@
 //! runs the package flat out for `seconds` of emulated time (10), holding the keys (C major: 7 11 14) from
 //! the second second on, and reports how much faster than real time it ran and its loudest sample.
 
+mod edges;
 mod machine;
 mod sys;
 
+use edges::Edges;
 use machine::Machine;
 use std::ffi::c_int;
 use std::sync::atomic::{AtomicI64, AtomicU32, AtomicU64, Ordering};
@@ -69,6 +71,8 @@ struct Engine {
     ring_data: &'static mut [i16],
     /// MIDI scheduled at mixer frames (op 0x06), delivered when the emulator reaches that ring index.
     q: Vec<Timed>,
+    /// The panel's key and button edges, each input's spaced in emulated time (edges.rs).
+    edges: Edges,
     /// The firmware's audio not yet in the ring (interleaved stereo).
     pend: Vec<i16>,
     hang: bool,
@@ -115,8 +119,8 @@ impl Engine {
 
     fn handle(&mut self, m: &[u8]) {
         match (m.first(), m.len()) {
-            (Some(0x01), 3..) => self.m.key(m[1], m[2] != 0),
-            (Some(0x02), 3..) => self.m.button(m[1], m[2] != 0),
+            (Some(0x01), 3..) => self.panel(machine::key_id(m[1]), m[2] != 0),
+            (Some(0x02), 3..) => self.panel(machine::button_id(m[1]), m[2] != 0),
             (Some(0x03), 3..) => self.m.enc(m[1], m[2] as i8),
             (Some(0x04), 4..) => self.m.midi(m[1], m[2], m[3]),
             (Some(0x05), 3..) => self.m.master(u16::from_be_bytes([m[1], m[2]])),
@@ -133,6 +137,14 @@ impl Engine {
             (Some(0x11), _) => self.hang = true,
             (Some(op), _) => eprintln!("fm1emu: unknown op 0x{op:02x}"),
             (None, _) => {}
+        }
+    }
+
+    fn panel(&mut self, id: Option<u8>, down: bool) {
+        if let Some(id) = id {
+            if self.edges.push(id, down, self.m.cycles()) {
+                self.m.press(id, down);
+            }
         }
     }
 
@@ -176,6 +188,8 @@ impl Engine {
                     std::hint::spin_loop(); // (debug: as if the firmware's loop never came back)
                 }
             }
+            let Engine { m, edges, .. } = self;
+            edges.due(m.cycles(), |id, down| m.press(id, down));
             if let Err(e) = self.m.run(SLICE) {
                 eprintln!("fm1emu: the firmware halted: {e}");
                 let _ = self.save_flash();
@@ -245,6 +259,7 @@ fn main() {
     };
 
     let flash_rev = m.flash_revision();
+    let edges = Edges::new(m.cycles_of_ms(edges::GAP_MS));
     let mut e = Engine {
         m,
         port,
@@ -252,6 +267,7 @@ fn main() {
         ring,
         ring_data,
         q: Vec::new(),
+        edges,
         pend: Vec::new(),
         hang: false,
         flash_rev,
@@ -383,7 +399,9 @@ fn bench(args: &[String]) {
             held = true;
             (t_held, c_held, ms_held) = (sys::now_s(), sys::cpu_s(), m.ms());
             for &k in &keys {
-                m.key(k, true);
+                if let Some(id) = machine::key_id(k) {
+                    m.press(id, true);
+                }
             }
         }
         if let Err(e) = m.run(SLICE) {

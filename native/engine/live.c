@@ -53,6 +53,67 @@ static void fm1c_pass(void)                     /* one pass of the main loop (th
     sem_wait(&run_caller);
 }
 
+/* ---- the panel's keys and buttons, as the device's debounced matrix delivers them. Input comes in batches (a
+ * port read), so a press and its release can arrive together, between two passes: applied at once, the main loop
+ * would never see the press. Each input's edges are applied in order, each one once the input's previous edge has
+ * been in place for EDGE_GAP_MS passes of the main loop (firmware milliseconds); an edge with none pending before
+ * it, on an input that has been steady that long, is applied at once. Inputs are independent: OCT- and OCT+
+ * tapped together are down in the same pass (the firmwares' "both: octave 0").
+ * 16 ms: what the firmwares' own scan needs to see an edge, with a margin. Their hal/fm1_input.h (Felucca's)
+ * debounces in frames of the 11-column scan (~1.1 ms): a press counts after FM1_DEB_PRESS (2) frames closed, a
+ * release after FM1_DEB_RELEASE (8) frames open, up to ~10 ms with the scan's phase. In the emulator engine
+ * (native/emu, the same gap) the firmware runs that scan on the emulated matrix, so a shorter release is never
+ * seen; here, where the main loop reads the panel every pass, it gives each edge the time the device gives it (a
+ * debounced key is down >= ~9 ms however short the touch). Shorter than any human double tap, so only edges that
+ * arrive together wait. Ids as fm1-emu's matrix: 0..13 buttons, 14..40 keys. */
+#define EDGE_GAP_MS 16u
+#define EDGE_NIN 41u
+#define EDGE_KEY0 14u
+#define EDGE_QMAX 32u                           /* edges an input holds back (16 taps, ~0.5 s) */
+static struct { uint32_t at; uint8_t on, n; } edge[EDGE_NIN];   /* `on` since the pass after fm1_ms `at`; n flips queued */
+static uint64_t edge_pending;                   /* bit i: edge[i].n > 0 */
+
+static void edge_apply(uint32_t i, uint32_t down)
+{
+    uint32_t bit = i >= EDGE_KEY0 ? 1u << (i - EDGE_KEY0) : 1u << i;
+    edge[i].on = (uint8_t)down;
+    edge[i].at = fm1_ms;
+    if (i >= EDGE_KEY0) {
+        if (down) fm1_in.notes |= bit;
+        else fm1_in.notes &= ~bit;
+    } else if (down) {
+        fm1_in.buttons |= bit;
+        host_edges |= bit;                      /* (fm1_input_edges: pressed and released since the last call) */
+    } else {
+        fm1_in.buttons &= ~bit;
+        host_rel |= bit;
+    }
+}
+static int edge_settled(uint32_t i) { return fm1_ms - edge[i].at >= EDGE_GAP_MS; }
+static void edge_in(uint32_t i, uint32_t down)
+{
+    down = down != 0u;
+    if (down == (edge[i].on ^ (edge[i].n & 1u))) return;   /* (the state it is already going to) */
+    if (!edge[i].n && edge_settled(i))
+        edge_apply(i, down);
+    else if (edge[i].n < EDGE_QMAX) {
+        edge[i].n++;
+        edge_pending |= 1ull << i;
+    } else
+        edge[i].n--;                            /* (full: it cancels the last one queued; the state still ends right) */
+}
+static void edges_due(void)                     /* before each pass */
+{
+    uint64_t p = edge_pending;
+    while (p) {
+        uint32_t i = (uint32_t)__builtin_ctzll(p);
+        p &= p - 1u;
+        if (!edge_settled(i)) continue;
+        edge_apply(i, !edge[i].on);
+        if (!--edge[i].n) edge_pending &= ~(1ull << i);
+    }
+}
+
 /* ---- the clock: audio in the ISR's 256-frame blocks, the main loop every millisecond (as web/sim/sim.c) */
 static int32_t blk[2u * HALF_FRAMES];
 static uint32_t blk_pos = HALF_FRAMES, ms_acc;
@@ -60,7 +121,9 @@ static int32_t master_q12 = 4096;
 
 EXPORT int fm1c_init(void)                      /* boot; call once. 0 = ok */
 {
+    uint32_t i;
     if (booted) return -1;
+    for (i = 0; i < EDGE_NIN; i++) edge[i].at = fm1_ms - EDGE_GAP_MS;   /* (all settled) */
     sem_init(&run_app, 0, 0);
     sem_init(&run_caller, 0, 0);
     if (pthread_create(&app_thread, 0, app_run, 0)) return -1;
@@ -85,8 +148,9 @@ EXPORT void fm1c_render(int16_t *out, uint32_t n)   /* n stereo frames, interlea
         out[2u * i] = (int16_t)blk[2u * blk_pos];
         out[2u * i + 1u] = (int16_t)blk[2u * blk_pos + 1u];
         blk_pos++;
-        if ((ms_acc += 1000u) >= FS) {           /* a millisecond: the clock, then a pass of the main loop */
+        if ((ms_acc += 1000u) >= FS) {           /* a millisecond: the panel, the clock, then a pass of the main loop */
             ms_acc -= FS;
+            edges_due();
             fm1_ms++;
             fm1c_pass();
         }
@@ -102,22 +166,12 @@ EXPORT void fm1c_master(uint32_t k10)           /* MASTER, 0..1024 (the device's
 /* ---- the panel (web/sim/sim.c's) */
 EXPORT void fm1c_key(uint32_t k, uint32_t down) /* the 27 keys: 0 = F3 .. 26 = G5 */
 {
-    if (k >= 27u) return;
-    if (down) fm1_in.notes |= 1u << k;
-    else fm1_in.notes &= ~(1u << k);
+    if (k < 27u) edge_in(EDGE_KEY0 + k, down);
 }
 EXPORT void fm1c_button(uint32_t b, uint32_t down)  /* 0 OCT- 1 OCT+ 2 FX 3 SEL 4 ENV 5 LFO 6 EDIT 7 GLO 8 HOME 9 SAVE
                                                        10 ARP 11 SEQ 12 PLAY 13 REC */
 {
-    if (b >= 14u) return;
-    if (down) {
-        fm1_in.buttons |= 1u << b;
-        host_edges |= 1u << b;
-    } else {
-        fm1_in.buttons &= ~(1u << b);
-        if (host_edges >> b & 1u) host_rel_next |= 1u << b;   /* pressed and let go before the app saw it: a tap */
-        else host_rel |= 1u << b;
-    }
+    if (b < 14u) edge_in(b, down);
 }
 EXPORT void fm1c_enc(uint32_t e, int32_t steps) /* 0 SELECT 1 ALGORITHM 2-5 KNOB 1-4 6 PRESETS; + = clockwise */
 {
