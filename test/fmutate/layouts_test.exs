@@ -57,12 +57,12 @@ defmodule FMutate.LayoutsTest do
     end
 
     test "a saved layout comes back for its instance and firmware only" do
-      # (7, 1) is free in the classic layout, beside FX
-      {:ok, l} = LayoutEdit.move(Layouts.current("a", "obervave"), "fx", 7, 1)
+      # (11, 0) is free in the classic layout (the room right of KNOB4)
+      {:ok, l} = LayoutEdit.move(Layouts.current("a", "obervave"), "fx", 11, 0)
       assert :ok = Layouts.save("a", "obervave", l)
 
       assert Layouts.current("a", "obervave") |> LayoutEdit.find("fx") |> elem(1) |> Map.get("at") ==
-               LayoutEdit.cell(7, 1, 1, 1)
+               LayoutEdit.cell(11, 0, 1, 1)
 
       # another firmware, another instance: still classic
       assert Layouts.current("a", "shineon") |> LayoutEdit.find("fx") |> elem(1) |> get_in(["at", "col"]) == 8

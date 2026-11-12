@@ -269,6 +269,9 @@ defmodule FMutate.Editor do
   def ui(:tap, {:editor, {:kb_vel_min, n}}, _v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "min", n)}) end)
 
+  def ui(:change, {:editor, :kb_swell}, v, socket),
+    do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "swell", v == true)}) end)
+
   def ui(:change, {:editor, :kb_colors}, v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"pitch_colors" => v == true}) end)
 
@@ -871,8 +874,14 @@ defmodule FMutate.Editor do
   defp page_targets(layout, bound) do
     targets = [{"Previous page", "prev"}, {"Next page", "next"}] ++ for(p <- layout["pages"], do: {p["name"], p["id"]})
     chips = for {name, ref} <- targets, to = %{"page" => ref}, do: chip("go to: " <> name, {:toggle_target, to}, on: to in bound)
+    bend = %{"action" => "bend"}
 
-    [wrap(chips, 6), caption("Any button, pad or key can switch pages. Held notes keep sounding.")]
+    [
+      wrap(chips, 6),
+      caption("Any button, pad or key can switch pages. Held notes keep sounding."),
+      wrap([chip("bend keys", {:toggle_target, bend}, on: bend in bound)], 6),
+      caption("Keyboard strips bend instead of glissando while this is held (or on, as a toggle).")
+    ]
   end
 
   defp strum_settings(c) do
@@ -910,7 +919,7 @@ defmodule FMutate.Editor do
     {from, to} = kb_range(c)
     arrows = Map.get(kb, "octave_arrows", true)
     wobble = kb["glide"] == "wobble"
-    bend = kb["bend_range"] || 2
+    bend = kb["bend_range"] || 0.5
     vertical = kb["orientation"] == "vertical"
     colors = kb["pitch_colors"] == true
     whites = whites(from, to)
@@ -934,11 +943,15 @@ defmodule FMutate.Editor do
     custom = button("Custom", :close, on: custom_on, disabled: true)
     status_color = if width < 40, do: :warn, else: :fm
     comfort = if width < 40, do: "tight: under 40 pt", else: "comfortable on this phone"
-    bend_buttons = for r <- [1, 2, 7, 12], do: button("±#{r}", {:kb_bend, r}, on: bend == r, disabled: not (assigns.bend and wobble))
+    bend_buttons =
+      for {r, name} <- [{0.5, "¼ tone"}, {1, "1 semitone"}, {2, "2 semitones"}],
+          do: button("±" <> name, {:kb_bend, r}, on: bend == r, disabled: not assigns.bend)
+
     vel = velocity(c)
     vel_source = vel["source"] || "fixed"
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
+    swell = vel["swell"] != false
 
     children = [
       title("Keyboard strip"),
@@ -957,9 +970,9 @@ defmodule FMutate.Editor do
       </Row>
       """,
       toggle("Octave arrows", "Slide the strip along the FM-1’s 27 keys. Past either end they press the firmware’s OCT− / OCT+.", :kb_arrows, arrows),
-      toggle("Wobble keys", "Hold a key and slide sideways to bend it. Sliding no longer plays the next key." <>
+      toggle("Bend keys", "Hold a key and slide sideways to bend it. Sliding no longer plays the next key. A BEND toggle on the instrument does the same for every strip." <>
         if(assigns.bend, do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend."), :kb_wobble, wobble and assigns.bend, disabled: not assigns.bend),
-      section("Bend range · one key-width of slide = full range · sends MIDI pitch bend"),
+      section("Bend · half a key width of slide = the full bend · assumes the firmware's bend range is ±2"),
       ~MOB"""
       <Row gap={4} padding={4} background={c(:bg)}>
         {bend_buttons}
@@ -978,6 +991,8 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
+      toggle("Swell", "Strike position only: slide a held key toward the front to get louder, back to get softer. It moves the firmware's volume (CC7), so every sounding note swells together.",
+        :kb_swell, swell and vel_source == "position", disabled: vel_source != "position"),
       toggle("Vertical", "A side keyboard: low notes at the bottom.", :kb_vertical, vertical),
       toggle("Pitch colours", "Key caps carry the 88-key colour; a vertical strip gets the colour rail to scroll it.", :kb_colors, colors),
       ~MOB"""
@@ -1011,11 +1026,16 @@ defmodule FMutate.Editor do
   defp describe(%{"pot" => _}), do: "MASTER"
   defp describe(%{"button" => b}), do: button_name(b)
   defp describe(%{"midi" => %{"type" => "note"} = m}), do: "note #{note_name(m["number"] || 0)} · ch#{m["channel"] || 1}"
-  defp describe(%{"midi" => %{"type" => "cc"} = m}), do: "CC#{m["number"] || 0} · ch#{m["channel"] || 1}" <> if(m["jump"], do: " · jump", else: "")
+  defp describe(%{"midi" => %{"type" => "cc"} = m}) do
+    values = if Map.has_key?(m, "on") or Map.has_key?(m, "off"), do: " · #{m["on"] || 127}/#{m["off"] || 0}", else: ""
+    "CC#{m["number"] || 0} · ch#{m["channel"] || 1}" <> values <> if(m["jump"], do: " · jump", else: "")
+  end
+
   defp describe(%{"midi" => m}), do: "MIDI #{m["type"]}"
   defp describe(%{"page" => "next"}), do: "go to: next"
   defp describe(%{"page" => "prev"}), do: "go to: previous"
   defp describe(%{"page" => p}), do: "go to: #{p}"
+  defp describe(%{"action" => "bend"}), do: "bend keys"
   defp describe(other), do: inspect(other)
 
   defp encoder_name(e) when e in [:algorithm, "algorithm"], do: "ALGO"

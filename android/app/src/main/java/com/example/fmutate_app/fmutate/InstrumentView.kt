@@ -139,6 +139,8 @@ private const val EDIT_HOLD_MS = 600L
 private const val STILL_DP = 4f
 private const val POT_RANGE_DP = 200f
 private const val ARROW_DP = 36f
+/** The firmware's own pitch-bend range (OberVave's and ShineOn's BEND in every factory program). */
+private const val FIRMWARE_BEND_ST = 2f
 
 /** What one finger is doing: it belongs to the control it first touched until it lifts (rule 1). */
 private class Grab(
@@ -157,6 +159,8 @@ private class Grab(
     var longFired = false
     var note = -1                // velocity strips: the MIDI note this finger sounds (-1: a firmware key press)
     var vel = 0                  // and the velocity it struck with (a glissando keeps it)
+    var cc7 = -1                 // the volume this finger's swell last sent
+    var bendRaw = 8192           // the pitch bend this finger last sent
 }
 
 /** A keyboard strip's key rects for one window of firmware keys in one rect. */
@@ -177,6 +181,7 @@ private class SurfaceState {
     var keyLedFrame by mutableIntStateOf(0)                // bumps when a key LED changes
     var leds = Triple(0, 0, 0)                             // replaced only when an LED changes
     var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
+    var bendOn by mutableStateOf(false)                    // the surface's BEND toggle: keyboard strips bend
 }
 
 /**
@@ -361,10 +366,15 @@ private fun InstrumentSurface(
             }
             is Target.Midi -> when (t.type) {
                 "note" -> input(mapOf("t" to "midi", "bytes" to listOf((if (down) 0x90 else 0x80) or (t.channel - 1), t.number, if (down) 100 else 0)))
-                // a pedal: 127 while pressed (or toggled on), 0 on release
-                "cc" -> input(mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, if (down) 127 else 0)))
+                // a CC on a button: its `on` value while pressed (or toggled on); on release its `off` value, or the
+                // value a knob/slider of this layout last set for that CC (so a long-release toggle gives it back)
+                "cc" -> {
+                    val v = if (down) t.on else t.absoluteKey?.let { state.values[it] }?.let { (it * 127).roundToInt() } ?: t.off
+                    input(mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, v.coerceIn(0, 127))))
+                }
                 else -> {}
             }
+            is Target.Action -> if (t.id == "bend") state.bendOn = down
             is Target.Page -> if (down) goPage(t.ref)
             is Target.Encoder -> if (down) input(mapOf("t" to "encoder", "id" to t.id, "clicks" to if (t.invert) -1 else 1))
             Target.Pot -> {}
@@ -376,6 +386,13 @@ private fun InstrumentSurface(
         fire(t, false)
     }
 
+    /** Swell: MIDI CC7 (the firmware's volume, every sounding note) follows the held finger front/back. */
+    fun swellTo(g: Grab, v: Int) {
+        if (v == g.cc7) return
+        g.cc7 = v
+        input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, v.coerceIn(0, 127))))
+    }
+
     /**
      * A keyboard strip's key down: a velocity strip plays a MIDI note (FM-1 key 0 = F3 = MIDI 53, plus its own
      * octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
@@ -385,6 +402,7 @@ private fun InstrumentSurface(
         if (c.strikeVelocity && !layerHeld) {
             g.note = (53 + k + 12 * state.noteOct).coerceIn(0, 127)
             input(mapOf("t" to "midi", "bytes" to listOf(0x90, g.note, g.vel.coerceIn(1, 127))))
+            if (c.velSwell && g.cc7 < 0) swellTo(g, g.vel)
         } else {
             g.note = -1
             fire(Target.Key(k), true)
@@ -395,6 +413,9 @@ private fun InstrumentSurface(
         if (g.note >= 0) input(mapOf("t" to "midi", "bytes" to listOf(0x80, g.note, 0))) else fire(Target.Key(k), false)
         g.note = -1
     }
+
+    /** Keyboard strips bend instead of glissando: their own glide setting, or the surface's BEND toggle. */
+    fun bends(c: Control) = (c.wobble || state.bendOn) && bendOk
 
     /** Press bindings of a button-like thing (a button, a single key, a pad). */
     fun pressBindings(key: String, bindings: List<Binding>, down: Boolean) {
@@ -541,12 +562,19 @@ private fun InstrumentSurface(
         return i
     }
 
+    /**
+     * Bend: half a key width of sideways slide is the strip's full bend ([Control.bendRange] semitones, a quarter
+     * tone by default), so the finger never leaves its key. MIDI pitch bend is relative to the firmware's own bend
+     * range, taken as ±2 semitones (OberVave's and ShineOn's factory programs).
+     */
     fun bend(c: Control, g: Grab, r: Grid.Rect, p: Offset) {
         val keys = keyboardKeys(c, r)
         val ww = keys.firstOrNull { !isBlack(it.first) }?.second?.let { if (c.vertical) it.h else it.w } ?: return
         val along = if (c.vertical) g.start.y - p.y else p.x - g.start.x
-        val v = (along / ww).coerceIn(-1f, 1f)
+        val v = (along / (ww / 2)).coerceIn(-1f, 1f) * (c.bendRange / FIRMWARE_BEND_ST).coerceAtMost(1f)
         val raw = (8192 + v * 8191).roundToInt().coerceIn(0, 16383)
+        if (raw == g.bendRaw) return
+        g.bendRaw = raw
         input(mapOf("t" to "midi", "bytes" to listOf(0xE0, raw and 0x7F, raw shr 7)))
     }
 
@@ -650,7 +678,8 @@ private fun InstrumentSurface(
             "keyboard" -> {
                 if (g.sub == RAIL_GRAB) { state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 if (g.sub < 0) return
-                if (c.wobble && bendOk) { bend(c, g, r, p); return }
+                if (g.note >= 0 && c.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
+                if (bends(c)) { bend(c, g, r, p); return }
                 val k = keyAt(c, r, p)
                 if (k != null && k != g.sub) {
                     state.held.remove("${c.id}#${g.sub}")
@@ -698,7 +727,7 @@ private fun InstrumentSurface(
             "keyboard" -> if (g.sub >= 0) {
                 state.held.remove("${c.id}#${g.sub}")
                 keyOff(g, g.sub)
-                if (c.wobble && bendOk) input(mapOf("t" to "midi", "bytes" to listOf(0xE0, 0, 64)))
+                if (bends(c)) input(mapOf("t" to "midi", "bytes" to listOf(0xE0, 0, 64)))
             }
             "strum" -> if (g.sub >= 0) { state.held.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
             "knob", "slider", "xy_pad" -> {
@@ -726,7 +755,13 @@ private fun InstrumentSurface(
         if (state.toggles[c.id] == true) c.bindings.filter { it.mode == "toggle" }.map { it.to } else emptyList()
     }
     LaunchedEffect(phase) { if (phase == "running") toggled().forEach { fire(it, true) } }
-    DisposableEffect(state) { onDispose { toggled().forEach { fire(it, false) } } }
+    DisposableEffect(state) {
+        onDispose {
+            toggled().forEach { fire(it, false) }
+            // a swell leaves the firmware's volume where the last finger was: full again
+            if (hasVelocityStrip) input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
+        }
+    }
 
     // ── drawing ───────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {

@@ -84,8 +84,11 @@
               "type": { "enum": ["note", "cc", "pitch_bend"] },
               "channel": { "type": "integer", "minimum": 1, "maximum": 16, "default": 1 },
               "number": { "type": "integer", "minimum": 0, "maximum": 127 },
-              "jump": { "type": "boolean", "default": false, "description": "CC only: slider jumps to touch position." } } } }, "additionalProperties": false },
-        { "type": "object", "required": ["page"], "properties": { "page": { "type": "string", "description": "'next', 'prev', or a page id." } }, "additionalProperties": false }
+              "jump": { "type": "boolean", "default": false, "description": "CC only: slider jumps to touch position." },
+              "on": { "type": "integer", "minimum": 0, "maximum": 127, "default": 127, "description": "CC on a button: the value sent while pressed or toggled on." },
+              "off": { "type": "integer", "minimum": 0, "maximum": 127, "default": 0, "description": "CC on a button: the value sent on release or toggle off, unless a control of this layout last set this CC (then that value comes back)." } } } }, "additionalProperties": false },
+        { "type": "object", "required": ["page"], "properties": { "page": { "type": "string", "description": "'next', 'prev', or a page id." } }, "additionalProperties": false },
+        { "type": "object", "required": ["action"], "properties": { "action": { "enum": ["bend"], "description": "bend: while on, keyboard strips bend instead of glissando (as glide = wobble)." } }, "additionalProperties": false }
       ]
     },
     "binding": {
@@ -118,7 +121,7 @@
             "octave_arrows": { "type": "boolean", "default": true },
             "orientation": { "enum": ["horizontal", "vertical"], "default": "horizontal" },
             "glide": { "enum": ["glissando", "wobble"], "default": "glissando" },
-            "bend_range": { "enum": [1, 2, 7, 12], "default": 2 },
+            "bend_range": { "enum": [0.5, 1, 2], "default": 0.5, "description": "Semitones at half a key width of sideways slide; assumes the firmware's own bend range is ±2 (OberVave and ShineOn factory programs)." },
             "pitch_colors": { "type": "boolean", "default": false },
             "velocity": {
               "type": "object",
@@ -126,7 +129,8 @@
               "properties": {
                 "source": { "enum": ["fixed", "position"], "default": "fixed" },
                 "min": { "type": "integer", "minimum": 1, "maximum": 127, "default": 40 },
-                "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 }
+                "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 },
+                "swell": { "type": "boolean", "default": true, "description": "position only: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together." }
               },
               "additionalProperties": false
             },

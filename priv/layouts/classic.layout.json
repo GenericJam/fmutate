@@ -42,8 +42,10 @@
         { "id": "play", "type": "button", "label": "PLAY", "at": { "col": 12, "row": 2, "w": 1, "h": 1 }, "bindings": [{ "to": { "button": "play" } }] },
         { "id": "rec", "type": "button", "label": "REC", "at": { "col": 13, "row": 2, "w": 1, "h": 1 }, "bindings": [{ "to": { "button": "rec" } }] },
 
+        { "id": "bend", "type": "button", "label": "BEND", "at": { "col": 7, "row": 1, "w": 1, "h": 1 },
+          "bindings": [{ "to": { "action": "bend" }, "mode": "toggle" }] },
         { "id": "sustain", "type": "button", "label": "SUSTAIN", "at": { "col": 7, "row": 2, "w": 1, "h": 1 },
-          "bindings": [{ "to": { "midi": { "type": "cc", "number": 64 } }, "mode": "toggle" }] },
+          "bindings": [{ "to": { "midi": { "type": "cc", "number": 72, "on": 108, "off": 60 } }, "mode": "toggle" }] },
 
         { "id": "keys", "type": "keyboard", "at": { "col": 0, "row": 3, "w": 14, "h": 3 },
           "keyboard": { "from_key": 0, "to_key": 26, "octave_arrows": false, "glide": "glissando" } }

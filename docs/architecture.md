@@ -92,10 +92,22 @@ flowchart LR
   octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware; the
   firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
   the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
-  Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60).
-- **Sustain**: the classic layout has a SUSTAIN toggle (MIDI CC64, 127 on / 0 off). Toggled bindings are sent
-  again when a new engine starts (restart, firmware switch) and released when the layout goes away. A CC bound
-  to a momentary button is a pedal: 127 while held, 0 on release.
+  Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
+  on by default with `position`): sliding a held key front/back sends CC7 (the firmware's volume, so every
+  sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
+  hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
+- **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's
+  factory patches sustain at 100), so the toggle is a long release instead: CC72 (the standard release time,
+  OberVave's and ShineOn's amp RELEASE) to 108 (~2.3 s) while on, so let-go notes fall away on the firmware's own
+  curve and held notes are untouched; off sends 60 (OberVave's factory release), or the value a control of the
+  layout last set for CC72. It changes the patch's release while on. Measured: tail 6205 → 347 over 2.4 s with
+  it, 1465 → 30 without. A CC button binding sends `on` (default 127) while pressed / toggled on and `off`
+  (default 0) on release; toggled bindings are sent again when a new engine starts and released when the layout
+  goes away.
+- **Bend** (classic BEND toggle, binding target `{"action": "bend"}`; or a strip's glide = wobble): sideways
+  slide on a held key sends pitch bend instead of playing the next key; half a key width is the strip's
+  `bend_range` (a quarter tone by default, 1 or 2 semitones), scaled on the assumption that the firmware's own
+  bend range is ±2 semitones (every OberVave/ShineOn factory program). Only changes are sent; release recentres.
 
 ## Measured (Moto G Power 2021, SD662, Android 11)
 

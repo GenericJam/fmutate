@@ -16,8 +16,10 @@ sealed class Target {
     data class Encoder(val id: String, val ptPerClick: Float, val invert: Boolean) : Target()
     object Pot : Target()
     data class Button(val id: String) : Target()
-    data class Midi(val type: String, val channel: Int, val number: Int, val jump: Boolean) : Target()
+    data class Midi(val type: String, val channel: Int, val number: Int, val jump: Boolean, val on: Int = 127, val off: Int = 0) : Target()
     data class Page(val ref: String) : Target()
+    /** App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending. */
+    data class Action(val id: String) : Target()
 
     /** Absolute targets share one value between every control bound to them (HANDOFF §6 rule 7). */
     val absoluteKey: String?
@@ -49,13 +51,14 @@ data class Control(
     val octaveArrows: Boolean = true,
     val vertical: Boolean = false,
     val wobble: Boolean = false,
-    val bendRange: Int = 2,
+    val bendRange: Float = 0.5f,          // semitones at half a key width of slide
     val pitchColors: Boolean = false,
     // velocity "position": the strip plays MIDI notes, velocity from where the key is struck (velMin..velMax);
     // "fixed" (default): firmware key presses, the firmware's own fixed velocity
     val strikeVelocity: Boolean = false,
     val velMin: Int = 40,
     val velMax: Int = 127,
+    val velSwell: Boolean = true,         // position: front/back on a held key sets CC7
     // pad_grid
     val padCols: Int = 1,
     val padRows: Int = 1,
@@ -137,11 +140,12 @@ data class Layout(
                 octaveArrows = kb?.optBoolean("octave_arrows", true) ?: true,
                 vertical = kb?.optString("orientation", "horizontal") == "vertical",
                 wobble = kb?.optString("glide", "glissando") == "wobble",
-                bendRange = kb?.optInt("bend_range", 2) ?: 2,
+                bendRange = kb?.optDouble("bend_range", 0.5)?.toFloat() ?: 0.5f,
                 pitchColors = kb?.optBoolean("pitch_colors", false) ?: false,
                 strikeVelocity = kb?.optJSONObject("velocity")?.optString("source", "fixed") == "position",
                 velMin = kb?.optJSONObject("velocity")?.optInt("min", 40) ?: 40,
                 velMax = kb?.optJSONObject("velocity")?.optInt("max", 127) ?: 127,
+                velSwell = kb?.optJSONObject("velocity")?.optBoolean("swell", true) ?: true,
                 padCols = pg?.optInt("cols", 1) ?: 1,
                 padRows = pg?.optInt("rows", 1) ?: 1,
                 pads = pg?.optJSONArray("pads")?.objects()?.map {
@@ -167,9 +171,13 @@ data class Layout(
             t.has("pot") -> Target.Pot
             t.has("button") -> Target.Button(t.getString("button"))
             t.has("midi") -> t.getJSONObject("midi").let {
-                Target.Midi(it.getString("type"), it.optInt("channel", 1), it.optInt("number", 0), it.optBoolean("jump", false))
+                Target.Midi(
+                    it.getString("type"), it.optInt("channel", 1), it.optInt("number", 0), it.optBoolean("jump", false),
+                    it.optInt("on", 127), it.optInt("off", 0),
+                )
             }
             t.has("page") -> Target.Page(t.getString("page"))
+            t.has("action") -> Target.Action(t.getString("action"))
             else -> null
         }
 
