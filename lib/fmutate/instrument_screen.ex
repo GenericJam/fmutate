@@ -6,17 +6,19 @@ defmodule FMutate.InstrumentScreen do
 
   use Mob.Screen
 
-  alias FMutate.{Editor, Instance}
+  require FMutate.Subscription
+
+  alias FMutate.{Editor, Instance, Subscription}
 
   @instance "a"
   @editor_events Editor.events()
 
   def mount(_params, _session, socket) do
+    # a placeholder until the instance is up (it arrives through the subscription)
     view =
-      try do
-        Instance.subscribe(@instance)
-      catch
-        :exit, _ -> placeholder_view()
+      case Subscription.subscribe(:instance, Instance.via(@instance), fn -> Instance.subscribe(@instance) end) do
+        {:ok, view} -> view
+        :pending -> placeholder_view()
       end
 
     socket =
@@ -68,6 +70,14 @@ defmodule FMutate.InstrumentScreen do
     do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> Editor.firmware(view.firmware)}
 
   def handle_info({:instance, _id, _event}, socket), do: {:noreply, socket}
+
+  # the instance restarted (or wasn't up at mount): subscribed again, with its current view
+  def handle_info(msg, socket) when Subscription.message?(msg) do
+    case Subscription.handle(msg) do
+      {:subscribed, :instance, view} -> handle_info({:instance, @instance, {:state, view}}, socket)
+      _ -> {:noreply, socket}
+    end
+  end
 
   def handle_info({:instrument, "menu", _}, socket), do: {:noreply, Mob.Socket.assign(socket, :menu, true)}
 

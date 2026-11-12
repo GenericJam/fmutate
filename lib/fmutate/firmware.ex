@@ -79,18 +79,20 @@ defmodule FMutate.Firmware do
   def default_id, do: "obervave"
 
   @doc """
-  How to run a firmware: `{engine_executable, firmware_file}` for `FMutate.Engine`, or nil when it can't
-  run here (no cartridge in this build, no package on the phone, or no emulator engine).
+  How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu}` for
+  `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it can't run
+  here (no cartridge in this build, no package on the phone, or no emulator engine).
   """
-  @spec runnable(String.t()) :: {String.t(), String.t()} | nil
+  @spec runnable(String.t()) :: %{engine: String.t(), file: String.t(), backend: :native | :emu} | nil
   def runnable(id) do
     case get(id) do
       %{backend: :native} ->
-        with cart when cart != nil <- FMutate.Paths.bundled_cart(id), do: {FMutate.Paths.engine_bin(), cart}
+        with cart when cart != nil <- FMutate.Paths.bundled_cart(id),
+             do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native}
 
       %{backend: :emu, package: pkg} when is_binary(pkg) ->
         emu = FMutate.Paths.emu_bin()
-        if File.exists?(emu) and File.exists?(pkg), do: {emu, pkg}
+        if File.exists?(emu) and File.exists?(pkg), do: %{engine: emu, file: pkg, backend: :emu}
 
       _ ->
         nil

@@ -62,7 +62,7 @@ defmodule FMutate.LibraryTest do
       {:ok, _} = Catalog.import_file(@fixture, "my-fork-1.2.fwsc", dir)
 
       all = Catalog.merge(Firmware.bundled(), hub, dir)
-      assert Enum.map(all, & &1.id) == ["obervave", "shineon", "imported:my-fork-1.2.fwsc", "hortator"]
+      assert Enum.map(all, & &1.id) == ["obervave", "shineon", "imported:my-fork-1.2.fwsc", "hub:shineon", "hortator"]
 
       shine = Enum.find(all, &(&1.id == "shineon"))
       assert shine.backend == :native and shine.source == :bundled
@@ -72,6 +72,24 @@ defmodule FMutate.LibraryTest do
       assert hort.package == Path.join(dir, "hortator-1.0.1+abc123.fwsc")
 
       assert Enum.find(Catalog.merge(Firmware.bundled(), hub, Path.join(dir, "empty")), &(&1.id == "hortator")).package == nil
+    end
+
+    test "the Hub's package of a native firmware stays runnable as hub:<id>, on the phone once downloaded",
+         %{dir: dir} do
+      hub = Catalog.parse_hub(@hub)
+      variant = Enum.find(Catalog.merge(Firmware.bundled(), hub, dir), &(&1.id == "hub:shineon"))
+      assert variant.backend == :emu and variant.source == :hub and variant.package == nil
+      assert variant.name == "Shine On (Hub package)"
+      assert variant.tags == ["chords", "vintage"]
+
+      File.cp!(@fixture, Catalog.hub_package_path(variant, dir))
+      variant = Enum.find(Catalog.merge(Firmware.bundled(), hub, dir), &(&1.id == "hub:shineon"))
+      assert variant.package == Path.join(dir, "shineon-3.0.1.fwsc")
+
+      ctx = %{current: "shineon", quarantined: [], emu?: true}
+      assert Catalog.status(variant, ctx) == :on_phone
+      assert Catalog.status(variant, %{ctx | emu?: false}) == :not_yet
+      assert Catalog.status(variant, %{ctx | current: "hub:shineon"}) == :running
     end
 
     test "status: quarantined over running, native on phone, packages need the emulator" do
@@ -127,7 +145,7 @@ defmodule FMutate.LibraryTest do
 
     test "serves the merged catalogue from the cache; import, delete, and Firmware.all/0 follows" do
       assert Library.info().updated == "2026-11-10 07:02 UTC"
-      assert Enum.map(Firmware.all(), & &1.id) == ["obervave", "shineon", "hortator"]
+      assert Enum.map(Firmware.all(), & &1.id) == ["obervave", "shineon", "hub:shineon", "hortator"]
 
       :ok = Library.subscribe()
       assert {:ok, fw} = Library.import_package(@fixture, "my-fork-1.2.fwsc")
@@ -147,7 +165,63 @@ defmodule FMutate.LibraryTest do
       assert {:error, :size} = Library.verify(%{hort | size: 5}, part)
       assert :ok = Library.verify(%{hort | sha256: sha(part)}, part)
     end
+
+    test "only the Hub's entries download, by the catalogue's id" do
+      assert {:error, :unknown} = Library.download("shineon")
+      assert {:error, :unknown} = Library.download("nope")
+    end
+
+    test "how a firmware runs: the cartridge, or its package when the emulator engine is there; flash per backend",
+         %{dir: dir} do
+      libs = Path.join(dir, "lib")
+      File.mkdir_p!(libs)
+      for f <- ["libfm1engine.so", "libcart_shineon.so"], do: File.touch!(Path.join(libs, f))
+      Application.put_env(:fmutate_app, :native_lib_dir, libs)
+      on_exit(fn -> Application.delete_env(:fmutate_app, :native_lib_dir) end)
+
+      variant = Firmware.get("hub:shineon")
+      File.cp!(@fixture, Catalog.hub_package_path(variant, FMutate.Paths.packages_dir()))
+
+      assert %{backend: :native, file: cart} = Firmware.runnable("shineon")
+      assert cart == Path.join(libs, "libcart_shineon.so")
+      # no cartridge in this build
+      assert Firmware.runnable("obervave") == nil
+      # a package on the phone, but no emulator engine: it doesn't run here yet
+      refute Library.emu?()
+      assert Firmware.runnable("hub:shineon") == nil
+      # not on the phone
+      assert Firmware.runnable("hortator") == nil
+
+      File.touch!(Path.join(libs, "libfm1emu.so"))
+      assert Library.emu?()
+      assert %{backend: :emu, engine: emu, file: pkg} = Firmware.runnable("hub:shineon")
+      assert emu == Path.join(libs, "libfm1emu.so") and pkg == Firmware.get("hub:shineon").package
+
+      # the two engines' flash formats differ: the same id never shares a file across backends
+      native = FMutate.Paths.flash("a", "shineon", :native)
+      emu_flash = FMutate.Paths.flash("a", "shineon", :emu)
+      assert native == Path.join([dir, "flash", "a", "shineon.bin"])
+      assert emu_flash == Path.join([dir, "flash", "a", "emu", "shineon.bin"])
+    end
   end
+
+  describe "checking the Hub" do
+    test "within a day of the last read: when it was and when the next may go out" do
+      # read at 09:30 UTC
+      at = DateTime.to_unix(~U[2026-11-12 09:30:00Z])
+      assert Library.check_note(at, at + 60, &utc/1) == "Checked today · next check after 09:30"
+      assert Library.check_note(at, DateTime.to_unix(~U[2026-11-13 09:29:59Z]), &utc/1) ==
+               "Checked yesterday · next check after 09:30"
+    end
+
+    test "nothing to say once a check would go out, or before the first read" do
+      at = DateTime.to_unix(~U[2026-11-12 09:30:00Z])
+      assert Library.check_note(at, at + 24 * 3600, &utc/1) == nil
+      assert Library.check_note(nil, at, &utc/1) == nil
+    end
+  end
+
+  defp utc(secs), do: secs |> DateTime.from_unix!() |> DateTime.to_naive()
 
   defp sha(path), do: :crypto.hash(:sha256, File.read!(path)) |> Base.encode16(case: :lower)
 end

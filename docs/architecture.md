@@ -34,10 +34,17 @@ flowchart LR
   over distribution (`docs/design/protocol.md`).
 - **Library** (`FMutate.Library`, `library/catalog.ex`): the Hub's `catalog.json` (thefirmwarehub.com) is fetched
   with `:httpc`/`:ssl` (CA certs from `/system/etc/security/cacerts`), cached as `<data>/hub_catalog.json`, read
-  at most once a day (the Hub's terms), and merged with the bundled cartridges (a native cartridge wins) and
-  the packages in `<data>/packages` (Hub downloads as `<id>-<version>.fwsc`, imports under `imported/`).
-  Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out. A package
-  "doesn't run here yet" while the build has no `libfm1emu.so`.
+  at most once a day (the Hub's terms; the screen says "Checked today · next check after HH:MM" instead of
+  checking again), and merged with the bundled cartridges and the packages in `<data>/packages` (Hub downloads
+  as `<id>-<version>.fwsc`, imports under `imported/` as `imported:<file>`). A native cartridge keeps its id;
+  the Hub's package of the same firmware stays listed as `hub:<id>` ("OberVave (Hub package)") so the two can
+  be compared. Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out.
+  A package "doesn't run here yet" while the build has no `libfm1emu.so`; with it, a package on the phone is
+  "On phone" and runs (`FMutate.Firmware.runnable/1` → `%{engine, file, backend}`).
+- **Flash per backend**: `flash/<instance>/<id>.bin` (native image) and `flash/<instance>/emu/<id>.bin`
+  (fm1-emu's changed sectors), so no id shares a flash file across backends.
+- **Subscriptions survive restarts**: the screens subscribe through `FMutate.Subscription`, which monitors the
+  server (Instance, Library, IO, Dist) and subscribes again when its supervisor has restarted it.
 
 ## Code map
 
@@ -47,7 +54,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh`, `native/patches/fm1-emu/` | the emulator engine (Rust, around fm1-emu pinned in the script) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, screens |
+| `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -72,6 +79,19 @@ flowchart LR
 | UI frames, 6 × 300 ms key holds (`gfxinfo reset`, 6 × `input swipe 1100 600 1100 600 300`), firmware screen animating, debug build | before: 24 % / 17 % / 15 % janky, p50 10–12 ms, p90 24–25 ms, p99 32–53 ms; after: 8.4 % / 4.5 % / 4.4 % janky, p50 6–7 ms, p90 11–13 ms, p99 26–40 ms |
 | Audio underruns over those 3 runs | before 2 → 7; after 1 → 1 (no xruns either way) |
 | Remaining jank | each input event makes Mob commit the screen twice (`Mob.ComponentServer` always repaints after `handle_event`): 10–20 ms of Mob recomposition on the UI thread per commit; `InstrumentView` itself is skipped |
+
+### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
+
+The list is a `<LazyList>` between the fixed header and footer: only the cards on screen are composed (each
+row carries its own padding; the list's id follows the search and tag so a new filter starts at the top).
+`dumpsys gfxinfo` after `reset`, 3 runs each: open = tap Library from the instrument (includes the rotation to
+portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
+
+| | before (eager `Scroll`) | after (`LazyList`) |
+|---|---|---|
+| open: Davey frames | 2499 / 2649 / 1383 + 1426 ms | none |
+| open: p90 / p99 | 42–1400 / 1400–2600 ms | 65–117 / 150–200 ms |
+| scroll: janky, p50 / p90 / p99 | 14–23 %, 30–32 / 42–48 / 61–81 ms | 16–17 %, 16–18 / 27–31 / 32–44 ms |
 
 ## I/O (HANDOFF §10)
 

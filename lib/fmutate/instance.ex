@@ -213,7 +213,7 @@ defmodule FMutate.Instance do
   ## Engines
 
   defp start_engine(state, role, fw) do
-    with {bin, cart} <- Firmware.runnable(fw) || nil,
+    with %{engine: bin, file: cart, backend: backend} <- Firmware.runnable(fw) || nil,
          {:ok, slot} <- Audio.claim() do
       prefix = Paths.shm_prefix(state.id, slot)
 
@@ -224,7 +224,7 @@ defmodule FMutate.Instance do
           bin: bin,
           cart: cart,
           prefix: prefix,
-          flash: Paths.flash(state.id, fw),
+          flash: Paths.flash(state.id, fw, backend),
           fill: Audio.engine_fill()
         )
 

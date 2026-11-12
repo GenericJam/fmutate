@@ -22,8 +22,10 @@ Elixir (BEAM, app process) ──Port──▶ libfm1engine.so <cart> <prefix> <
   (below) is a second executable with the same protocol.
 - Shared files live in `$MOB_DATA_DIR/run/` (app-private). The engine unlinks and recreates them on start
   so readers still mapping a previous engine's files keep valid (old) pages instead of SIGBUS.
-- Flash (the firmware's saved settings and patches): `$MOB_DATA_DIR/flash/<instance>/<firmware>.bin`,
-  loaded before boot, rewritten atomically whenever the firmware saves.
+- Flash (the firmware's saved settings and patches): `$MOB_DATA_DIR/flash/<instance>/<firmware>.bin` for a
+  native cartridge, `$MOB_DATA_DIR/flash/<instance>/emu/<firmware>.bin` for a package in the emulator engine
+  (`FMutate.Paths.flash/3`; the two formats differ, so a firmware id never shares a file across backends).
+  Loaded before boot, rewritten atomically whenever the firmware saves.
 
 ## Port messages (`{:packet, 2}`, one opcode byte, big-endian fields)
 
@@ -99,6 +101,7 @@ What differs inside:
   little-endian offset and the 4096-byte sector (fm1-emu's web saves' format; empty = nothing changed). Written
   when the flash has been quiet for 250 ms after a write (`FLASH_SAVED` = the file's size) and when the port
   closes. A file that isn't whole records is ignored (the package's flash is used, and replaced at the next save).
+  It lives under `flash/<instance>/emu/` (above): a native cartridge's flash of the same id is a whole image.
 - **Exits**: a package that isn't an FM-1 update package (or is an SMK-37 one) exits 2 before READY; a firmware
   the emulator halts (it would have locked up a real FM-1) exits 3. Debug crash raises SIGSEGV, debug hang spins,
   as in the native engine.

@@ -9,7 +9,9 @@ defmodule FMutate.LibraryScreen do
 
   use Mob.Screen
 
-  alias FMutate.{Firmware, Instance, Library, Style}
+  require FMutate.Subscription
+
+  alias FMutate.{Firmware, Instance, Library, Style, Subscription}
   alias FMutate.Library.Catalog
 
   @instance "a"
@@ -17,8 +19,8 @@ defmodule FMutate.LibraryScreen do
   @tag_count 8
 
   def mount(_params, _session, socket) do
-    view = Instance.subscribe(@instance)
-    :ok = Library.subscribe()
+    {:ok, view} = Subscription.subscribe(:instance, Instance.via(@instance), fn -> Instance.subscribe(@instance) end)
+    {:ok, :ok} = Subscription.subscribe(:library, Library, &Library.subscribe/0)
 
     socket =
       Mob.Socket.assign(socket,
@@ -32,7 +34,8 @@ defmodule FMutate.LibraryScreen do
     {:ok, load(socket)}
   end
 
-  # the catalogue, quarantine and library state, re-read on every change
+  # the catalogue, quarantine and library state, re-read on every change; a server restarting under
+  # it leaves the last state (its resubscription reloads)
   defp load(socket) do
     Mob.Socket.assign(socket,
       firmwares: Firmware.all(),
@@ -40,6 +43,8 @@ defmodule FMutate.LibraryScreen do
       info: Library.info(),
       emu?: Library.emu?()
     )
+  catch
+    :exit, _ -> socket
   end
 
   ## Render
@@ -62,6 +67,9 @@ defmodule FMutate.LibraryScreen do
     toast = toast(assigns.toast)
     status_line = status_line(assigns.info)
     empty = cards == []
+    # the list's scroll state is kept per id: a new search or tag starts a new list at the top (one
+    # list would keep its first visible row in view while rows are filtered in above it)
+    list_id = "library:#{assigns.tag}:#{assigns.query}"
 
     search = {self(), :search}
     import_tap = {self(), :import}
@@ -86,15 +94,17 @@ defmodule FMutate.LibraryScreen do
           </Scroll>
           {running}
         </Column>
-        <Scroll weight={1}>
-          <Column padding_left={20} padding_right={20} padding_top={16} padding_bottom={16} gap={10}>
-            {cards}
-            <Text text="Nothing matches." text_size={13} text_color="#A9A3B8" :if={empty} />
+        <LazyList id={list_id} weight={1}>
+          {cards}
+          <Column id="nothing" padding_left={20} padding_right={20} padding_top={10} :if={empty}>
+            <Text text="Nothing matches." text_size={13} text_color="#A9A3B8" />
+          </Column>
+          <Column id="hub" padding_left={20} padding_right={20} padding_top={16} padding_bottom={16} gap={10}>
             <Text text={status_line} text_size={12} text_color="#A9A3B8" />
             <Button text="Check the Hub for updates" on_tap={refresh} background="#221F2B" text_color="#F3EFF8" text_size={13} />
             <Text text="Firmware list: The Firmware Hub – https://thefirmwarehub.com (CC-BY-4.0). Card texts belong to their makers. Not affiliated with M-VAVE." text_size={11} text_color="#6B6580" />
           </Column>
-        </Scroll>
+        </LazyList>
         {toast}
         <Row padding_left={20} padding_right={20} padding_top={12} padding_bottom={20} gap={10} background="#14121A" align={:center}>
           <Button text="⇪ Import .fwsc" on_tap={import_tap} background="#221F2B" text_color="#F3EFF8" font_weight="bold" text_size={14} fill_width={false} corner_radius={14} />
@@ -174,27 +184,30 @@ defmodule FMutate.LibraryScreen do
     repo = fw.repo || ""
     has_repo = repo != ""
 
+    # one LazyList row: the list has no padding or gap of its own, so the row carries them
     ~MOB"""
-    <Box id={fw.id} background="#1C1925" corner_radius={18} padding={12}>
-      <Column gap={4}>
-        <Row gap={8} align={:center}>
-          <Text text={name} text_size={16} text_color="#F3EFF8" font_weight="bold" weight={1} max_lines={1} />
-          <Box background={badge_bg} corner_radius={8} padding={6} fill_width={false}>
-            <Text text={badge} text_size={11} text_color={badge_fg} font_weight="bold" />
-          </Box>
-        </Row>
-        <Text text={meta} text_size={11} text_color="#A9A3B8" max_lines={1} />
-        <Text text={desc} text_size={13} text_color="#D6D0E0" max_lines={2} :if={has_desc} />
-        <Text text={repo} text_size={11} text_color="#6B6580" max_lines={1} :if={has_repo} />
-        {why}
-        <Row gap={6} align={:center}>
-          {tags}
-          <Spacer />
-          {delete}
-          {action}
-        </Row>
-      </Column>
-    </Box>
+    <Column id={fw.id} padding_left={20} padding_right={20} padding_top={10}>
+      <Box background="#1C1925" corner_radius={18} padding={12}>
+        <Column gap={4}>
+          <Row gap={8} align={:center}>
+            <Text text={name} text_size={16} text_color="#F3EFF8" font_weight="bold" weight={1} max_lines={1} />
+            <Box background={badge_bg} corner_radius={8} padding={6} fill_width={false}>
+              <Text text={badge} text_size={11} text_color={badge_fg} font_weight="bold" />
+            </Box>
+          </Row>
+          <Text text={meta} text_size={11} text_color="#A9A3B8" max_lines={1} />
+          <Text text={desc} text_size={13} text_color="#D6D0E0" max_lines={2} :if={has_desc} />
+          <Text text={repo} text_size={11} text_color="#6B6580" max_lines={1} :if={has_repo} />
+          {why}
+          <Row gap={6} align={:center}>
+            {tags}
+            <Spacer />
+            {delete}
+            {action}
+          </Row>
+        </Column>
+      </Box>
+    </Column>
     """
   end
 
@@ -292,10 +305,13 @@ defmodule FMutate.LibraryScreen do
     cond do
       info.error -> info.error
       info.refreshing -> "Reading the Hub's catalogue…"
-      info.updated -> "Hub catalogue of #{info.updated}."
+      info.updated -> Enum.join(["Hub catalogue of #{info.updated}." | List.wrap(check_note(info))], " ")
       true -> "No Hub catalogue yet: connect to the internet."
     end
   end
+
+  # "Checked today · next check after 14:05" while a check would be refused (the Hub's once a day)
+  defp check_note(info), do: Library.check_note(info.fetched_at, System.os_time(:second))
 
   ## Events
 
@@ -335,8 +351,14 @@ defmodule FMutate.LibraryScreen do
   end
 
   def handle_info({:tap, :refresh}, socket) do
-    Library.refresh()
-    {:noreply, socket}
+    case check_note(socket.assigns.info) do
+      nil ->
+        Library.refresh()
+        {:noreply, socket}
+
+      note ->
+        {:noreply, show_toast(socket, "The Hub is read once a day", note <> ".", nil)}
+    end
   end
 
   def handle_info({:tap, :import}, socket), do: {:noreply, Mob.Files.pick(socket, types: ["fwsc"])}
@@ -361,6 +383,15 @@ defmodule FMutate.LibraryScreen do
 
   def handle_info({:instance, @instance, {:state, view}}, socket),
     do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> load()}
+
+  # FMutate.Instance or FMutate.Library restarted: subscribed again, so re-read everything
+  def handle_info(msg, socket) when Subscription.message?(msg) do
+    case Subscription.handle(msg) do
+      {:subscribed, :instance, view} -> {:noreply, socket |> Mob.Socket.assign(:view, view) |> load()}
+      {:subscribed, :library, :ok} -> {:noreply, load(socket)}
+      _ -> {:noreply, socket}
+    end
+  end
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

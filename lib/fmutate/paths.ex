@@ -38,9 +38,17 @@ defmodule FMutate.Paths do
   def ring(prefix), do: prefix <> ".ring"
   def fb(prefix), do: prefix <> ".fb"
 
-  @doc "The firmware's saved state (settings, patches) for one instance."
-  def flash(instance, firmware_id),
+  @doc """
+  The firmware's saved state (settings, patches) for one instance and backend:
+  `flash/<instance>/<id>.bin` for a native cartridge, `flash/<instance>/emu/<id>.bin` for a package
+  in the emulator. The two engines' flash files differ (the cartridge's own image vs fm1-emu's changed
+  sectors), so one id never shares a file across backends.
+  """
+  def flash(instance, firmware_id, :native),
     do: Path.join(ensure(Path.join([data_dir(), "flash", instance])), "#{firmware_id}.bin")
+
+  def flash(instance, firmware_id, :emu),
+    do: Path.join(ensure(Path.join([data_dir(), "flash", instance, "emu"])), "#{firmware_id}.bin")
 
   @doc "Per-instance app state (current firmware, crash counts)."
   def instance_state(instance),
