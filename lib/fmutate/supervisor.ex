@@ -15,7 +15,9 @@ defmodule FMutate.Supervisor do
     children =
       [
         {Registry, keys: :unique, name: FMutate.Registry},
-        FMutate.Audio
+        FMutate.Audio,
+        # the firmware catalogue the instances ask (FMutate.Firmware.all/0)
+        FMutate.Library
       ] ++
         for id <- instances do
           Supervisor.child_spec({FMutate.Instance, id: id}, id: {:instance, id})

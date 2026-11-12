@@ -12,6 +12,7 @@ flowchart LR
     SUP[FMutate.Supervisor] --> REG[Registry]
     SUP --> AUD["FMutate.Audio (owns fm1audio NIF: AAudio mixer, master clock)"]
     SUP --> INST["FMutate.Instance &quot;a&quot; (firmware, engine lifecycle, inputs, quarantine)"]
+    SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + packages on the phone)"]
     SCR["FMutate.InstrumentScreen (Mob.Screen)"] --> VIEW["FMutate.InstrumentView (Mob.Component)"]
     VIEW <--> KT["Kotlin InstrumentView: layout, multitouch, drawing"]
   end
@@ -31,6 +32,12 @@ flowchart LR
 - **Touch** is handled natively (per-pointer, glissando, knobs, fine mode); the view sends compact input events
   that `FMutate.InstrumentView` turns into `FMutate.Instance.input/2` calls — the same API sibling apps use
   over distribution (`docs/design/protocol.md`).
+- **Library** (`FMutate.Library`, `library/catalog.ex`): the Hub's `catalog.json` (thefirmwarehub.com) is fetched
+  with `:httpc`/`:ssl` (CA certs from `/system/etc/security/cacerts`), cached as `<data>/hub_catalog.json`, read
+  at most once a day (the Hub's terms), and merged with the bundled cartridges (a native cartridge wins) and
+  the packages in `<data>/packages` (Hub downloads as `<id>-<version>.fwsc`, imports under `imported/`).
+  Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out. A package
+  "doesn't run here yet" while the build has no `libfm1emu.so`.
 
 ## Code map
 
@@ -40,7 +47,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh`, `native/patches/fm1-emu/` | the emulator engine (Rust, around fm1-emu pinned in the script) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, screens |
+| `lib/fmutate/` | the app: `instance.ex`, `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `FMutateViews.kt` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
 | `tools/rpc.exs` | evaluate Elixir on a device's running app |

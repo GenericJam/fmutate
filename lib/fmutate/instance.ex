@@ -81,6 +81,19 @@ defmodule FMutate.Instance do
   @doc "Debug: crash, hang or kill -9 the running engine."
   def debug(id, what) when what in [:crash, :hang, :kill9], do: GenServer.cast(via(id), {:debug, what})
 
+  # --- library hooks (FMutate.Library / LibraryScreen) ---
+  @doc "The firmwares quarantined on this instance (any, not only the current one)."
+  @spec quarantined(String.t()) :: [String.t()]
+  def quarantined(id), do: GenServer.call(via(id), :quarantined)
+
+  @doc "Clear a firmware's quarantine and switch to it (the library's Run anyway)."
+  def run_anyway(id, firmware_id) do
+    :ok = GenServer.call(via(id), {:unquarantine, firmware_id})
+    switch_firmware(id, firmware_id)
+  end
+
+  # --- end library hooks ---
+
   ## Server
 
   @impl true
@@ -135,6 +148,15 @@ defmodule FMutate.Instance do
   end
 
   def handle_call(:view, _from, state), do: {:reply, view_of(state), state}
+
+  # library hooks
+  def handle_call(:quarantined, _from, state), do: {:reply, MapSet.to_list(state.quarantined), state}
+
+  def handle_call({:unquarantine, fw}, _from, state) do
+    state = %{state | quarantined: MapSet.delete(state.quarantined, fw), failures: []}
+    save_state(state)
+    {:reply, :ok, state}
+  end
 
   def handle_call({:subscribe, pid}, _from, state) do
     ref = Process.monitor(pid)

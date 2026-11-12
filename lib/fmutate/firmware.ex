@@ -16,7 +16,25 @@ defmodule FMutate.Firmware do
   """
 
   @enforce_keys [:id, :name, :version, :author, :license]
-  defstruct [:id, :name, :version, :author, :license, :about, backend: :native, package: nil, caps: %{}]
+  defstruct [
+    :id,
+    :name,
+    :version,
+    :author,
+    :license,
+    :about,
+    backend: :native,
+    package: nil,
+    caps: %{},
+    # library: where it comes from (`:bundled | :hub | :imported`), its tags, and for a Hub package its
+    # download (`url`, `size` in bytes, `sha256`) and repository
+    source: :bundled,
+    tags: [],
+    url: nil,
+    size: nil,
+    sha256: nil,
+    repo: nil
+  ]
 
   @type t :: %__MODULE__{}
 
