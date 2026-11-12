@@ -51,6 +51,11 @@ data class Control(
     val wobble: Boolean = false,
     val bendRange: Int = 2,
     val pitchColors: Boolean = false,
+    // velocity "position": the strip plays MIDI notes, velocity from where the key is struck (velMin..velMax);
+    // "fixed" (default): firmware key presses, the firmware's own fixed velocity
+    val strikeVelocity: Boolean = false,
+    val velMin: Int = 40,
+    val velMax: Int = 127,
     // pad_grid
     val padCols: Int = 1,
     val padRows: Int = 1,
@@ -134,6 +139,9 @@ data class Layout(
                 wobble = kb?.optString("glide", "glissando") == "wobble",
                 bendRange = kb?.optInt("bend_range", 2) ?: 2,
                 pitchColors = kb?.optBoolean("pitch_colors", false) ?: false,
+                strikeVelocity = kb?.optJSONObject("velocity")?.optString("source", "fixed") == "position",
+                velMin = kb?.optJSONObject("velocity")?.optInt("min", 40) ?: 40,
+                velMax = kb?.optJSONObject("velocity")?.optInt("max", 127) ?: 127,
                 padCols = pg?.optInt("cols", 1) ?: 1,
                 padRows = pg?.optInt("rows", 1) ?: 1,
                 pads = pg?.optJSONArray("pads")?.objects()?.map {

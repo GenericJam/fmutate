@@ -262,6 +262,13 @@ defmodule FMutate.Editor do
   def ui(:tap, {:editor, {:kb_bend, n}}, _v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"bend_range" => n}) end)
 
+  # velocity: "fixed" (firmware key presses) or "position" (MIDI notes, velocity from where the key is struck)
+  def ui(:tap, {:editor, {:kb_velocity, source}}, _v, socket),
+    do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "source", source)}) end)
+
+  def ui(:tap, {:editor, {:kb_vel_min, n}}, _v, socket),
+    do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "min", n)}) end)
+
   def ui(:change, {:editor, :kb_colors}, v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"pitch_colors" => v == true}) end)
 
@@ -348,6 +355,7 @@ defmodule FMutate.Editor do
   defp put_kb(layout, c, fields), do: LayoutEdit.put(layout, c["id"], %{"keyboard" => Map.merge(c["keyboard"] || %{}, fields)})
 
   defp kb_range(c), do: {get_in(c, ["keyboard", "from_key"]) || 0, get_in(c, ["keyboard", "to_key"]) || 26}
+  defp velocity(c), do: get_in(c, ["keyboard", "velocity"]) || %{}
 
   # all of the FM-1's 27 keys (F to G: 2¼ octaves, so a third octave can't exist)
   defp range(_c, :all), do: %{"from_key" => 0, "to_key" => 26}
@@ -927,6 +935,10 @@ defmodule FMutate.Editor do
     status_color = if width < 40, do: :warn, else: :fm
     comfort = if width < 40, do: "tight: under 40 pt", else: "comfortable on this phone"
     bend_buttons = for r <- [1, 2, 7, 12], do: button("±#{r}", {:kb_bend, r}, on: bend == r, disabled: not (assigns.bend and wobble))
+    vel = velocity(c)
+    vel_source = vel["source"] || "fixed"
+    vel_min = vel["min"] || 40
+    soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
 
     children = [
       title("Keyboard strip"),
@@ -951,6 +963,19 @@ defmodule FMutate.Editor do
       ~MOB"""
       <Row gap={4} padding={4} background={c(:bg)}>
         {bend_buttons}
+      </Row>
+      """,
+      section("Velocity"),
+      segmented([{"Fixed", {:kb_velocity, "fixed"}, "fixed"}, {"Strike position", {:kb_velocity, "position"}, "position"}], vel_source),
+      caption(
+        "Fixed: the firmware’s own key presses, every note alike (as the FM-1). Strike position: the front edge of a key " <>
+          "plays loudest, the back softest; the strip sends MIDI notes, with its own octave (OCT− / OCT+ move it too). " <>
+          "While a firmware button is held, keys are firmware key presses again."
+      ),
+      section("Softest (back edge) · loudest is 127"),
+      ~MOB"""
+      <Row gap={4} padding={4} background={c(:bg)}>
+        {soft_buttons}
       </Row>
       """,
       toggle("Vertical", "A side keyboard: low notes at the bottom.", :kb_vertical, vertical),

@@ -120,6 +120,16 @@
             "glide": { "enum": ["glissando", "wobble"], "default": "glissando" },
             "bend_range": { "enum": [1, 2, 7, 12], "default": 2 },
             "pitch_colors": { "type": "boolean", "default": false },
+            "velocity": {
+              "type": "object",
+              "description": "fixed: firmware key presses at the firmware's own velocity (as the hardware). position: MIDI notes, velocity from where the key is struck (front edge = max, back = min); octave is the strip's own.",
+              "properties": {
+                "source": { "enum": ["fixed", "position"], "default": "fixed" },
+                "min": { "type": "integer", "minimum": 1, "maximum": 127, "default": 40 },
+                "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 }
+              },
+              "additionalProperties": false
+            },
             "scale": { "type": "string", "default": "chromatic", "description": "e.g. 'chromatic', 'D dorian'. Non-chromatic hides out-of-scale keys." }
           }
         },

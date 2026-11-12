@@ -155,6 +155,8 @@ private class Grab(
     var clicks = 0               // clicks sent during this grab (bubble, spring back)
     var startValues = mapOf<String, Float>()
     var longFired = false
+    var note = -1                // velocity strips: the MIDI note this finger sounds (-1: a firmware key press)
+    var vel = 0                  // and the velocity it struck with (a glissando keeps it)
 }
 
 /** A keyboard strip's key rects for one window of firmware keys in one rect. */
@@ -174,6 +176,7 @@ private class SurfaceState {
     var buttonLedFrame by mutableIntStateOf(0)             // bumps when a button LED changes
     var keyLedFrame by mutableIntStateOf(0)                // bumps when a key LED changes
     var leds = Triple(0, 0, 0)                             // replaced only when an LED changes
+    var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
 }
 
 /**
@@ -337,14 +340,29 @@ private fun InstrumentSurface(
     val editingNow by rememberUpdatedState(editing)
     val phaseNow by rememberUpdatedState(phase)
 
+    // velocity strips on this layout (they play MIDI notes, so the firmware's OCT doesn't reach them: they keep
+    // their own octave, moved by the same OCT presses, which still go to the firmware too)
+    val hasVelocityStrip = remember(layout) { (layout.dock + layout.pages.flatMap { it.controls }).any { it.type == "keyboard" && it.strikeVelocity } }
+    // controls that press a firmware button other than OCT: while one is held, keys are a layer of the
+    // firmware's (SAVE + key, …), so velocity strips send key presses again
+    val fnButtons = remember(controls) {
+        controls.filter { c -> c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
+    }
+
     /** Press or release a discrete target (keys, buttons, notes, page). */
     fun fire(t: Target, down: Boolean) {
         when (t) {
             is Target.Key -> input(mapOf("t" to "key", "k" to t.n, "d" to down))
-            is Target.Button -> input(mapOf("t" to "button", "id" to t.id, "d" to down))
+            is Target.Button -> {
+                input(mapOf("t" to "button", "id" to t.id, "d" to down))
+                if (down && hasVelocityStrip && (t.id == "oct_down" || t.id == "oct_up")) {
+                    state.noteOct = (state.noteOct + if (t.id == "oct_down") -1 else 1).coerceIn(-2, 2)
+                }
+            }
             is Target.Midi -> when (t.type) {
                 "note" -> input(mapOf("t" to "midi", "bytes" to listOf((if (down) 0x90 else 0x80) or (t.channel - 1), t.number, if (down) 100 else 0)))
-                "cc" -> if (down) input(mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, 127)))
+                // a pedal: 127 while pressed (or toggled on), 0 on release
+                "cc" -> input(mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, if (down) 127 else 0)))
                 else -> {}
             }
             is Target.Page -> if (down) goPage(t.ref)
@@ -356,6 +374,26 @@ private fun InstrumentSurface(
     fun tap(t: Target) {
         fire(t, true)
         fire(t, false)
+    }
+
+    /**
+     * A keyboard strip's key down: a velocity strip plays a MIDI note (FM-1 key 0 = F3 = MIDI 53, plus its own
+     * octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
+     */
+    fun keyOn(c: Control, g: Grab, k: Int) {
+        val layerHeld = fnButtons.any { state.pressed[it] == true }
+        if (c.strikeVelocity && !layerHeld) {
+            g.note = (53 + k + 12 * state.noteOct).coerceIn(0, 127)
+            input(mapOf("t" to "midi", "bytes" to listOf(0x90, g.note, g.vel.coerceIn(1, 127))))
+        } else {
+            g.note = -1
+            fire(Target.Key(k), true)
+        }
+    }
+
+    fun keyOff(g: Grab, k: Int) {
+        if (g.note >= 0) input(mapOf("t" to "midi", "bytes" to listOf(0x80, g.note, 0))) else fire(Target.Key(k), false)
+        g.note = -1
     }
 
     /** Press bindings of a button-like thing (a button, a single key, a pad). */
@@ -459,6 +497,17 @@ private fun InstrumentSurface(
             ?: keys.firstOrNull { (k, kr) -> !isBlack(k) && kr.contains(p.x, p.y) }?.first
     }
 
+    /**
+     * Velocity from where key [k] is struck: its front edge (away from the black keys) is [Control.velMax], its
+     * back edge [Control.velMin], linear in between.
+     */
+    fun strikeVelocity(c: Control, r: Grid.Rect, k: Int, p: Offset): Int {
+        val kr = keyboardKeys(c, r).firstOrNull { it.first == k }?.second ?: return c.velMax
+        // horizontal strips: black keys at the top, the front is the bottom; vertical: black keys on the right
+        val front = if (c.vertical) 1f - (p.x - kr.x) / kr.w else (p.y - kr.y) / kr.h
+        return (c.velMin + (c.velMax - c.velMin) * front.coerceIn(0f, 1f)).roundToInt().coerceIn(1, 127)
+    }
+
     fun arrowAt(c: Control, r: Grid.Rect, p: Offset): Int {
         if (!c.octaveArrows || hasRail(c)) return 0
         val low = if (c.vertical) p.y > r.y + r.h - ARROW_DP else p.x < r.x + ARROW_DP
@@ -544,7 +593,12 @@ private fun InstrumentSurface(
                 if (railHit(c, r, p.x, p.y)) { g.sub = RAIL_GRAB; state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 val arrow = arrowAt(c, r, p)
                 if (arrow != 0) { shiftOctave(c, arrow); return }
-                keyAt(c, r, p)?.let { k -> g.sub = k; state.held["${c.id}#$k"] = true; fire(Target.Key(k), true) }
+                keyAt(c, r, p)?.let { k ->
+                    g.sub = k
+                    g.vel = strikeVelocity(c, r, k, p)
+                    state.held["${c.id}#$k"] = true
+                    keyOn(c, g, k)
+                }
             }
             "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
             "page_switcher" -> {
@@ -600,10 +654,10 @@ private fun InstrumentSurface(
                 val k = keyAt(c, r, p)
                 if (k != null && k != g.sub) {
                     state.held.remove("${c.id}#${g.sub}")
-                    fire(Target.Key(g.sub), false)
+                    keyOff(g, g.sub)
                     g.sub = k
                     state.held["${c.id}#$k"] = true
-                    fire(Target.Key(k), true)
+                    keyOn(c, g, k)
                 }
             }
             "strum" -> {
@@ -643,7 +697,7 @@ private fun InstrumentSurface(
             "pad_grid" -> if (g.sub >= 0) pressBindings("${c.id}#${g.sub}", c.pads[g.sub].bindings, false)
             "keyboard" -> if (g.sub >= 0) {
                 state.held.remove("${c.id}#${g.sub}")
-                fire(Target.Key(g.sub), false)
+                keyOff(g, g.sub)
                 if (c.wobble && bendOk) input(mapOf("t" to "midi", "bytes" to listOf(0xE0, 0, 64)))
             }
             "strum" -> if (g.sub >= 0) { state.held.remove("${c.id}#${g.sub}"); fire(Target.Key(c.strings[g.sub]), false) }
@@ -665,6 +719,14 @@ private fun InstrumentSurface(
 
     // controls stop sending input in edit mode: lift whatever was held when it began
     LaunchedEffect(editing) { if (editing) grabs.keys.toList().forEach { up(it) } else edit.reset() }
+
+    // toggled bindings (a sustain toggle, say) live in the firmware: a new engine (restart, firmware switch) starts
+    // without them, so they're sent again once it runs; leaving this layout lets them go
+    fun toggled(): List<Target> = controls.flatMap { c ->
+        if (state.toggles[c.id] == true) c.bindings.filter { it.mode == "toggle" }.map { it.to } else emptyList()
+    }
+    LaunchedEffect(phase) { if (phase == "running") toggled().forEach { fire(it, true) } }
+    DisposableEffect(state) { onDispose { toggled().forEach { fire(it, false) } } }
 
     // ── drawing ───────────────────────────────────────────────────────────
     Box(modifier = Modifier.fillMaxSize()) {
@@ -950,6 +1012,14 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
                 val ledC = if (lit) C.led else if (pressed) C.fmDim else if (glow) C.led.copy(alpha = 0.45f) else C.ledOff
                 s.drawCircle(ledC, 3f.px(), off(kr.cx, kr.y + dy + 10))
             }
+        }
+        // a velocity strip's own octave (its MIDI notes skip the firmware's), shown when it isn't 0
+        if (c.strikeVelocity && st.noteOct != 0) {
+            val t = "OCT " + (if (st.noteOct > 0) "+" else "") + st.noteOct
+            val x = r.x + 8 + (if (c.octaveArrows && !c.vertical) ARROW_DP else 0f)
+            val y = if (c.vertical) r.y + r.h - 34 else r.y + r.h * 0.62f
+            rr(x, y, 52f, 20f, 10f, C.selected)
+            text(t, x + 26, y + 10, 10f, C.fm, mono = true)
         }
         if (c.octaveArrows) {
             val a = ARROW_DP

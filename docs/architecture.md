@@ -85,7 +85,17 @@ flowchart LR
   `FirmwareShm.kt`), so firmware pixels stay square and even. `screen.scale` 1–4 in a layout asks for pixel-exact
   whole multiples instead (Edit → screen → Size). The classic layout gives the screen 4×3 cells: 310 px (1.29×)
   on the Moto G Power instead of 240.
-- **Firmware inputs**: FM-1 keys have no velocity; velocity-sensitive bindings send MIDI notes.
+- **Velocity** (replaces "keys carry no velocity"): FM-1 firmwares play key presses at a fixed velocity (OberVave's
+  FM-1 build: `KEY_VEL(k)` = 100) but honour MIDI note velocity. A keyboard strip's `velocity.source` is `fixed`
+  (default: firmware key presses, as the hardware) or `position`: MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
+  velocity from where the key is struck (front edge = `max`, back = `min`, linear). Such a strip keeps its own
+  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware; the
+  firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
+  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
+  Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60).
+- **Sustain**: the classic layout has a SUSTAIN toggle (MIDI CC64, 127 on / 0 off). Toggled bindings are sent
+  again when a new engine starts (restart, firmware switch) and released when the layout goes away. A CC bound
+  to a momentary button is a pedal: 127 while held, 0 on release.
 
 ## Measured (Moto G Power 2021, SD662, Android 11)
 
