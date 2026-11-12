@@ -9,3 +9,5 @@ erlang 29.1.2
 elixir 1.20.0-otp-29
 java temurin-17.0.18
 zig 0.17.0
+# Rust (native/emu, the emulator engine) with the Android targets added by rustup; see native/build_emu.sh.
+rust 1.99.1

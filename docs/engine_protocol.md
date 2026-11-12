@@ -18,7 +18,8 @@ Elixir (BEAM, app process) ──Port──▶ libfm1engine.so <cart> <prefix> <
   the mixer, close the old port.
 - **Executables in the APK** have to be named `lib*.so` to be extracted to the native library dir (the
   only place an app may exec from): `libfm1engine.so` is a PIE executable. Cartridges are
-  `libcart_<id>.so` beside it. `MOB_NATIVE_LIB_DIR` gives the directory.
+  `libcart_<id>.so` beside it. `MOB_NATIVE_LIB_DIR` gives the directory. The emulator engine `libfm1emu.so`
+  (below) is a second executable with the same protocol.
 - Shared files live in `$MOB_DATA_DIR/run/` (app-private). The engine unlinks and recreates them on start
   so readers still mapping a previous engine's files keep valid (old) pages instead of SIGBUS.
 - Flash (the firmware's saved settings and patches): `$MOB_DATA_DIR/flash/<instance>/<firmware>.bin`,
@@ -72,6 +73,42 @@ Engine → Elixir:
 | 115216 | u32 | key glow (the firmware's dim LED layer) |
 | 115220 | u32 | firmware ms (written last) |
 
+## The emulator engine (`libfm1emu.so`)
+
+`libfm1emu.so <package.fwsc> <prefix> <flash> [fill]` runs any FM-1 firmware from its update package (the
+`.fwsc` a real FM-1 installs) in [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (MIT; both CPU cores, the
+SoC, the screen, the panel matrix, the DAC), with everything above unchanged: arguments, port messages, ring,
+`.fb`, pacing on the ring fill, STATUS, the watchdog's view of it. Source: `native/emu/` (Rust), fm1-emu pinned in
+`native/build_emu.sh`, patches in `native/patches/fm1-emu/`. `FMutate.Firmware` picks it for `backend: :emu`.
+
+What differs inside:
+
+- **Panel**: keys go to fm1-emu's matrix ids 14 + key, buttons to the same numbers (fm1-emu's ids 0..13 are the
+  wire's order), encoders the same numbers; MASTER 0..1024 sets the pot's ADC (channel 4) to 0..1023 and the
+  firmware applies its own curve. MASTER is at unity until set, as in the native engine.
+- **MIDI** goes in byte by byte through the emulated MIDI IN jack (a message's own length: a program change is
+  two bytes). Timed MIDI is delivered when the emulator's output reaches the frame (less `MIDI_LEAD`), so it lands
+  within a DMA half of the firmware's.
+- **Audio** is what the firmware's DMA plays, at the DAC's 44117.6 Hz (fm1-emu's clock; written into a 44100 ring:
+  0.04 % slow, inaudible). Where the firmware plays nothing (booting, or not at all) for more than 4096 frames of
+  firmware time, silence stands in, so the ring and the clock still advance.
+- **LEDs**: fm1-emu reports each LED's on-time over the multiplexed matrix (fully lit ≈ 1/11 of the time).
+  ≥ half of that is lit (`led_buttons`, `led_keys`); more than 1/16 and less than half is the dim layer
+  (`glow_keys`). Taken over at least 5 ms of firmware time.
+- **Flash file**: the sectors the firmware changed against the package's own flash, as records of a 4-byte
+  little-endian offset and the 4096-byte sector (fm1-emu's web saves' format; empty = nothing changed). Written
+  when the flash has been quiet for 250 ms after a write (`FLASH_SAVED` = the file's size) and when the port
+  closes. A file that isn't whole records is ignored (the package's flash is used, and replaced at the next save).
+- **Exits**: a package that isn't an FM-1 update package (or is an SMK-37 one) exits 2 before READY; a firmware
+  the emulator halts (it would have locked up a real FM-1) exits 3. Debug crash raises SIGSEGV, debug hang spins,
+  as in the native engine.
+- **Knobs** (environment; development): `FM1_NO_JIT=1` interprets instead of compiling to native code;
+  `FM1_MHZ=N` clocks the CPU at N MHz instead of 240 (cheaper for firmwares that burn cycles waiting).
+  `libfm1emu.so --bench <package> [seconds] [key …]` runs a package flat out with a chord held and prints its speed.
+
+fm1-core compiles the firmware to native code on arm64 and x86_64 (x86_64 Android by our patch); armeabi-v7a only
+interprets.
+
 ## The clock
 
 The mixer (`c_src/fm1audio.c`) counts `frame`: frames mixed at 44.1 kHz since the stream started. The
@@ -84,3 +121,6 @@ device may run at another rate; the mixer resamples. Timed MIDI (`0x06`) and, la
 |---|---|
 | Moto G Power 2021 (SD662, Android 11) | OberVave holding a 3-note chord: 34 % of one core; no underruns, no xruns |
 | Emulator (Android 17, x86_64, 16 KB pages) | Port spawn, AAudio playback, clock at 44.1 kHz |
+| `libfm1emu.so`, x86-64 desktop (`--bench`, JIT) | Dinghy 4.5x real time (22 % of one core), OberVave's package 3.6x (28 %); interpreted 0.5x / 0.7x |
+| `libfm1emu.so` in the app, emulator above (4 vCPUs) | Dinghy 31–33 % of one core; OberVave's package 37 % idle, 61 % with a 3-note chord; a few underruns while an engine starts (2–10; the native engine 2), none after |
+| `libfm1emu.so` arm64, Moto G Power 2021 (`--bench` from `/data/local/tmp`) | Dinghy 1.1x real time (91 % of one core); OberVave's package 0.78–0.85x: **slower than real time** at the FM-1's 240 MHz; 1.39x (72 %) at `FM1_MHZ=120`, 1.70x at 80, same audio peak. Little cores: 0.31x. armeabi-v7a (interpreter): 0.11x |

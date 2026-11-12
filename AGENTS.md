@@ -46,8 +46,12 @@ Read `docs/architecture.md`, `docs/engine_protocol.md` and `docs/design/HANDOFF.
   `mise exec -- mix ...`. Zig 0.17.0 is required for native builds.
 - **Native libs** (engine + cartridges, gitignored): `native/build_android.sh` (all ABIs into jniLibs) and
   `native/build_host.sh` (for tests). Run them once per checkout/worktree and after changing `native/`.
+  The emulator engine (`libfm1emu.so`, Rust; Rust comes from mise, add the Android targets once with
+  `mise exec -- rustup target add aarch64-linux-android x86_64-linux-android`): `mise exec -- sh
+  native/build_emu.sh` (host + arm64-v8a + x86_64; also fetches test packages into `native/build/packages/`).
 - **Tests**: `mise exec -- mix test` (needs `native/build_host.sh`; runs real firmwares on the host; the host
-  Audio drains rings in real time so firmware time advances).
+  Audio drains rings in real time so firmware time advances). The emulator engine's tests skip themselves
+  until `native/build_emu.sh` has run.
 - **Deploy**: `mise exec -- mix mob.deploy --native --android --device <serial>` after native/Kotlin/NIF
   changes, `mise exec -- mix mob.deploy --android --device <serial>` for Elixir only. After a native deploy,
   restart the app: `adb -s <serial> shell am force-stop com.genericjam.fmutate && adb -s <serial> shell am
