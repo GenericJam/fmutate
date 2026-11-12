@@ -11,9 +11,11 @@ defmodule FMutate.IOScreen do
 
   use Mob.Screen
 
+  require FMutate.Subscription
+
   import Mob.Canvas, only: [rect: 5, circle: 4]
 
-  alias FMutate.{Audio, Dist, Firmware, IO, Instance, MIDI, Style}
+  alias FMutate.{Audio, Dist, Firmware, IO, Instance, MIDI, Style, Subscription}
   alias FMutate.Instance.Health
 
   @instance "a"
@@ -23,16 +25,29 @@ defmodule FMutate.IOScreen do
   def mount(_params, _session, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
 
+    {:ok, view} =
+      Subscription.subscribe(:instance, Instance.via(@instance), fn ->
+        Instance.subscribe(@instance)
+      end)
+
     {:ok,
      Mob.Socket.assign(socket,
-       view: Instance.subscribe(@instance),
+       view: view,
        audio: Audio.stats(),
-       io: if(Process.whereis(IO), do: IO.subscribe(), else: nil),
-       dist: if(Process.whereis(Dist), do: Dist.subscribe(), else: nil),
+       # nil until the server is up (it arrives through the subscription)
+       io: subscribed(:io, IO, &IO.subscribe/0),
+       dist: subscribed(:dist, Dist, &Dist.subscribe/0),
        midi: MIDI.settings(@instance),
        latency: nil,
        sheet: nil
      )}
+  end
+
+  defp subscribed(key, server, fun) do
+    case Subscription.subscribe(key, server, fun) do
+      {:ok, result} -> result
+      :pending -> nil
+    end
   end
 
   ## Render
@@ -575,7 +590,7 @@ defmodule FMutate.IOScreen do
         [
           ~MOB"""
           <Text
-            text="Apps can press keys, turn knobs, read the screen and load layouts. They can’t run code here. Network pairing is off."
+            text="Only apps signed by FMutate's maker can ask. An app you allow gets full control of FMutate (Erlang distribution: it could run code here). Network pairing is off."
             text_size={11}
             text_color={0xFFA9A3B8}
           />
@@ -906,6 +921,9 @@ defmodule FMutate.IOScreen do
   def handle_info(:refresh, socket) do
     Process.send_after(self(), :refresh, @refresh_ms)
     {:noreply, Mob.Socket.assign(socket, audio: Audio.stats(), latency: MIDI.latency(@instance))}
+  catch
+    # Audio or the instance's MIDI restarting: keep the last figures until the next poll
+    :exit, _ -> {:noreply, socket}
   end
 
   def handle_info({:tap, :back}, socket), do: {:noreply, Mob.Socket.pop_screen(socket)}
@@ -982,6 +1000,15 @@ defmodule FMutate.IOScreen do
   def handle_info({:tap, {:buffer, buffer}}, socket) do
     :ok = Instance.set_buffer(@instance, buffer)
     {:noreply, socket}
+  end
+
+  # FMutate.Instance, FMutate.IO or FMutate.Dist restarted: subscribed again, with its current state
+  def handle_info(msg, socket) when Subscription.message?(msg) do
+    case Subscription.handle(msg) do
+      {:subscribed, :instance, view} -> {:noreply, Mob.Socket.assign(socket, :view, view)}
+      {:subscribed, key, value} -> {:noreply, Mob.Socket.assign(socket, key, value)}
+      _ -> {:noreply, socket}
+    end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}

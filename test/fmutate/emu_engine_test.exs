@@ -26,7 +26,7 @@ defmodule FMutate.EmuEngineTest do
     end)
 
     prefix = Paths.shm_prefix("emu", 0)
-    {:ok, prefix: prefix, flash: Paths.flash("emu", "dinghy")}
+    {:ok, prefix: prefix, flash: Paths.flash("emu", "dinghy", :emu)}
   end
 
   defp start_engine(ctx) do

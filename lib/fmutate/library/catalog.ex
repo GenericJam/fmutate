@@ -9,8 +9,10 @@ defmodule FMutate.Library.Catalog do
       its Hub file name (`<id>-<version>.fwsc`), an imported one under `imported/`.
 
   A firmware with a native cartridge stays `:native` when the Hub lists it too (it takes the Hub's
-  tags and repository). Everything else runs in the emulator (`backend: :emu`), and has a `package`
-  only when its file is on the phone.
+  tags and repository), and the Hub's package of it is listed as well, as `hub:<id>` ("<name> (Hub
+  package)"), so the two can be compared: an id names one backend only, and so one flash file (see
+  `FMutate.Paths.flash/3`). Everything else runs in the emulator (`backend: :emu`), and has a
+  `package` only when its file is on the phone.
   """
 
   alias FMutate.{Firmware, Fwsc}
@@ -95,8 +97,8 @@ defmodule FMutate.Library.Catalog do
   def imported_dir(dir), do: Path.join(dir, "imported")
 
   @doc """
-  The whole catalogue: bundled first, then imported packages, then the Hub's (a native cartridge
-  wins over the Hub's entry of the same id).
+  The whole catalogue: bundled first, then imported packages, then the Hub's. A native cartridge wins
+  over the Hub's entry of the same id; that entry stays in the Hub's place as `hub:<id>`.
   """
   @spec merge([Firmware.t()], [Firmware.t()], Path.t()) :: [Firmware.t()]
   def merge(bundled, hub, dir) do
@@ -110,15 +112,29 @@ defmodule FMutate.Library.Catalog do
         end
       end
 
-    native_ids = MapSet.new(natives, & &1.id)
+    native_by_id = Map.new(natives, &{&1.id, &1})
 
     hubs =
-      for h <- hub, not MapSet.member?(native_ids, h.id) do
+      for h <- hub do
+        h = if native = native_by_id[h.id], do: hub_variant(h, native), else: h
         path = hub_package_path(h, dir)
         if File.regular?(path), do: %{h | package: path}, else: h
       end
 
     natives ++ imported(dir) ++ hubs
+  end
+
+  @doc "The id the Hub's package of a firmware with a native cartridge goes by."
+  @spec hub_id(String.t()) :: String.t()
+  def hub_id(id), do: "hub:" <> id
+
+  defp hub_variant(h, native) do
+    %{
+      h
+      | id: hub_id(h.id),
+        name: "#{h.name} (Hub package)",
+        about: "The Hub's package, run in the emulator, to compare with the built-in #{native.name}. Its saves are its own."
+    }
   end
 
   @doc "The imported packages on the phone."

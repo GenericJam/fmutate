@@ -251,7 +251,7 @@ defmodule FMutate.Instance do
 
   # `carry`: the fill the previous engine of this firmware ended with (a restart keeps what auto learnt)
   defp start_engine(state, role, fw, carry \\ nil) do
-    with {bin, cart} <- Firmware.runnable(fw) || nil,
+    with %{engine: bin, file: cart, backend: backend} <- Firmware.runnable(fw) || nil,
          {:ok, slot} <- Audio.claim() do
       prefix = Paths.shm_prefix(state.id, slot)
       fill = Health.start_fill(state.buffer, Audio.engine_fill(), carry)
@@ -263,7 +263,7 @@ defmodule FMutate.Instance do
           bin: bin,
           cart: cart,
           prefix: prefix,
-          flash: Paths.flash(state.id, fw),
+          flash: Paths.flash(state.id, fw, backend),
           fill: fill
         )
 

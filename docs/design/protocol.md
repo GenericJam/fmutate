@@ -113,6 +113,7 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
   `:layout` subscriptions are accepted but produce nothing: the engine protocol has no firmware MIDI out, and
   layouts don't change from outside the editor yet. The "externally driven" indicator isn't designed; the
   I/O screen shows "controlling this instance" for 2 s after remote input.
-- **Open (§5, HANDOFF §12 Q4):** apps not signed with FMutate's key (third-party, network) have no path in v1.
-  Any allowed app still has full Erlang trust (it can run code here); Allow is consent, the signature is the
-  security boundary. App display names come from the node name (no hello message in the protocol).
+- **Trust (decided):** an allowed app has full Erlang trust (it can run code here); Allow is consent, the
+  signature-protected cookie is the security boundary, and the I/O screen says so. Apps not signed with
+  FMutate's key (third-party, network) have no path in v1 (§5, HANDOFF §12 Q4 still open for them). App display
+  names come from the node name (no hello message in the protocol).

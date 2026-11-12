@@ -345,6 +345,9 @@ defmodule FMutate.Editor do
 
   defp kb_range(c), do: {get_in(c, ["keyboard", "from_key"]) || 0, get_in(c, ["keyboard", "to_key"]) || 26}
 
+  # all of the FM-1's 27 keys (F to G: 2¼ octaves, so a third octave can't exist)
+  defp range(_c, :all), do: %{"from_key" => 0, "to_key" => 26}
+
   # an octave range starting where the strip starts now, shifted down if it would run past key 26
   defp range(c, octaves) do
     {from, _} = kb_range(c)
@@ -897,21 +900,19 @@ defmodule FMutate.Editor do
     width = key_width(len, whites, arrows, vertical and colors)
     n = to - from
 
+    # 1 and 2 octaves, or all 27 keys (n = semitones from the lowest key to the highest)
     ranges =
-      for oct <- 1..3 do
-        fits = 12 * oct <= 26
-        hint = if fits, do: "#{key_width(len, whites(0, 12 * oct), arrows, vertical and colors)} pt", else: "FM-1 has 27"
-        on = n == 12 * oct
-        warn = fits and key_width(len, whites(0, 12 * oct), arrows, vertical and colors) < 40
-        {oct, "#{oct} oct · #{hint}", on, fits, warn}
+      for {preset, span, name} <- [{1, 12, "1 oct"}, {2, 24, "2 oct"}, {:all, 26, "All 27"}] do
+        key_w = key_width(len, whites(0, span), arrows, vertical and colors)
+        {preset, "#{name} · #{key_w} pt", n == span, key_w < 40}
       end
 
     range_buttons =
-      for {oct, text, on, fits, warn} <- ranges do
-        button(text, {:kb_range, oct}, on: on, disabled: not fits, fg: if(warn, do: c(:warn), else: c(:text_2)))
+      for {preset, text, on, warn} <- ranges do
+        button(text, {:kb_range, preset}, on: on, fg: if(warn, do: c(:warn), else: c(:text_2)))
       end
 
-    custom_on = n not in [12, 24]
+    custom_on = n not in [12, 24, 26]
     # the from–to steppers below are the custom range; this segment only shows when it is in use
     custom = button("Custom", :close, on: custom_on, disabled: true)
     status_color = if width < 40, do: :warn, else: :fm

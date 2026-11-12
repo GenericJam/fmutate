@@ -36,10 +36,31 @@ defmodule FMutate.Library do
   def firmwares, do: Catalog.merge(Firmware.bundled(), GenServer.call(__MODULE__, :hub), Paths.packages_dir())
 
   @doc """
-  The library's state for the screen: `updated` (the Hub catalogue's date), `refreshing`, `error`
-  (the last failure, a string), `downloads` (`%{id => {bytes, total | nil}}`).
+  The library's state for the screen: `updated` (the Hub catalogue's date), `fetched_at` (when it was
+  last read from the Hub, Unix seconds), `refreshing`, `error` (the last failure, a string), `downloads`
+  (`%{id => {bytes, total | nil}}`).
   """
   def info, do: GenServer.call(__MODULE__, :info)
+
+  @doc """
+  What the screen says about checking the Hub while a check would be refused (the catalogue was read
+  less than a day ago): "Checked today · next check after 14:05". Nil when a check would go out.
+  `to_local` turns Unix seconds into the phone's local time.
+  """
+  @spec check_note(integer | nil, integer, (integer -> NaiveDateTime.t())) :: String.t() | nil
+  def check_note(fetched_at, now, to_local \\ &local_time/1)
+  def check_note(nil, _now, _to_local), do: nil
+
+  def check_note(fetched_at, now, to_local) do
+    next = fetched_at + @day
+
+    if now < next do
+      day = if NaiveDateTime.to_date(to_local.(fetched_at)) == NaiveDateTime.to_date(to_local.(now)), do: "today", else: "yesterday"
+      "Checked #{day} · next check after #{Calendar.strftime(to_local.(next), "%H:%M")}"
+    end
+  end
+
+  defp local_time(secs), do: secs |> :calendar.system_time_to_local_time(:second) |> NaiveDateTime.from_erl!()
 
   @doc "Subscribe the caller to `{:library, :changed}`."
   def subscribe, do: GenServer.call(__MODULE__, {:subscribe, self()})
@@ -72,7 +93,7 @@ defmodule FMutate.Library do
   def handle_call(:hub, _from, state), do: {:reply, state.hub, state}
 
   def handle_call(:info, _from, state) do
-    {:reply, Map.take(state, [:updated, :refreshing, :error, :downloads]), state}
+    {:reply, Map.take(state, [:updated, :fetched_at, :refreshing, :error, :downloads]), state}
   end
 
   def handle_call({:subscribe, pid}, _from, state) do
@@ -81,7 +102,8 @@ defmodule FMutate.Library do
   end
 
   def handle_call({:download, id}, _from, state) do
-    case Enum.find(state.hub, &(&1.id == id)) do
+    # by the catalogue's id: the Hub's package of a native firmware goes by `hub:<id>`
+    case Enum.find(firmwares(state), &(&1.id == id and &1.source == :hub)) do
       nil ->
         {:reply, {:error, :unknown}, state}
 
