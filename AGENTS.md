@@ -1,78 +1,114 @@
-# AGENTS.md: fmutate_app
+# AGENTS.md: FMutate
 
-FmutateApp is a [Mob](https://hexdocs.pm/mob) app: Elixir on the BEAM,
-running on the phone, rendering native SwiftUI / Jetpack Compose views. Screens
-live in `lib/fmutate_app/`; `lib/fmutate_app/app.ex` starts the app.
+FMutate runs M-VAVE FM-1 community firmwares on Android with a customisable touch surface. It is a
+[Mob](https://hexdocs.pm/mob) app: Elixir on the BEAM, running on the phone, with native Jetpack Compose views.
+This file is for anyone changing the code, human or AI agent.
 
-## Where Mob's docs are
+## Read first
 
-Read the docs for the mob version this app actually uses, in this order:
+1. [README.md](README.md): what the app is.
+2. [docs/architecture.md](docs/architecture.md): processes, code map, technical decisions, measurements, how inputs
+   can go missing and how to see it.
+3. [docs/engine_protocol.md](docs/engine_protocol.md): the engine executables, their Port messages, the shared
+   memory (audio ring, screen and LEDs), panel edge timing.
+4. [docs/design/HANDOFF.md](docs/design/HANDOFF.md) and the rest of `docs/design/`: screens, layout model, touch
+   rules, the creature, the sibling-app protocol. Where the design and the technical docs disagree on *how*, the
+   technical docs win; design items marked "not designed yet" need a decision, not an invention.
 
-1. **`deps/mob/guides/*.md` and `deps/mob/usage-rules.md`**, after `mix deps.get`.
-   These match the installed version exactly. (With a `path:` dependency on
-   mob, read that checkout's `guides/` instead.)
-2. **https://hexdocs.pm/mob/llms.txt**, the index of every page. Each page is
-   also served as Markdown at `https://hexdocs.pm/mob/<page>.md`, e.g.
-   https://hexdocs.pm/mob/screen_lifecycle.md. Hexdocs shows the latest
-   release; check `mix.lock` if behaviour differs.
-3. **`mix hex.docs fetch mob`** for offline docs, written to
-   `~/.hex/docs/hexpm/mob/<version>/`.
-4. **IEx**: `iex -S mix`, then `h Mob.Socket.start_async` (any module or
-   function).
+## Toolchain
 
-Guides to start with: `getting_started`, `screen_lifecycle` (including async
-loading with `start_async/3` / `handle_async/3`), `components`, `events`,
-`navigation`, `testing` (`Mob.ScreenCase`), `coming_from_liveview`.
+Always run mix through mise, so the pinned versions in `.tool-versions` are used (Erlang 29, Elixir 1.20, Java 17,
+Zig 0.17, Rust):
 
-## Rules for this app
+```sh
+mise exec -- mix ...
+```
 
-- Load data asynchronously with `Mob.Socket.start_async/3` and handle the result
-  in `handle_async/3` (LiveView's `start_async`; `assign_async` is a `:loading`
-  assign plus `start_async`). Never a bare `Task.async` in a screen.
-- Long or paginated lists use `<LazyList>` with `on_end_reached`. Mob has no
-  `stream`.
-- Write UI with the `~MOB` sigil.
-- Test screens with `Mob.ScreenCase` (`mount_screen`, `render_event`,
-  `render_info`, `render_async`).
+The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`).
 
-If you use [usage_rules](https://hexdocs.pm/usage_rules), `mix usage_rules.sync`
-picks up `deps/mob/usage-rules.md`.
+## Build, test, run
 
-## FMutate: working on this app
+| What | Command |
+|---|---|
+| Engine + cartridges for the phone (all ABIs into `jniLibs`) | `sh native/build_android.sh` |
+| The same for this computer (the tests run them) | `sh native/build_host.sh` |
+| The emulator engine (`libfm1emu.so`; host, arm64-v8a, x86_64; also fetches test packages) | `mise exec -- sh native/build_emu.sh` |
+| Tests | `mise exec -- mix test` |
+| Compile check | `mise exec -- mix compile --warnings-as-errors` |
+| Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |
+| Install and start (after native, Kotlin or NIF changes) | `mise exec -- mix mob.deploy --native --android --device <serial>` |
+| Push Elixir only | `mise exec -- mix mob.deploy --android --device <serial>` |
 
-Read `docs/architecture.md`, `docs/engine_protocol.md` and `docs/design/HANDOFF.md` first.
+Native outputs and the fetched sources live in `native/build/` (git-ignored); run the native scripts once per
+checkout or worktree, and again after changing `native/`. The engine tests run real firmwares on the host; the
+emulator engine's tests skip themselves until `native/build_emu.sh` has run.
 
-- **Toolchain**: always run mix through mise so the pinned Erlang/Elixir/Zig/Java are used:
-  `mise exec -- mix ...`. Zig 0.17.0 is required for native builds.
-- **Native libs** (engine + cartridges, gitignored): `native/build_android.sh` (all ABIs into jniLibs) and
-  `native/build_host.sh` (for tests). Run them once per checkout/worktree and after changing `native/`.
-  The emulator engine (`libfm1emu.so`, Rust; Rust comes from mise, add the Android targets once with
-  `mise exec -- rustup target add aarch64-linux-android x86_64-linux-android`): `mise exec -- sh
-  native/build_emu.sh` (host + arm64-v8a + x86_64; also fetches test packages into `native/build/packages/`).
-- **Tests**: `mise exec -- mix test` (needs `native/build_host.sh`; runs real firmwares on the host; the host
-  Audio drains rings in real time so firmware time advances). The emulator engine's tests skip themselves
-  until `native/build_emu.sh` has run.
-- **Deploy**: `mise exec -- mix mob.deploy --native --android --device <serial>` after native/Kotlin/NIF
-  changes, `mise exec -- mix mob.deploy --android --device <serial>` for Elixir only. After a native deploy,
-  restart the app: `adb -s <serial> shell am force-stop com.genericjam.fmutate && adb -s <serial> shell am
-  start -n com.genericjam.fmutate/com.example.fmutate_app.MainActivity`.
-- **Look at it**: `adb -s <serial> shell screencap -p /sdcard/s.png && adb -s <serial> pull /sdcard/s.png <abs path>`
-  (into `tmp_shots/`, gitignored). Drive it with `adb shell input tap|swipe` (pixels).
-- **Inspect it**: `mise exec -- mix run --no-start tools/rpc.exs <serial> '<elixir expr>'` evaluates on the
-  device (e.g. `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`). The app is node `fmutate_a@127.0.0.1` on
-  the device's 127.0.0.1:9150 (`FMutate.Dist`, no EPMD; `mix mob.connect` and dist hot-loads don't find it, deploys
-  push files and restart). Several rpc runs can target different devices at once.
-  rpc calls time out after 30 s: for longer sampling, `spawn` a sampler on the device that writes to
-  `:persistent_term` and read it with a second call.
-- **A package on a device** (emulator backend): `adb push native/build/packages/obervave.fwsc /data/local/tmp/`,
-  `adb shell run-as com.genericjam.fmutate cp /data/local/tmp/obervave.fwsc files/`, then over rpc
-  `FMutate.Library.import_package("/data/user/0/com.genericjam.fmutate/files/obervave.fwsc", "obervave.fwsc")` and
-  `FMutate.Instance.switch_firmware("a", "imported:obervave.fwsc")` (on the Moto G Power it is too slow: ~82 %).
-- **System states** last only a READY's time (Starting…, Restarting…): catch them with `adb shell screenrecord`
-  and `ffmpeg` frames; `FMutate.Instance.debug("a", :crash)` twice within a minute gives safe mode.
-- **Drive I/O from outside**: `tools/android_probe` is a second app (same debug key) that reads the sibling cookie,
-  plays MIDI into `FMutate A`, listens to it, and offers a `FMutate Probe` MIDI device;
-  `tools/sibling_probe.exs` is a sibling node (Allow / key press / events / Disconnect);
-  `tools/midi_latency.exs` measures MIDI note → engine Port.
-- **Worktrees**: each parallel stream works in its own `git worktree` with its own `deps/`, `_build/`,
-  `android/local.properties` (copy from the main checkout) and its own device/emulator.
+**After every deploy, restart the app.** An Elixir-only deploy hot-loads modules and unloads the audio NIF:
+
+```sh
+adb -s <serial> shell am force-stop com.genericjam.fmutate
+adb -s <serial> shell am start -n com.genericjam.fmutate/com.example.fmutate_app.MainActivity
+```
+
+(The application id is `com.genericjam.fmutate`; the Kotlin package stays `com.example.fmutate_app` because the
+JNI symbols in Mob's generated code follow it.)
+
+## Looking at the running app
+
+- **Screenshots**: `adb -s <serial> shell screencap -p /sdcard/s.png && adb -s <serial> pull /sdcard/s.png
+  tmp_shots/<name>.png` (`tmp_shots/` is git-ignored). Drive it with `adb shell input tap|swipe`; for a key held
+  or slid, `adb shell input motionevent DOWN|MOVE|UP x y` (a held `input swipe` doesn't press keys).
+- **Evaluate Elixir on the device**: `mise exec -- mix run --no-start tools/rpc.exs <serial> '<expr>'`, e.g.
+  `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`, `FMutate.Instance.journal("a", 50)` (the last inputs),
+  `FMutate.Instance.held("a")`. The app is the node `fmutate_a@127.0.0.1` on the device's port 9150 (no EPMD).
+  Calls time out after 30 s: for longer sampling, spawn a sampler on the device and read it with a second call.
+- **Performance**: `adb shell dumpsys gfxinfo com.genericjam.fmutate reset`, play, then `dumpsys gfxinfo …`; the
+  procedure and past numbers are in docs/architecture.md "Measured".
+- **A package on a device** (emulator backend): push it to `/data/local/tmp/`, `run-as com.genericjam.fmutate cp`
+  it into `files/`, then `FMutate.Library.import_package/2` and `FMutate.Instance.switch_firmware/2` over rpc.
+- **From outside**: `tools/android_probe` is a second app (same debug key) that plays MIDI into `FMutate A` and
+  reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
+  latency.
+
+## Conventions
+
+- **Per instance, no singletons**: everything a firmware has (layout, saves, MIDI port, distribution name) is keyed
+  by instance id. v1 has one instance, `"a"`.
+- **Pixels and audio never pass through the BEAM**: they go through shared memory between the engine, the mixer
+  NIF and the Kotlin view. Keep it that way.
+- **Firmware changes are patches**: FMutate's changes to firmwares or fm1-emu are files in `native/patches/<name>/`,
+  applied by the build scripts to sources pinned by commit. Regenerate a patch from a clean checkout of the pinned
+  commit with the earlier patches applied.
+- **Firmware capabilities** (pitch bend, octave reset, per-note pressure) are `caps` in `FMutate.Firmware`; the UI
+  greys out what a firmware doesn't support.
+- **The instrument surface is performance-critical** (`InstrumentView.kt`): controls are drawn on layers that
+  re-record only when what they show changes (rest of the controls, playing keys, firmware screen, creature,
+  overlay). Keep fast-changing state out of the controls layer, never allocate per frame, and measure with
+  gfxinfo after changing it. The pointer loop runs once for the surface's lifetime and checks every event for
+  fingers it lost; keep that invariant.
+- **Mob screens**: UI with the `~MOB` sigil. Node colours must be ARGB integers or theme atoms (Mob's Android
+  renderer drops `"#RRGGBB"` strings): use `FMutate.Style.argb/1` or pipe the tree through
+  `FMutate.Style.native_colors/1`. Canvas drawing takes hex. Load slow data with `Mob.Socket.start_async/3`,
+  long lists with `<LazyList>`, and subscribe to servers through `FMutate.Subscription` so a restarted server
+  is re-subscribed.
+- **Tests** cover behaviour a player or a sibling app would notice: boundaries, transitions, errors, timing. No
+  tests of wiring, copies or wording. Engine tests run real firmwares (`FMutate.PanelEdgesTest.Rig` drives an
+  engine and reads its audio ring).
+- **Docs**: a change in behaviour updates docs/architecture.md (decisions, measurements) or
+  docs/engine_protocol.md in the same commit.
+
+## Gotchas
+
+- Don't run two `mix` commands that touch Hex at the same time; a concurrent write once corrupted
+  `~/.hex/hex.config`.
+- A firmware's behaviour is its own: OberVave's ARP button on the arp page is HOLD (a latch), so notes can keep
+  playing by design. Check the input journal before suspecting FMutate.
+- Parallel work: give each stream its own `git worktree` with its own `deps/`, `_build/`, `native/build/`,
+  `android/local.properties` and its own device or emulator.
+
+## Mob documentation
+
+Read the docs for the Mob version in `mix.lock`: `deps/mob/guides/*.md` and `deps/mob/usage-rules.md` after
+`mix deps.get`; https://hexdocs.pm/mob/llms.txt lists every page (each also as Markdown at
+`https://hexdocs.pm/mob/<page>.md`). Start with `components`, `events`, `screen_lifecycle`, `navigation` and
+`native_extensions`.
