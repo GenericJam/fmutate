@@ -92,7 +92,8 @@ defmodule FMutate.RemoteTest do
       assert call({:subscribe, self(), [:status, :leds]}) == :ok
       assert_receive {:status, status}
       assert status in [:booting, :running]
-      assert_receive {:status, :running}, 5_000
+      # (the current status comes first; a booting engine then reports running)
+      if status == :booting, do: assert_receive({:status, :running}, 5_000)
       assert_receive {:leds, keys, buttons}, 5_000
       assert is_integer(keys) and map_size(buttons) == 14
     end
