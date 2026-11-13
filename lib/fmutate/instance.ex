@@ -90,8 +90,12 @@ defmodule FMutate.Instance do
   @doc "What the UI shows: firmware, phase, the screen file, restarts, quarantine."
   def view(id), do: GenServer.call(via(id), :view)
 
-  @doc "Subscribe the caller to `{:instance, id, event}` messages."
-  def subscribe(id), do: GenServer.call(via(id), {:subscribe, self()})
+  @doc """
+  Subscribe the caller to `{:instance, id, {:state, view}}` (on every change of the view). With
+  `status: true` also `{:instance, id, {:status, status}}` on every engine STATUS (ten a second): only for
+  processes that use it (FMutate.Remote), since a screen re-renders on every message it gets.
+  """
+  def subscribe(id, opts \\ []), do: GenServer.call(via(id), {:subscribe, self(), Keyword.get(opts, :status, false)})
 
   @doc "Debug: crash, hang or kill -9 the running engine."
   def debug(id, what) when what in [:crash, :hang, :kill9], do: GenServer.cast(via(id), {:debug, what})
@@ -217,9 +221,9 @@ defmodule FMutate.Instance do
     {:reply, :ok, state}
   end
 
-  def handle_call({:subscribe, pid}, _from, state) do
+  def handle_call({:subscribe, pid, status?}, _from, state) do
     ref = Process.monitor(pid)
-    {:reply, view_of(state), %{state | subscribers: Map.put(state.subscribers, pid, ref)}}
+    {:reply, view_of(state), %{state | subscribers: Map.put(state.subscribers, pid, {ref, status?})}}
   end
 
   def handle_call({:journal, n}, _from, state), do: {:reply, Enum.take(state.journal, n), state}
@@ -376,7 +380,7 @@ defmodule FMutate.Instance do
   # (published only when the health shows something new: the view also carries `master`, which pot moves
   # change without a publish, and a publish re-renders the instrument)
   defp engine_event(state, :live, {:status, status}) do
-    for {pid, _} <- state.subscribers, do: send(pid, {:instance, state.id, {:status, status}})
+    for {pid, {_, true}} <- state.subscribers, do: send(pid, {:instance, state.id, {:status, status}})
     new = health(%{state | status: status}, status)
     if health_view(new) != health_view(state), do: publish(new), else: new
   end

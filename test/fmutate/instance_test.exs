@@ -28,7 +28,7 @@ defmodule FMutate.InstanceTest do
 
   defp start_instance(id \\ "a") do
     start_supervised!({Instance, id: id}, id: {:instance, id})
-    Instance.subscribe(id)
+    Instance.subscribe(id, status: true)
   end
 
   defp await_state(pred, timeout \\ 5_000) do

@@ -27,13 +27,21 @@ defmodule FMutate.Library do
             error: nil,
             downloads: %{},
             tasks: %{},
-            subscribers: %{}
+            subscribers: %{},
+            # the merged list (bundled, imported, Hub; Catalog.merge/3 stats ~200 package paths) with the packages
+            # directory's listing it was built from: rebuilt when the catalogue or that listing changes, so a lookup
+            # costs one directory read, not two hundred file stats
+            firmwares: nil
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @doc "Every firmware: bundled, imported, then the Hub's (see `FMutate.Library.Catalog.merge/3`)."
   @spec firmwares() :: [Firmware.t()]
-  def firmwares, do: Catalog.merge(Firmware.bundled(), GenServer.call(__MODULE__, :hub), Paths.packages_dir())
+  def firmwares, do: GenServer.call(__MODULE__, :firmwares)
+
+  @doc "One firmware by id, or nil."
+  @spec get(String.t()) :: Firmware.t() | nil
+  def get(id), do: GenServer.call(__MODULE__, {:get, id})
 
   @doc """
   The library's state for the screen: `updated` (the Hub catalogue's date), `fetched_at` (when it was
@@ -91,6 +99,16 @@ defmodule FMutate.Library do
 
   @impl true
   def handle_call(:hub, _from, state), do: {:reply, state.hub, state}
+
+  def handle_call(:firmwares, _from, state) do
+    %{firmwares: {_, list}} = state = cached(state)
+    {:reply, list, state}
+  end
+
+  def handle_call({:get, id}, _from, state) do
+    %{firmwares: {_, list}} = state = cached(state)
+    {:reply, Enum.find(list, &(&1.id == id)), state}
+  end
 
   def handle_call(:info, _from, state) do
     {:reply, Map.take(state, [:updated, :fetched_at, :refreshing, :error, :downloads]), state}
@@ -230,7 +248,7 @@ defmodule FMutate.Library do
     end
   end
 
-  defp from_json(state, json), do: %{state | hub: Catalog.parse_hub(json), updated: json["updated"]}
+  defp from_json(state, json), do: %{state | hub: Catalog.parse_hub(json), updated: json["updated"], firmwares: nil}
 
   defp decode(body) do
     case JSON.decode(body) do
@@ -242,6 +260,15 @@ defmodule FMutate.Library do
   defp cache_path, do: Path.join(Paths.data_dir(), "hub_catalog.json")
 
   defp firmwares(state), do: Catalog.merge(Firmware.bundled(), state.hub, Paths.packages_dir())
+
+  defp cached(state) do
+    names = File.ls(Paths.packages_dir())
+
+    case state.firmwares do
+      {^names, _list} -> state
+      _ -> %{state | firmwares: {names, firmwares(state)}}
+    end
+  end
 
   ## Downloads (in a task)
 
@@ -280,6 +307,6 @@ defmodule FMutate.Library do
 
   defp changed(state) do
     for {pid, _} <- state.subscribers, do: send(pid, {:library, :changed})
-    state
+    %{state | firmwares: nil}
   end
 end

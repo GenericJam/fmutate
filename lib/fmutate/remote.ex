@@ -95,7 +95,7 @@ defmodule FMutate.Remote do
     id = Keyword.fetch!(opts, :id)
     if Keyword.get(opts, :register_local, true), do: Process.register(self(), :fmutate_instance)
     :yes = :global.register_name({:fmutate, id}, self())
-    view = Instance.subscribe(id)
+    view = Instance.subscribe(id, status: true)
 
     {:ok,
      %{

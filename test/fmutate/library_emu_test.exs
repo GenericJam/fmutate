@@ -126,7 +126,7 @@ defmodule FMutate.LibraryEmuTest do
     assert %{backend: :emu} = Firmware.runnable("dinghy")
 
     start_supervised!({Instance, id: "a"})
-    Instance.subscribe("a")
+    Instance.subscribe("a", status: true)
     await_running("obervave")
 
     # the Hub's package of the same firmware, in the emulator

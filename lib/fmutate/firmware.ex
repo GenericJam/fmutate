@@ -70,11 +70,15 @@ defmodule FMutate.Firmware do
   @spec all() :: [t]
   def all do
     # (the library is a process the app starts; when it isn't running, the bundled list is all there is)
-    if Process.whereis(FMutate.Library), do: apply(FMutate.Library, :firmwares, []), else: bundled()
+    if Process.whereis(FMutate.Library), do: FMutate.Library.firmwares(), else: bundled()
   end
 
   @spec get(String.t()) :: t | nil
-  def get(id), do: Enum.find(all(), &(&1.id == id))
+  def get(id) do
+    if Process.whereis(FMutate.Library),
+      do: FMutate.Library.get(id),
+      else: Enum.find(bundled(), &(&1.id == id))
+  end
 
   @doc "The default firmware on first run."
   def default_id, do: "obervave"
