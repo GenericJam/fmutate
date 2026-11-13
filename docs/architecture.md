@@ -199,6 +199,10 @@ device recorded `FMutate.Audio.stats/0` every ~5 s (frames, the window's peak); 
 The notification shows in the shade as "FMutate · FMutate is playing" (silent section). Safe mode (two `kill9`
 within a minute) turns the keep-alive off and removes the notification; Run anyway turns it on again.
 
+On the Moto G Power 5G 2024 (Android 15), keep-alive on, HOME then screen off for 3 minutes: `isForeground=true
+types=0x00000002` (mediaPlayback) throughout; a device-side sampler took 37 samples with no gap over 5.0 s and
+43.6–44.6 k frames a second: Motorola's battery management left the foreground service alone.
+
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 
 The list is a `<LazyList>` between the fixed header and footer: only the cards on screen are composed (each
