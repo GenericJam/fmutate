@@ -25,7 +25,12 @@ sealed class Target {
     val absoluteKey: String?
         get() = when (this) {
             is Pot -> "pot:master"
-            is Midi -> if (type == "cc") "cc:$channel:$number" else null
+            is Midi -> when (type) {
+                "cc" -> "cc:$channel:$number"
+                // a motion control's axis: one bend value per channel, shared like a CC
+                "pitch_bend" -> "bend:$channel"
+                else -> null
+            }
             else -> null
         }
 }
@@ -70,6 +75,11 @@ data class Control(
     val strings: List<Int> = emptyList(),
     val screenScale: Int = 0,
     val switcherDots: Boolean = false,
+    // motion (MotionControl.kt): engage hold / latch, degrees for a value's whole span, spring back, shake threshold
+    val motionLatch: Boolean = false,
+    val motionRange: Int = 45,
+    val motionSpringBack: Boolean = false,
+    val motionShake: String = "firm",
 ) {
     fun binding(on: String): Binding? = bindings.firstOrNull { it.on == on }
 }
@@ -129,6 +139,7 @@ data class Layout(
             val st = o.optJSONObject("strum")
             val sc = o.optJSONObject("screen")
             val ps = o.optJSONObject("page_switcher")
+            val mo = o.optJSONObject("motion")
             return Control(
                 id = o.getString("id"),
                 type = o.getString("type"),
@@ -158,6 +169,10 @@ data class Layout(
                 strings = st?.optJSONArray("keys")?.let { a -> (0 until a.length()).map { a.getInt(it) } } ?: emptyList(),
                 screenScale = sc?.optInt("scale", 0) ?: 0,
                 switcherDots = ps?.optString("look", "names") == "dots",
+                motionLatch = mo?.optString("engage", "hold") == "latch",
+                motionRange = (mo?.optInt("range", 45) ?: 45).coerceIn(5, 180),
+                motionSpringBack = mo?.optString("on_release", "stay") == "spring_back",
+                motionShake = mo?.optString("shake", "firm") ?: "firm",
             )
         }
 

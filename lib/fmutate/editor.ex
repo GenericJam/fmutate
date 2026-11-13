@@ -29,7 +29,7 @@ defmodule FMutate.Editor do
 
   import Mob.Sigil, only: [sigil_MOB: 2]
 
-  alias FMutate.{Firmware, Inputs, LayoutEdit, Layouts, Style}
+  alias FMutate.{Firmware, Inputs, LayoutEdit, Layouts, Motion, Style}
 
   @events ~w(edit edit_done page pages edit_move edit_resize edit_to_page edit_cell edit_add_close edit_add
              edit_add_page edit_open use_classic)
@@ -51,6 +51,8 @@ defmodule FMutate.Editor do
       bend: cap?(firmware, :pitch_bend),
       toast: Map.get(socket.assigns, :toast, {0, ""}),
       add_menu: nil,
+      # the phone's sensors (FMutate.Motion.sensors/0), asked once, when "Add here" or a motion sheet needs them
+      sensors: Map.get(socket.assigns, :sensors),
       draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false}
     )
   end
@@ -71,10 +73,13 @@ defmodule FMutate.Editor do
   def event("edit_cell", %{"page" => page, "col" => col, "row" => row}, socket) do
     layout = socket.assigns.layout
     {w, h} = LayoutEdit.room(layout, page, col, row)
+    socket = with_sensors(socket)
 
     menu =
-      if w > 0,
-        do: %{page: page, col: col, row: row, room: [w, h], items: LayoutEdit.add_menu(layout, page, col, row)}
+      if w > 0 do
+        items = LayoutEdit.add_menu(layout, page, col, row) |> Enum.map(&motion_item(&1, socket.assigns.sensors))
+        %{page: page, col: col, row: row, room: [w, h], items: items}
+      end
 
     Mob.Socket.assign(socket, :add_menu, menu)
   end
@@ -119,6 +124,7 @@ defmodule FMutate.Editor do
         sub = if c["type"] == "pad_grid", do: p["sub"] || 0
         len = p["len"] || 0
         draft = %{socket.assigns.draft | tab: :firmware, on: LayoutEdit.default_on(c)}
+        socket = if c["type"] == "motion", do: with_sensors(socket), else: socket
         Mob.Socket.assign(socket, sheet: {:control, id, sub, len}, draft: draft)
 
       nil ->
@@ -127,6 +133,17 @@ defmodule FMutate.Editor do
   end
 
   def event(_event, _payload, socket), do: socket
+
+  # a phone without an accelerometer can't tilt or shake: the motion control is listed, greyed, with why
+  defp motion_item(%{type: "motion"} = item, sensors) do
+    if Motion.addable?(sensors), do: item, else: Map.merge(item, %{fits: false, reason: "no motion sensor"})
+  end
+
+  defp motion_item(item, _sensors), do: item
+
+  defp with_sensors(socket) do
+    if socket.assigns[:sensors], do: socket, else: Mob.Socket.assign(socket, :sensors, Motion.sensors())
+  end
 
   # apply an edit: save it, or say why not
   defp commit(socket, {:ok, layout}) do
@@ -303,6 +320,16 @@ defmodule FMutate.Editor do
     end)
   end
 
+  # motion controls: engage, range, on_release, shake (FMutate.Motion.choices/1)
+  def ui(:tap, {:editor, {:motion, key, value}}, _v, socket) do
+    with_control(socket, fn l, c, _ ->
+      case Motion.put_setting(c, key, value) do
+        {:ok, m} -> LayoutEdit.put(l, c["id"], %{"motion" => m})
+        :error -> {:error, "Not a choice for that setting"}
+      end
+    end)
+  end
+
   def ui(_kind, _tag, _value, socket), do: socket
 
   defp draft(socket, kv), do: Mob.Socket.assign(socket, :draft, Map.merge(socket.assigns.draft, Map.new(kv)))
@@ -343,16 +370,19 @@ defmodule FMutate.Editor do
 
   defp bind_midi(layout, c, sub) do
     d = Process.get({__MODULE__, :draft})
-    type = if kind(c) == :press, do: d.midi_type, else: "cc"
-    midi = %{"type" => type, "channel" => d.channel, "number" => d.number}
+    type = midi_type(kind(c, current_draft_on(c)), c, d)
+    midi = if type == "pitch_bend", do: %{"type" => type, "channel" => d.channel}, else: %{"type" => type, "channel" => d.channel, "number" => d.number}
     midi = if type == "cc" and c["type"] == "slider" and d.jump, do: Map.put(midi, "jump", true), else: midi
     toggle_target(layout, c, sub, %{"midi" => midi})
   end
 
+  # Momentary / Toggle: the press bindings, or for a motion control those of the gesture shown (shake, near)
   defp set_mode(layout, c, sub, mode) do
+    press_on = if c["type"] == "motion", do: current_draft_on(c), else: "press"
+
     bindings =
       for b <- LayoutEdit.bindings(layout, c["id"], sub) do
-        if on_of(b) == "press", do: (if mode == "toggle", do: Map.put(b, "mode", "toggle"), else: Map.delete(b, "mode")), else: b
+        if on_of(b) == press_on, do: (if mode == "toggle", do: Map.put(b, "mode", "toggle"), else: Map.delete(b, "mode")), else: b
       end
 
     LayoutEdit.set_bindings(layout, c["id"], sub, bindings)
@@ -510,9 +540,9 @@ defmodule FMutate.Editor do
     %{type: :button, props: props, children: []}
   end
 
-  # a segmented control: equal buttons, the current one selected
-  defp segmented(options, current) do
-    buttons = for {label, action, value} <- options, do: button(label, action, on: value == current)
+  # a segmented control: equal buttons, the current one selected; values in `disabled` are greyed out
+  defp segmented(options, current, disabled \\ []) do
+    buttons = for {label, action, value} <- options, do: button(label, action, on: value == current, disabled: value in disabled)
 
     ~MOB"""
     <Row gap={4} padding={4} background={c(:bg)}>
@@ -712,7 +742,7 @@ defmodule FMutate.Editor do
     d = assigns.draft
     on = d.on || LayoutEdit.default_on(c)
     bindings = LayoutEdit.bindings(layout, c["id"], sub)
-    kind = kind(c)
+    kind = kind(c, on)
 
     label =
       if sub,
@@ -723,7 +753,7 @@ defmodule FMutate.Editor do
       case kind do
         :none -> other_settings(c)
         :strum -> strum_settings(c)
-        _ -> binding_editor(assigns, c, kind, on, bindings, d)
+        _ -> binding_editor(assigns, c, kind, on, bindings, d) ++ motion_settings(assigns, c)
       end
 
     children =
@@ -754,12 +784,62 @@ defmodule FMutate.Editor do
   defp kind(%{"type" => "strum"}), do: :strum
   defp kind(_), do: :none
 
+  # a motion control's bindings drive values (tilt, twist) or presses (shake, near), by the gesture shown
+  defp kind(%{"type" => "motion"}, on), do: Motion.kind(on)
+  defp kind(c, _on), do: kind(c)
+
+  # the MIDI message a binding sends: presses a note or a CC, values a CC, motion axes a CC or pitch bend
+  defp midi_type(:press, _c, d), do: if(d.midi_type in ["note", "cc"], do: d.midi_type, else: "note")
+  defp midi_type(_value, %{"type" => "motion"}, %{midi_type: "pitch_bend"}), do: "pitch_bend"
+  defp midi_type(_value, _c, _d), do: "cc"
+
+  defp motion_gestures(assigns, on) do
+    avail = Motion.availability(assigns.sensors || [])
+    missing = for {g, {:missing, _}} <- avail, do: g
+    options = for g <- Motion.gestures(), do: {Motion.name(g), {:on, g}, g}
+    reasons = for g <- Motion.gestures(), {:missing, why} <- [avail[g]], do: "#{Motion.name(g)}: #{why}."
+    [segmented(options, on, missing)] ++ if(reasons == [], do: [], else: [caption(Enum.join(reasons, " "), :faint)])
+  end
+
+  defp motion_settings(assigns, %{"type" => "motion"} = c) do
+    avail = Motion.availability(assigns.sensors || [])
+    accel = match?({:ok, _}, avail["x"])
+    have = for({_g, {:ok, name}} <- avail, do: name) |> Enum.uniq()
+    opt = fn key, label, value -> {label, {:motion, key, value}, value} end
+
+    [
+      section("Engage"),
+      segmented([opt.("engage", "Hold", "hold"), opt.("engage", "Latch", "latch")], Motion.setting(c, "engage")),
+      caption(
+        "Hold: moves only while a finger is on the tile, from how the phone was held when the finger landed, so " <>
+          "picking the phone up never moves anything. Latch: a tap turns it on (lime) from how the phone is held then; another tap, off."
+      ),
+      section("Range"),
+      segmented(for(r <- Motion.choices("range"), do: opt.("range", "#{r}°", r)), Motion.setting(c, "range")),
+      caption("Degrees of tilt (or twist) that sweep a value's whole range; pitch bend reaches either end in half of it."),
+      section("On release"),
+      segmented([opt.("on_release", "Stay", "stay"), opt.("on_release", "Spring back", "spring_back")], Motion.setting(c, "on_release")),
+      caption("Spring back: when it lets go, values return to where they were when it engaged (encoders get their clicks back)."),
+      section("Shake"),
+      segmented(
+        for(s <- Motion.choices("shake"), do: opt.("shake", String.capitalize(s), s)),
+        Motion.setting(c, "shake"),
+        if(accel, do: [], else: Motion.choices("shake"))
+      ),
+      caption("How hard a jolt counts as a shake: gentle 0.6 g, firm 1.2 g, hard 2 g beyond gravity."),
+      caption(if(have == [], do: "This phone reports no motion sensors.", else: "This phone: " <> Enum.join(have, ", ") <> "."), :faint)
+    ]
+  end
+
+  defp motion_settings(_assigns, _c), do: []
+
   defp binding_editor(assigns, c, kind, on, bindings, d) do
     gestures =
-      case kind do
-        :press -> [segmented([{"On press", {:on, "press"}, "press"}, {"On long-press", {:on, "long_press"}, "long_press"}], on)]
-        :xy -> [segmented([{"X axis", {:on, "x"}, "x"}, {"Y axis", {:on, "y"}, "y"}], on)]
-        :value -> []
+      cond do
+        c["type"] == "motion" -> motion_gestures(assigns, on)
+        kind == :press -> [segmented([{"On press", {:on, "press"}, "press"}, {"On long-press", {:on, "long_press"}, "long_press"}], on)]
+        kind == :xy -> [segmented([{"X axis", {:on, "x"}, "x"}, {"Y axis", {:on, "y"}, "y"}], on)]
+        true -> []
       end
 
     tabs =
@@ -774,13 +854,13 @@ defmodule FMutate.Editor do
     tab_body =
       case d.tab do
         :firmware -> firmware_inputs(kind, bound)
-        :midi -> midi_inputs(kind, c, d)
+        :midi -> midi_inputs(assigns, kind, c, d)
         :page -> page_targets(assigns.layout, bound)
       end
 
     chips =
       for {b, i} <- Enum.with_index(bindings) do
-        chip("#{describe(b["to"])} · #{String.replace(on_of(b), "_", "-")}#{if b["mode"] == "toggle", do: " · toggle", else: ""}  ×", {:remove_binding, i})
+        chip("#{describe(b["to"])} · #{gesture_name(c, on_of(b))}#{if b["mode"] == "toggle", do: " · toggle", else: ""}  ×", {:remove_binding, i})
       end
 
     chips_node =
@@ -795,7 +875,8 @@ defmodule FMutate.Editor do
 
     mode =
       if kind == :press do
-        toggle_on = Enum.any?(bindings, &(on_of(&1) == "press" and &1["mode"] == "toggle"))
+        press_on = if c["type"] == "motion", do: on, else: "press"
+        toggle_on = Enum.any?(bindings, &(on_of(&1) == press_on and &1["mode"] == "toggle"))
         [segmented([{"Momentary", {:mode, "momentary"}, false}, {"Toggle", {:mode, "toggle"}, true}], toggle_on)]
       else
         []
@@ -851,18 +932,47 @@ defmodule FMutate.Editor do
     end
   end
 
-  defp midi_inputs(kind, c, d) do
-    types = if kind == :press, do: [{"Note", {:midi_type, "note"}, "note"}, {"CC", {:midi_type, "cc"}, "cc"}], else: [{"CC", {:midi_type, "cc"}, "cc"}]
-    type = if kind == :press, do: d.midi_type, else: "cc"
+  defp gesture_name(%{"type" => "motion"}, on), do: String.downcase(Motion.name(on))
+  defp gesture_name(_c, on), do: String.replace(on, "_", "-")
+
+  defp midi_inputs(assigns, kind, c, d) do
+    motion_axis = c["type"] == "motion" and kind == :value
+
+    types =
+      cond do
+        kind == :press -> [{"Note", {:midi_type, "note"}, "note"}, {"CC", {:midi_type, "cc"}, "cc"}]
+        motion_axis -> [{"CC", {:midi_type, "cc"}, "cc"}, {"Pitch bend", {:midi_type, "pitch_bend"}, "pitch_bend"}]
+        true -> [{"CC", {:midi_type, "cc"}, "cc"}]
+      end
+
+    type = midi_type(kind, c, d)
     number = if type == "note", do: "#{d.number} · #{note_name(d.number)}", else: "CC #{d.number}"
 
+    if type == "pitch_bend" do
+      no_bend = if assigns.bend, do: [], else: [caption("Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend.", :faint)]
+
+      [
+        segmented(types, type, if(assigns.bend, do: [], else: ["pitch_bend"])),
+        ~MOB"""
+        <Row gap={8}>
+          {stepper("Ch", Integer.to_string(d.channel), {:channel, -1}, {:channel, 1})}
+        </Row>
+        """,
+        caption("Centred where the phone is when it engages; assumes the firmware's own bend range (±2 semitones on OberVave and ShineOn).")
+      ] ++ no_bend ++ [button("Bind pitch bend", :bind_midi, bg: c(:raised_hi), weight: :none, disabled: not assigns.bend)]
+    else
+      midi_number_inputs(c, d, types, type, number, if(motion_axis and not assigns.bend, do: ["pitch_bend"], else: []))
+    end
+  end
+
+  defp midi_number_inputs(c, d, types, type, number, disabled) do
     jump =
       if type == "cc" and c["type"] == "slider",
         do: [toggle("Jump to touch position", "The slider's value follows the finger (MIDI CC only).", :jump, d.jump)],
         else: []
 
     [
-      segmented(types, type),
+      segmented(types, type, disabled),
       ~MOB"""
       <Row gap={8}>
         {stepper("Ch", Integer.to_string(d.channel), {:channel, -1}, {:channel, 1})}
@@ -1039,6 +1149,7 @@ defmodule FMutate.Editor do
     "CC#{m["number"] || 0} · ch#{m["channel"] || 1}" <> values <> if(m["jump"], do: " · jump", else: "")
   end
 
+  defp describe(%{"midi" => %{"type" => "pitch_bend"} = m}), do: "pitch bend · ch#{m["channel"] || 1}"
   defp describe(%{"midi" => m}), do: "MIDI #{m["type"]}"
   defp describe(%{"page" => "next"}), do: "go to: next"
   defp describe(%{"page" => "prev"}), do: "go to: previous"

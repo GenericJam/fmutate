@@ -6,6 +6,7 @@ import android.content.ContextWrapper
 import android.content.pm.ActivityInfo
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.hardware.SensorManager
 import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
@@ -359,7 +360,7 @@ private fun InstrumentSurface(
     // controls that press a firmware button other than OCT: while one is held, keys are a layer of the
     // firmware's (SAVE + key, …), so velocity strips send key presses again
     val fnButtons = remember(controls) {
-        controls.filter { c -> c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
+        controls.filter { c -> c.type != "motion" && c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
     }
 
     /** Press or release a discrete target (keys, buttons, notes, page). */
@@ -489,6 +490,55 @@ private fun InstrumentSurface(
         state.values[key] = v
         sendValue(c, t, v)
     }
+
+    // ── motion controls (MotionControl.kt): sensors only while one is engaged; sends go the usual ways ──
+    fun motionFire(t: Target, down: Boolean) = fire(t, down)
+    // values a knob or slider on this page shows go into the surface's state as they move (that layer must show
+    // them); the others (a pitch bend, a CC nothing here shows) wait here until the motion control lets go, or
+    // every reading would re-record the controls layer
+    val shownKeys = remember(controls) {
+        controls.filter { it.type == "knob" || it.type == "slider" }.flatMap { c -> c.bindings.mapNotNull { it.to.absoluteKey } }.toSet()
+    }
+    val heldBack = remember(state) { HashMap<String, Float>() }
+    val motionSink by rememberUpdatedState(object : MotionSink {
+        override fun value(c: Control, t: Target, v: Float): Boolean {
+            val key = t.absoluteKey ?: return false
+            if (!rule7.accept(key, c.id, v, heldBack[key] ?: state.values[key])) return false
+            if (key in shownKeys) state.values[key] = v else heldBack[key] = v
+            sendValue(c, t, v)
+            return true
+        }
+        override fun clicks(c: Control, t: Target.Encoder, n: Int) = input(mapOf("t" to "encoder", "id" to t.id, "clicks" to n, "c" to c.id))
+        override fun fire(t: Target, down: Boolean) = motionFire(t, down)
+        override fun current(key: String): Float = heldBack[key] ?: state.values[key] ?: 0.5f
+        override fun settle() {
+            for ((k, v) in heldBack) state.values[k] = v
+            heldBack.clear()
+        }
+    })
+    val motion = remember(state) { MotionControls(context.getSystemService(SensorManager::class.java)) { motionSink } }
+    val motionIds = remember(controls) { controls.filter { it.type == "motion" }.map { it.id }.toSet() }
+    fun motionOn(c: Control) {
+        state.pressed[c.id] = true
+        motion.engage(c, displayRotation(view))
+    }
+    fun motionOff(id: String) {
+        motion.disengage(id)
+        state.pressed.remove(id)
+    }
+    fun motionAllOff() = motionIds.forEach { if (motion.isEngaged(it)) motionOff(it) }
+    // a page change (or a new layout) lets go of motion controls no longer shown
+    LaunchedEffect(motionIds) { motion.retain(motionIds) }
+    // and the app going to the background lets go of all of them (a latch would keep the sensors on)
+    DisposableEffect(state) {
+        val lifecycle = (context.findActivity() as? androidx.lifecycle.LifecycleOwner)?.lifecycle
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_STOP) motionAllOff()
+        }
+        lifecycle?.addObserver(observer)
+        onDispose { lifecycle?.removeObserver(observer) }
+    }
+    // ── end motion controls ──
 
     // keyboard geometry: the visible firmware keys of a strip
     fun window(c: Control): IntRange {
@@ -654,6 +704,8 @@ private fun InstrumentSurface(
                 val i = ((p.x - r.x) / r.w * n).toInt().coerceIn(0, n - 1)
                 goPage(layout.pages[i].id)
             }
+            // a motion control: hold engages while the finger is on it, latch toggles on a tap
+            "motion" -> if (c.motionLatch) { if (motion.isEngaged(c.id)) motionOff(c.id) else motionOn(c) } else motionOn(c)
             "knob", "slider", "xy_pad" -> {
                 state.pressed[c.id] = true
                 state.encoderTurns[c.id] = 0
@@ -765,6 +817,7 @@ private fun InstrumentSurface(
                     }
                 }
             }
+            "motion" -> if (!c.motionLatch) motionOff(c.id)
             "screen" -> if (!g.moved && phaseNow == "safe_mode") { haptic(HapticFeedbackConstants.VIRTUAL_KEY); emit("run_anyway") }
             else -> {}
         }
@@ -784,7 +837,7 @@ private fun InstrumentSurface(
     val onDiag by rememberUpdatedState<(Map<String, Any>) -> Unit> { p -> emit("diag", p) }
 
     // controls stop sending input in edit mode: lift whatever was held when it began
-    LaunchedEffect(editing) { if (editing) grabs.keys.toList().forEach { letGo(it) } else edit.reset() }
+    LaunchedEffect(editing) { if (editing) { grabs.keys.toList().forEach { letGo(it) }; motionAllOff() } else edit.reset() }
 
     // toggled bindings (a sustain toggle, say) live in the firmware: a new engine (restart, firmware switch) starts
     // without them, so they're sent again once it runs; leaving this layout lets them go
@@ -812,6 +865,7 @@ private fun InstrumentSurface(
             // fingers still down when the surface goes (a sheet over it, another screen): let go of what they hold
             grabs.keys.toList().forEach { letGo(it) }
             toggled().forEach { fire(it, false) }
+            motion.close()
             // a swell leaves the firmware's volume where the last finger was: full again
             if (hasVelocityStrip) input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
         }
@@ -879,6 +933,7 @@ private fun InstrumentSurface(
                 "knob" -> dr.knob(c, r, state)
                 "slider" -> dr.slider(c, r, state)
                 "xy_pad" -> dr.xy(c, r, state)
+                "motion" -> dr.motion(c, r, state, motion.hasAccel)
 
                 "screen" -> dr.screenBezel(r, c.screenScale)
                 "label" -> dr.label(c, r)
@@ -912,6 +967,15 @@ private fun InstrumentSurface(
         for (c in controls) if (c.type == "screen" && !edit.hidden(c.id)) rectOf(c)?.let { r ->
             if (live) dr.screenPixels(r, c.screenScale, screenImage!!, screenScaler!!)
             message?.let { dr.screenMessage(r, c.screenScale, it, live) }
+        }
+    }
+    // motion controls' dots (the phone's tilt while engaged): their own layer, redrawn per reading, only on pages
+    // that have one
+    if (motionIds.isNotEmpty()) Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
+        if (motion.frame < 0 || fitted == null) return@Canvas
+        val dr = Draw(this, density, ink)
+        for (c in controls) if (c.type == "motion" && !edit.hidden(c.id)) rectOf(c)?.let { r ->
+            dr.motionDot(r, motion.dotX(c.id), motion.dotY(c.id), motion.isEngaged(c.id))
         }
     }
     // ── menu: the Opling (Opling.kt), on its own layer ──
@@ -972,7 +1036,12 @@ private fun sendValueBytes(t: Target, v: Float, control: String): Map<String, An
     is Target.Midi -> if (t.type == "cc") mapOf(
         "t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt()),
         "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),
-    ) else null
+    ) else if (t.type == "pitch_bend") MotionMath.bendRaw(v).let { raw ->
+        mapOf(
+            "t" to "midi", "bytes" to listOf(0xE0 or (t.channel - 1), raw and 0x7F, raw shr 7),
+            "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),
+        )
+    } else null
     else -> null
 }
 
@@ -1084,6 +1153,31 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         s.drawLine(C.lineSoft, off(r.cx, r.y + 8), off(r.cx, r.y + r.h - 8), 1f.px())
         s.drawLine(C.lineSoft, off(r.x + 8, r.cy), off(r.x + r.w - 8, r.cy), 1f.px())
         text(c.label, r.cx, r.y + 12, 10f, C.muted, mono = true)
+    }
+
+    /** A motion control's ring (its tilt dot is on the motion layer, [motionDot]): lime while engaged. */
+    fun motion(c: Control, r: Grid.Rect, st: SurfaceState, sensor: Boolean) {
+        val active = st.pressed[c.id] == true
+        rr(r.x, r.y, r.w, r.h, 12f, if (active) C.fmTint else C.raised)
+        val cx = r.cx
+        val cy = ringY(r)
+        val rad = ringRadius(r)
+        s.drawCircle(if (active) C.fm else C.lineSoft, rad.px(), off(cx, cy), style = Stroke(2f.px()))
+        s.drawLine(C.lineSoft, off(cx - 4, cy), off(cx + 4, cy), 1f.px())
+        s.drawLine(C.lineSoft, off(cx, cy - 4), off(cx, cy + 4), 1f.px())
+        val label = if (!sensor) "no sensor" else c.label
+        text(label, r.cx, r.y + r.h - 9, 10f, if (active) C.fm else if (sensor) C.muted else C.faint, mono = true)
+        if (c.motionLatch && r.h >= 80f) text("LATCH", r.x + 22, r.y + 10, 8f, if (active) C.fm else C.faint, mono = true)
+    }
+
+    // a motion control's ring inside its cells (dp), above the label
+    private fun ringY(r: Grid.Rect) = r.y + (r.h - 18f) / 2 + 2f
+    private fun ringRadius(r: Grid.Rect) = (min(r.w, r.h - 18f) / 2 - 8f).coerceAtLeast(6f)
+
+    /** A motion control's tilt: a dot inside its ring, at the edge for a whole range of tilt. */
+    fun motionDot(r: Grid.Rect, x: Float, y: Float, engaged: Boolean) {
+        val rad = ringRadius(r)
+        s.drawCircle(if (engaged) C.fm else C.faint, 5f.px(), off(r.cx + x * rad, ringY(r) - y * rad))
     }
 
     fun pads(c: Control, r: Grid.Rect, st: SurfaceState) {

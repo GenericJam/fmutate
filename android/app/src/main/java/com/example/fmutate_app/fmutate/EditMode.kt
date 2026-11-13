@@ -130,7 +130,8 @@ fun editFit(layout: Layout, page: Page, wDp: Float, hDp: Float): Fitted =
 
 /** "Add here" (Edit-Add.dc.html), as FMutate.Editor sends it: the tapped cell, its free run, what fits. */
 data class AddMenu(val page: String, val col: Int, val row: Int, val roomW: Int, val roomH: Int, val items: List<Item>) {
-    data class Item(val type: String, val name: String, val fits: Boolean, val size: String)
+    /** [reason]: why an item that would fit can't be added here (a motion control on a phone without sensors). */
+    data class Item(val type: String, val name: String, val fits: Boolean, val size: String, val reason: String = "")
 
     companion object {
         fun parse(json: String?): AddMenu? {
@@ -143,7 +144,7 @@ data class AddMenu(val page: String, val col: Int, val row: Int, val roomW: Int,
                     o.getString("page"), o.getInt("col"), o.getInt("row"), room.getInt(0), room.getInt(1),
                     (0 until items.length()).map { i ->
                         val it = items.getJSONObject(i)
-                        Item(it.getString("type"), it.getString("name"), it.getBoolean("fits"), it.getString("size"))
+                        Item(it.getString("type"), it.getString("name"), it.getBoolean("fits"), it.getString("size"), it.optString("reason", ""))
                     },
                 )
             }.getOrNull()
@@ -406,7 +407,8 @@ class EditMode {
 
     private fun menuBox(ctx: EditCtx, m: AddMenu): MenuBox {
         val w = 300f
-        val rowH = 28f
+        // 28 dp rows, tighter when the list would run off a short (landscape) screen
+        val rowH = min(28f, (ctx.hDp - 16f - 48f) / m.items.size - 2f).coerceAtLeast(20f)
         val h = 12f + 26f + m.items.size * (rowH + 2f) + 10f
         val cell = ctx.grid.rect(Cell(m.col, m.row, 1, 1))
         var x = if (cell.x + cell.w + 12 + w <= ctx.wDp - 8) cell.x + cell.w + 12 else cell.x - 12 - w
@@ -534,7 +536,8 @@ class EditMode {
             for ((item, r) in box.items) {
                 if (item.fits) rr(r, E.paper2, 9f)
                 ink.text(s, item.name, r.x + 10, r.cy, 13f, if (item.fits) E.ink else E.disabled, bold = true, mono = false, d = d, left = true)
-                ink.text(s, if (item.fits) item.size + " +" else "needs ${item.size}", r.x + r.w - 10, r.cy, 11f, if (item.fits) E.ink2 else E.needs, bold = false, mono = true, d = d, right = true)
+                val aside = when { item.fits -> item.size + " +"; item.reason.isNotEmpty() -> item.reason; else -> "needs ${item.size}" }
+                ink.text(s, aside, r.x + r.w - 10, r.cy, 11f, if (item.fits) E.ink2 else E.needs, bold = false, mono = true, d = d, right = true)
             }
         }
     }

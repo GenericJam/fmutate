@@ -55,8 +55,8 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), screens |
-| `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
+| `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
 | `tools/rpc.exs` | evaluate Elixir on a device's running app |
@@ -127,6 +127,26 @@ flowchart LR
   slide on a held key sends pitch bend instead of playing the next key; half a key width is the strip's
   `bend_range` (a quarter tone by default, 1 or 2 semitones), scaled on the assumption that the firmware's own
   bend range is ±2 semitones (every OberVave/ShineOn factory program). Only changes are sent; release recentres.
+- **Motion controls** (`"type": "motion"`, HANDOFF has no design for them yet: this is the tech decision). A tile
+  bound like an XY pad and a button: `x` tilt X (roll, right edge down = up), `y` tilt Y (pitch, top edge up = up),
+  `twist` (gyroscope, clockwise = up) drive values (encoders, MASTER, MIDI CC, MIDI pitch bend); `shake` (a jolt
+  beyond 0.6 / 1.2 / 2 g, then 250 ms deaf) and `near` (proximity) are presses (momentary or toggle). Engage `hold`
+  (only while a finger is on the tile) or `latch` (a tap on, a tap off); values move relative to how the phone was
+  held at engage, 2° dead zone, `range` degrees (15–90, default 45) for a value's whole span (a 200 pt knob drag of
+  clicks for an encoder; pitch bend reaches either end in half of it), and on release they stay or spring back as
+  the XY pad's. Absolute targets go through rule 7 as any control's and are sent only when they move by 1/128.
+  **Sensors are read in the surface** (`MotionControl.kt`), on the main thread, never per reading through the BEAM
+  (a screen process re-renders on every message it gets); tilt and shake come from the accelerometer alone (the
+  fused gravity / game-rotation sensors keep the gyroscope powered; tilt holds still while the phone accelerates
+  more than 0.35 g, so a shake doesn't move a tilt binding), the gyroscope is registered only for a `twist`
+  binding, the proximity sensor only for `near`. **Battery**: nothing is registered unless a motion control is
+  engaged; then what its bindings need at `SENSOR_DELAY_GAME` (~50 Hz); the last one to let go unregisters, and a
+  page change, edit mode, the app going to the background and the surface going away all let go. The tile's dot is
+  its own layer, composed only on pages with a motion control. **mob_sensors** (Hex, signed) is used for one thing:
+  the editor's one-shot `MobSensors.list/0` of what this phone has, so a gesture without its sensor is greyed in the
+  binding sheet with the reason and "Add here" greys the control on a phone without an accelerometer. Its streams
+  deliver each reading as a message to an Elixir process, which is the wrong place for 50 readings a second that
+  only the surface needs.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
@@ -198,6 +218,25 @@ device recorded `FMutate.Audio.stats/0` every ~5 s (frames, the window's peak); 
 
 The notification shows in the shade as "FMutate · FMutate is playing" (silent section). Safe mode (two `kill9`
 within a minute) turns the keep-alive off and removes the notification; Run anyway turns it on again.
+
+### Motion controls (emulator-5558, Android 17 x86_64, debug build, OberVave)
+
+`dumpsys gfxinfo` after `reset`, 3 runs each. Key holds: 6 × `input swipe 1100 900 1100 900 300` on the classic
+layout. Engaged: a finger held on a 1×1 motion tile while `adb emu sensor set acceleration` alternates ±17° every
+250 ms for 4 s (no keys). The emulator renders in software, so compare rows with each other, not with a phone.
+
+| | janky | p50 / p90 / p99 |
+|---|---|---|
+| key holds, master's APK, classic | 6.7–8.7 % | 26–28 / 32–38 / 34–57 ms |
+| key holds, this branch, classic (no motion control) | 4.7–6.7 % | 27–30 / 34–38 / 42–61 ms |
+| key holds, this branch, motion control on the page (not engaged) | 6.7–10.2 % | 27–28 / 32–36 / 40–48 ms |
+| engaged, tilt X → KNOB1 (encoder clicks) | 18.3–19.6 % | 16–17 / 29–32 / 32–38 ms |
+| engaged, tilt Y → pitch bend, before keeping off-page values out of the surface's state | 28.3–30.3 % | — / 46–48 ms / — |
+| engaged, tilt Y → pitch bend | 24.3–27.0 % | 16 / 31–32 / 38–48 ms |
+| for comparison: a finger dragging MASTER up and down, 2 × 4 s | 58.7–62.5 % | 16–20 / 32 / 46–65 ms |
+
+Sensors: none registered by the surface until a tile is engaged; then the accelerometer at a 20 000 µs sampling
+period (`dumpsys sensorservice`), unregistered when the finger lifts.
 
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 
