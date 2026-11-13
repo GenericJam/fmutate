@@ -16,6 +16,9 @@ extern void mob_send_push_token(const char* hex_token);
 // body is just empty in that case).
 extern void mob_register_plugins(void);
 
+// FMutate's own native views (ios/FMutateViews.swift): the instrument surface, FMutate.InstrumentView.
+extern void fmutate_register_views(void);
+
 // Exported by mob_nif: tells the BEAM a window scene has connected so screens
 // can re-read safe-area insets they may have taken before one existed.
 extern void mob_notify_window_connected(void);
@@ -56,6 +59,7 @@ static void mob_boot_runtime(void) {
         // Must run before mob_init_ui() so the registry has every plugin view
         // factory in place by the time the BEAM mounts its first screen.
         mob_register_plugins();
+        fmutate_register_views();
 
         mob_init_ui();
 
