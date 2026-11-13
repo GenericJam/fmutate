@@ -145,12 +145,12 @@ static int send_out(void *ctx, const uint8_t *m, uint32_t n)
     return !sent;
 }
 
-static void send_exit(engine *e, int code)
+static void send_exit(ErlNifEnv *caller, engine *e, int code)   /* caller: the NIF's env, NULL on an engine thread */
 {
     ErlNifEnv *env = enif_alloc_env();
     ERL_NIF_TERM msg = enif_make_tuple2(env, enif_make_copy(env, e->ref),
                                         enif_make_tuple2(env, a_exit_status, enif_make_int(env, code)));
-    enif_send(NULL, &e->owner, env, msg);
+    enif_send(caller, &e->owner, env, msg);
     enif_free_env(env);
 }
 
@@ -192,7 +192,7 @@ static void *engine_main(void *arg)
     if (e->in_w >= 0) { close(e->in_w); e->in_w = -1; }
     close(e->in_r);
     e->in_r = -1;
-    if (!e->abandoned) send_exit(e, code);
+    if (!e->abandoned) send_exit(NULL, e, code);
     pthread_mutex_unlock(&e->lock);
     enif_release_resource(e);
     return NULL;
@@ -383,7 +383,7 @@ static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     if (!e->done && !e->abandoned) {
         __atomic_store_n(&e->abandoned, 1, __ATOMIC_RELEASE);
         if (e->kind == NATIVE) e->cart->api->stop();
-        send_exit(e, FM1ENGINE_EXIT_KILLED);
+        send_exit(env, e, FM1ENGINE_EXIT_KILLED);
     }
     pthread_mutex_unlock(&e->lock);
     return a_ok;

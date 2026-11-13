@@ -351,6 +351,7 @@ int main(int argc, char **argv)
     c.blob_count = sym(h, "fm1c_blob_count"); c.blob_size = sym(h, "fm1c_blob_size"); c.blob = sym(h, "fm1c_blob");
     c.store_hash = sym(h, "fm1c_store_hash"); c.debug = sym(h, "fm1c_debug");
 
-    return fm1engine_run(&c, argv[2], argv[3], argc == 5 ? (uint32_t)strtoul(argv[4], NULL, 10) : 0, &io);
+    /* (an argument is clamped as before: "0" is the minimum fill; fm1engine_run's 0 = default is for no argument) */
+    return fm1engine_run(&c, argv[2], argv[3], argc == 5 ? clamp_fill((uint32_t)strtoul(argv[4], NULL, 10)) : 0, &io);
 }
 #endif
