@@ -33,7 +33,8 @@ defmodule FMutate.InstanceTest do
 
   defp await_state(pred, timeout \\ 5_000) do
     receive do
-      {:instance, _id, {:state, view}} -> if pred.(view), do: view, else: await_state(pred, timeout)
+      {:instance, _id, {:state, view}} ->
+        if pred.(view), do: view, else: await_state(pred, timeout)
     after
       timeout -> flunk("no matching instance state within #{timeout} ms")
     end
@@ -113,7 +114,10 @@ defmodule FMutate.InstanceTest do
   test "the view carries the engine's speed; a fixed buffer reaches the running engine and is saved" do
     start_instance()
     view = await_state(running?("obervave"))
-    assert view.buffer == :auto and view.fill == FMutate.Audio.engine_fill() and view.slow == false
+
+    assert view.buffer == :auto and view.fill == FMutate.Audio.engine_fill() and
+             view.slow == false
+
     # (two warm-up windows, then a second per measurement; the host drains the ring in real time)
     view = await_state(&is_integer(&1.clock_pct), 6_000)
     assert view.clock_pct in 90..110
@@ -153,7 +157,8 @@ defmodule FMutate.InstanceTest do
 
   defp assert_eventually_fill(pred, tries) do
     receive do
-      {:instance, "a", {:status, %{fill: fill}}} -> if pred.(fill), do: :ok, else: assert_eventually_fill(pred, tries - 1)
+      {:instance, "a", {:status, %{fill: fill}}} ->
+        if pred.(fill), do: :ok, else: assert_eventually_fill(pred, tries - 1)
     after
       1_000 -> flunk("no status")
     end
@@ -193,5 +198,40 @@ defmodule FMutate.InstanceTest do
     await_state(&(&1.phase != :running))
     Instance.input("a", {:button, :fx, :down})
     assert {_, :in, {:button, :fx, :down}, :dropped} = hd(Instance.journal("a", 1))
+  end
+
+  test "status events go only to subscribers that ask for them; every subscriber gets state changes" do
+    start_instance()
+    await_state(running?("obervave"))
+    test = self()
+
+    # a screen-like subscriber: the view only (a screen re-renders on every message it gets)
+    screen =
+      spawn_link(fn ->
+        Instance.subscribe("a")
+        send(test, :subscribed)
+
+        collect = fn collect, acc ->
+          receive do: (
+                    :report -> send(test, {:got, Enum.reverse(acc)})
+                    m -> collect.(collect, [m | acc])
+                  )
+        end
+
+        collect.(collect, [])
+      end)
+
+    assert_receive :subscribed
+
+    # the test process subscribed with status: true; a second of STATUS (every 100 ms) and one state change
+    Process.sleep(1_000)
+    Instance.debug("a", :crash)
+    await_state(&(&1.phase != :running))
+    send(screen, :report)
+    assert_receive {:got, got}, 2_000
+
+    assert Enum.any?(got, &match?({:instance, "a", {:state, _}}, &1))
+    refute Enum.any?(got, &match?({:instance, "a", {:status, _}}, &1))
+    assert_received {:instance, "a", {:status, _}}
   end
 end
