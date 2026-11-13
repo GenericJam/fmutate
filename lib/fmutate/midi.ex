@@ -6,11 +6,13 @@ defmodule FMutate.MIDI do
 
   ## The path of a note
 
-  Android delivers MIDI on a binder thread in the app process (`FMutateIO.kt`); the `fm1io` NIF hands the
-  bytes to this process with `enif_send` (no JSON, no main-thread hop); this process maps them and casts
-  `FMutate.Instance.input/2`, which writes the engine command to the engine's Port. Each message carries the
-  sender's timestamp and when Kotlin got it, so `latency/1` reports what the trip costs (see
-  `docs/architecture.md`, "MIDI latency").
+  Android delivers MIDI on a binder thread in the app process; the mob_midi plugin (`MobMidi`) hands the
+  bytes to the process that opened the port with `enif_send` (no JSON, no main-thread hop). This process
+  opens the instance's virtual port (`MobMidi.open_virtual/2`, declared in the Android manifest) and, for
+  instance `"a"`, the devices `FMutate.IO` asks it to (it is IO's *player*), so the bytes come straight
+  here; it maps them and casts `FMutate.Instance.input/2`, which writes the engine command to the engine's
+  Port. Each message carries the sender's timestamp and when the bridge got it, so `latency/1` reports what
+  the trip costs (see `docs/architecture.md`, "MIDI latency").
 
   ## Clock
 
@@ -26,8 +28,9 @@ defmodule FMutate.MIDI do
   """
 
   use GenServer
+  require Logger
 
-  alias FMutate.{Firmware, Instance, IONif, Paths}
+  alias FMutate.{Firmware, Instance, Paths}
   alias FMutate.MIDI.Map, as: MidiMap
 
   @latency_samples 256
@@ -71,7 +74,7 @@ defmodule FMutate.MIDI do
 
   @doc """
   What the MIDI trip costs, over the last #{@latency_samples} messages, in ms (`min`, `median`, `p90`,
-  `max`): `delivery` from the sender's timestamp to Kotlin, `to_beam` from Kotlin to this process, `n`.
+  `max`): `delivery` from the sender's timestamp to the bridge, `to_beam` from the bridge to this process, `n`.
   """
   def latency(id), do: GenServer.call(via(id), :latency)
 
@@ -83,13 +86,16 @@ defmodule FMutate.MIDI do
     saved = load(id)
     view = Instance.subscribe(id)
 
-    if IONif.loaded?() do
-      :ok = IONif.route_midi(virtual_source(id), self())
-      # v1: every opened device plays instance "a"
-      if index(id) == 0, do: :ok = IONif.route_midi(:default, self())
-    end
+    MobMidi.open_virtual(nil, port_name(id))
 
-    names = if Process.whereis(FMutate.IO), do: device_names(FMutate.IO.subscribe()), else: %{}
+    names =
+      if Process.whereis(FMutate.IO) do
+        # v1: every opened device plays instance "a"
+        if index(id) == 0, do: :ok = FMutate.IO.attach_player(self())
+        device_names(FMutate.IO.subscribe())
+      else
+        %{}
+      end
 
     state = %{
       id: id,
@@ -98,6 +104,7 @@ defmodule FMutate.MIDI do
       prefs: saved[:sources] || %{},
       bend: bends?(view.firmware),
       names: names,
+      virtual: nil,
       parsers: %{},
       samples: [],
       ticker: nil
@@ -143,9 +150,20 @@ defmodule FMutate.MIDI do
     {:noreply, state}
   end
 
+  # from FMutate.IO: play a device (all its output ports)
+  def handle_cast({:open_device, device, ports}, state) do
+    for port <- 0..(ports - 1)//1, do: MobMidi.open_input(nil, device, port: port)
+    {:noreply, state}
+  end
+
   @impl true
-  def handle_info({:fm1io, :midi, source, bytes, sent_ns, recv_ns}, state) do
-    now = IONif.now_ns()
+  def handle_info(
+        {:midi, :raw,
+         %{device: device, port: port, bytes: bytes, timestamp: sent_ns, received: recv_ns}},
+        state
+      ) do
+    now = MobMidi.now_ns()
+    source = {device, port}
     {inputs, parser} = MidiMap.feed(parser(state, source), bytes)
     for input <- inputs, do: Instance.input(state.id, input)
     sample = {(recv_ns - sent_ns) / 1.0e6, (now - recv_ns) / 1.0e6}
@@ -153,10 +171,38 @@ defmodule FMutate.MIDI do
     {:noreply, %{state | parsers: Map.put(state.parsers, source, parser), samples: samples}}
   end
 
+  def handle_info({:midi, :opened, %{direction: :virtual, device: device}}, state),
+    do: {:noreply, %{state | virtual: device}}
+
+  def handle_info({:midi, :virtual_status, %{senders: senders, listeners: listeners}}, state) do
+    FMutate.IO.virtual_status(index(state.id), port_name(state.id), senders, listeners)
+    {:noreply, state}
+  end
+
+  def handle_info({:midi, :opened, %{direction: :input, device: device}}, state) do
+    send(FMutate.IO, {:device_opened, device})
+    {:noreply, state}
+  end
+
+  def handle_info({:midi, :error, %{op: :open_input, device: device, reason: reason}}, state) do
+    send(FMutate.IO, {:device_failed, device, reason})
+    {:noreply, state}
+  end
+
+  def handle_info({:midi, :error, %{op: :open_virtual, reason: reason}}, state) do
+    Logger.warning("midi: #{port_name(state.id)} not available (#{reason})")
+    {:noreply, state}
+  end
+
   def handle_info({:io, io}, state) do
     names = device_names(io)
     # a source whose device went away lets go of its keys
-    gone = for {src, _} <- state.parsers, src >= 0, not Map.has_key?(names, div(src, 16)), do: src
+    gone =
+      for {{device, _} = src, _} <- state.parsers,
+          device != state.virtual,
+          not Map.has_key?(names, device),
+          do: src
+
     {:noreply, %{release_sources(state, gone) | names: names}}
   end
 
@@ -182,23 +228,13 @@ defmodule FMutate.MIDI do
 
   ## Sources
 
-  defp virtual_source(id), do: -1 - index(id)
+  defp source_name(%{virtual: device} = state, {device, _port}), do: port_name(state.id)
 
-  defp source_name(state, source) do
-    cond do
-      source == virtual_source(state.id) ->
-        port_name(state.id)
+  defp source_name(state, {device, port}),
+    do: Map.get(state.names, device, "device #{device}") <> port_suffix(port)
 
-      source < 0 ->
-        "FMutate " <> <<?A + (-1 - source)>>
-
-      true ->
-        Map.get(state.names, div(source, 16), "device #{div(source, 16)}") <> port_suffix(source)
-    end
-  end
-
-  defp port_suffix(source),
-    do: if(rem(source, 16) == 0, do: "", else: " · port #{rem(source, 16) + 1}")
+  defp port_suffix(0), do: ""
+  defp port_suffix(port), do: " · port #{port + 1}"
 
   defp parser(state, source) do
     case Map.fetch(state.parsers, source) do
@@ -275,13 +311,13 @@ defmodule FMutate.MIDI do
     %{state | ticker: {ref, next_ns, interval_ns(state)}}
   end
 
-  defp out(state, bytes, timestamp_ns) do
-    if IONif.loaded?(), do: IONif.midi_send(index(state.id), bytes, timestamp_ns)
-  end
+  # out of the virtual port, stamped `timestamp_ns` (0 = now); nobody listening is fine
+  defp out(%{virtual: nil}, _bytes, _timestamp_ns), do: :ok
 
-  defp now_ns do
-    if IONif.loaded?(), do: IONif.now_ns(), else: System.monotonic_time(:nanosecond)
-  end
+  defp out(state, bytes, timestamp_ns),
+    do: MobMidi.send_raw(nil, state.virtual, bytes, at: timestamp_ns)
+
+  defp now_ns, do: MobMidi.now_ns()
 
   ## Stats, persistence
 

@@ -8,8 +8,8 @@
 # port_command for the key, and reports per hop (CLOCK_MONOTONIC throughout; BEAM trace timestamps are
 # moved onto it with an offset taken at the start):
 #
-#   sender → Kotlin   Android's MIDI service delivering into FMutateMidiService
-#   Kotlin → BEAM     JNI + enif_send to FMutate.MIDI's mailbox
+#   sender → Kotlin   Android's MIDI service delivering into mob_midi's MobMidiDeviceService
+#   Kotlin → BEAM     mob_midi's JNI thunk + enif_send to FMutate.MIDI's mailbox
 #   BEAM → Port       FMutate.MIDI → FMutate.Instance → FMutate.Engine → port_command (write to the engine's stdin)
 [serial | rest] = System.argv()
 notes = case rest, do: ([n] -> String.to_integer(n); [] -> 40)
@@ -28,7 +28,7 @@ duration_ms = notes * 200 + 3_000
 device = """
 midi = GenServer.whereis(FMutate.MIDI.via("a"))
 %{live: %{pid: eng}} = :sys.get_state(FMutate.Instance.via("a"))
-offset = FMutate.IONif.now_ns() - :erlang.monotonic_time(:nanosecond)
+offset = MobMidi.now_ns() - :erlang.monotonic_time(:nanosecond)
 me = self()
 collect = fn collect, acc ->
   receive do
@@ -46,7 +46,7 @@ Process.sleep(#{duration_ms})
 :erlang.trace_pattern({:erlang, :port_command, :_}, false, [:global])
 send(tracer, :stop)
 events = receive do {:events, e} -> e after 5_000 -> [] end
-ins = for {:trace_ts, _, :receive, {:fm1io, :midi, _src, <<0x90, n, v>>, sent, recv}, ts} <- events, v > 0, do: {n - 53, sent, recv, ts + offset}
+ins = for {:trace_ts, _, :receive, {:midi, :raw, %{bytes: <<0x90, n, v>>, timestamp: sent, received: recv}}, ts} <- events, v > 0, do: {n - 53, sent, recv, ts + offset}
 outs = for {:trace_ts, _, :call, {:erlang, :port_command, [_port, <<1, k, 1>> | _]}, ts} <- events, do: {k, ts + offset}
 {rows, _} =
   Enum.map_reduce(ins, outs, fn {k, sent, recv, beam}, outs ->

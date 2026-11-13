@@ -46,12 +46,14 @@
     <!-- Haptic feedback -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- ── FMutate I/O (fmutate/FMutateIO.kt) ─────────────────────────────────── -->
-    <!-- MIDI: the instances' virtual ports and USB/Bluetooth/app devices. required=false: no MIDI, no
-         virtual port, the rest works. -->
+    <!-- ── FMutate I/O ─────────────────────────────────────────────────────────── -->
+    <!-- MIDI (the mob_midi plugin): the instances' virtual ports and USB/Bluetooth/app devices.
+         required=false: no MIDI, no virtual port, the rest works. -->
     <uses-feature android:name="android.software.midi" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-    <!-- Bluetooth MIDI scan ("Scan Bluetooth" on the I/O screen), asked for when first used. -->
+    <!-- Bluetooth MIDI scan ("Scan Bluetooth" on the I/O screen), asked for when first used
+         (Mob.Permissions :midi_bluetooth). mob_midi declares SCAN/CONNECT too; the flags and the legacy
+         maxSdkVersion entries are only expressible here. -->
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
@@ -136,8 +138,9 @@
                 android:resource="@xml/file_provider_paths" />
         </provider>
 
-        <!-- Instance A's virtual MIDI port, "FMutate A" (fmutate/FMutateMidiService.kt) -->
-        <service android:name=".fmutate.FMutateMidiService"
+        <!-- Instance A's virtual MIDI port, "FMutate A": mob_midi's service, opened by FMutate.MIDI with
+             MobMidi.open_virtual/2. A second instance needs an empty subclass of it and its own xml. -->
+        <service android:name="io.mob.midi.MobMidiDeviceService"
             android:exported="true"
             android:permission="android.permission.BIND_MIDI_DEVICE_SERVICE">
             <intent-filter>

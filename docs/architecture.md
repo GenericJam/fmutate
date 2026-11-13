@@ -187,27 +187,39 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 
 | Module | What |
 |---|---|
-| `FMutate.IO` + `fmutate/FMutateIO.kt` | Android's audio outputs, MIDI devices, Bluetooth MIDI scan, the virtual ports' clients (one per app) |
-| `c_src/fm1io.c` (`FMutate.IONif`) | JNI bridge: Kotlin → BEAM MIDI by `enif_send` (no JSON), state as JSON events; BEAM → Kotlin JSON calls and MIDI out |
-| `FMutate.MIDI` (+ `FMutate.MIDI.Map`) | per instance: MIDI in → instance inputs (channel filter, notes → keys, bend if `caps.pitch_bend`), clock follow/send/off |
-| `fmutate/FMutateMidiService.kt` | the virtual port `FMutate A` (in + out), `res/xml/fmutate_midi_a.xml` |
+| `FMutate.IO` | MIDI devices (list, hot-plug, open/close, reopen by name), Bluetooth MIDI scan/connect, the virtual ports' clients, audio outputs (one per app) |
+| mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
+| `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
+| `FMutate.MIDI` (+ `FMutate.MIDI.Map`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, notes → keys, bend if `caps.pitch_bend`), clock follow/send/off |
+| `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
 
 - **Audio route**: the AAudio stream's device id (`FMutate.Audio.stats/0` `device_id`) named through
   `AudioManager`. **Latency shown** = device output latency + the engine's ring fill (what a key press waits).
 - **Virtual line-in**: reserved (`FMutate.IO` state `line_in: nil`); nothing produces it.
-- **Clock send** stamps each tick with its exact `System.nanoTime` time (sent ~4 ms early), so receivers that
-  honour timestamps get none of the BEAM timer's jitter. Tempo is a setting (default 120 BPM).
+- **Clock send** stamps each tick with its exact `MobMidi.now_ns/0` (`System.nanoTime`) time (sent ~4 ms early,
+  `MobMidi.send_raw/4` `at:`), so receivers that honour timestamps get none of the BEAM timer's jitter. Tempo
+  is a setting (default 120 BPM).
+- **Bluetooth**: "Scan Bluetooth" asks for the `:midi_bluetooth` permission (`Mob.Permissions`) the first time
+  the scan is refused; a connected device then lists and opens like a USB one.
 
-### MIDI latency (emulator-5558, Android 17 x86_64; `tools/midi_latency.exs`, 40 notes from a second app)
+### MIDI latency (`tools/midi_latency.exs`, notes from a second app into `FMutate A`)
 
-| Hop | median | p90 | max |
-|---|---|---|---|
-| sender → Kotlin (Android MIDI service) | 0.19 ms | 0.49 ms | 1.96 ms |
-| Kotlin → BEAM (JNI, `enif_send`) | 0.10 ms | 0.22 ms | 2.18 ms |
-| BEAM → engine Port (`FMutate.MIDI` → `Instance` → `Engine`) | 0.09 ms | 0.13 ms | 0.18 ms |
-| total | 0.42 ms | 1.76 ms | 2.55 ms |
+emulator-5556 (Android 17 x86_64), median / p90 / max in ms. "Kotlin" is the MIDI bridge's receiver: FMutate's own
+`FMutateIO.kt` + `fm1io.c` before, mob_midi's `MobMidiBridge` + zig NIF after (bytes, port and both timestamps in
+one `enif_send` to `FMutate.MIDI`, which opened the port).
+
+| Hop | in-app bridge (2 runs, 40 + 100 notes) | mob_midi (3 runs, 100 + 100 + 200 notes) |
+|---|---|---|
+| sender → Kotlin (Android MIDI service) | 0.20 / 0.50–0.76 / 1.3–3.0 | 0.18–0.23 / 0.31–0.80 / 1.2–4.4 |
+| Kotlin → BEAM (JNI, `enif_send`) | 0.08–0.10 / 0.20–0.27 / 2.0–2.6 | 0.08–0.12 / 0.19–0.26 / 0.7–4.0 |
+| BEAM → engine Port (`FMutate.MIDI` → `Instance` → `Engine`) | 0.09 / 0.13–0.16 / 0.3–5.8 | 0.08–0.09 / 0.12–0.14 / 0.2–1.5 |
+| total | 0.41–0.42 / 1.4–2.0 / 3.2–6.5 | 0.37–0.47 / 0.56–1.33 / 1.3–4.6 |
+
+The move to mob_midi changed nothing measurable: the run-to-run spread on the emulator is larger than any
+difference. (Earlier, emulator-5558: total 0.42 / 1.76 / 2.55 ms.)
 
 Decision: MIDI goes Kotlin → BEAM → Port. Its cost is well under the engine's 256-frame block (5.8 ms, the
 granularity at which the firmware hears MIDI) and two orders under the output latency; a native shortcut
-into the engine would save ~0.2 ms. Clock out measured 20.833 ms per tick at 120 BPM by timestamp.
+into the engine would save ~0.2 ms. Clock out measured 20.833 ms per tick at 120 BPM by timestamp (again through mob_midi's `send_raw/4` `at:`:
+min = max = 20.833 ms over 240 ticks).
