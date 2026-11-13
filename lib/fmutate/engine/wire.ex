@@ -12,6 +12,7 @@ defmodule FMutate.Engine.Wire do
           | {:master, 0..1024}
           | {:midi_at, non_neg_integer, 0..255, 0..255, 0..255}
           | {:fill, pos_integer}
+          | {:cpu_mhz, pos_integer}
           | :crash
           | :hang
 
@@ -34,6 +35,9 @@ defmodule FMutate.Engine.Wire do
   # the engine's target ring fill, now; it clamps to 512..3840 itself
   def encode({:fill, frames}) when is_integer(frames), do: <<0x07, clamp(frames, 0, 0xFFFF)::16>>
 
+  # the emulator engine's CPU clock, now (MHz; it clamps to 20..240 itself); the native engine ignores it
+  def encode({:cpu_mhz, mhz}) when is_integer(mhz), do: <<0x08, clamp(mhz, 0, 0xFFFF)::16>>
+
   def encode(:crash), do: <<0x10>>
   def encode(:hang), do: <<0x11>>
 
@@ -43,7 +47,12 @@ defmodule FMutate.Engine.Wire do
           fb_seq: non_neg_integer,
           led_buttons: non_neg_integer,
           led_keys: non_neg_integer,
-          glow_keys: non_neg_integer
+          glow_keys: non_neg_integer,
+          # the emulator engine's (nil from the native engine): its CPU clock, the DMA halves the firmware
+          # left stale so far, the process's CPU time so far
+          cpu_mhz: pos_integer | nil,
+          stale: non_neg_integer | nil,
+          cpu_ms: non_neg_integer | nil
         }
 
   @type event :: {:ready, non_neg_integer} | {:status, status} | {:flash_saved, non_neg_integer}
@@ -51,10 +60,27 @@ defmodule FMutate.Engine.Wire do
   @spec decode(binary) :: {:ok, event} | {:error, binary}
   def decode(<<0x81, ms::32>>), do: {:ok, {:ready, ms}}
 
-  def decode(<<0x82, ms::32, fill::32, fb_seq::32, lb::32, lk::32, gk::32>>),
-    do:
-      {:ok,
-       {:status, %{ms: ms, fill: fill, fb_seq: fb_seq, led_buttons: lb, led_keys: lk, glow_keys: gk}}}
+  def decode(<<0x82, ms::32, fill::32, fb_seq::32, lb::32, lk::32, gk::32, rest::binary>>) do
+    {mhz, stale, cpu_ms} =
+      case rest do
+        <<mhz::16, stale::32, cpu_ms::32>> -> {mhz, stale, cpu_ms}
+        _ -> {nil, nil, nil}
+      end
+
+    {:ok,
+     {:status,
+      %{
+        ms: ms,
+        fill: fill,
+        fb_seq: fb_seq,
+        led_buttons: lb,
+        led_keys: lk,
+        glow_keys: gk,
+        cpu_mhz: mhz,
+        stale: stale,
+        cpu_ms: cpu_ms
+      }}}
+  end
 
   def decode(<<0x84, bytes::32>>), do: {:ok, {:flash_saved, bytes}}
   def decode(other), do: {:error, other}
@@ -62,6 +88,11 @@ defmodule FMutate.Engine.Wire do
   @doc "The engine side of `decode/1`, for fakes in tests."
   @spec encode_event(event) :: binary
   def encode_event({:ready, ms}), do: <<0x81, ms::32>>
+
+  def encode_event({:status, %{cpu_mhz: mhz} = s}) when is_integer(mhz),
+    do:
+      <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32, s.glow_keys::32, mhz::16,
+        s.stale::32, s.cpu_ms::32>>
 
   def encode_event({:status, s}),
     do: <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32, s.glow_keys::32>>

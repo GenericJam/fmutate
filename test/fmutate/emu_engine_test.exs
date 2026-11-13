@@ -10,9 +10,11 @@ defmodule FMutate.EmuEngineTest do
 
   @emu Path.expand("native/build/host/libfm1emu.so")
   @package Path.expand("native/build/packages/dinghy.fwsc")
+  # (OberVave's Hub package: a firmware that needs more of the CPU than Dinghy)
+  @obervave Path.expand("native/build/packages/obervave.fwsc")
 
-  unless File.exists?(@emu) and File.exists?(@package) do
-    @moduletag skip: "run native/build_emu.sh: no #{@emu} or #{@package}"
+  unless File.exists?(@emu) and File.exists?(@package) and File.exists?(@obervave) do
+    @moduletag skip: "run native/build_emu.sh: no #{@emu}, #{@package} or #{@obervave}"
   end
 
   setup do
@@ -29,9 +31,18 @@ defmodule FMutate.EmuEngineTest do
     {:ok, prefix: prefix, flash: Paths.flash("emu", "dinghy", :emu)}
   end
 
-  defp start_engine(ctx) do
+  # `opts`: `:package` (Dinghy's by default), `:env` for the engine
+  defp start_engine(ctx, opts \\ []) do
     {:ok, pid} =
-      Engine.start_link(owner: self(), tag: :emu, bin: @emu, cart: @package, prefix: ctx.prefix, flash: ctx.flash)
+      Engine.start_link(
+        owner: self(),
+        tag: :emu,
+        bin: @emu,
+        cart: Keyword.get(opts, :package, @package),
+        prefix: ctx.prefix,
+        flash: ctx.flash,
+        env: Keyword.get(opts, :env, [])
+      )
 
     assert_receive {:engine, ^pid, {:spawned, os_pid}}
     assert_receive {:engine, ^pid, {:ready, _ms}}, 5_000
@@ -146,6 +157,55 @@ defmodule FMutate.EmuEngineTest do
     Engine.commands(pid, [{:fill, 60_000}])
     fill = status_after(pid, 1_000).fill
     assert fill > 3072 and fill <= 3840
+  end
+
+  # firmware ms per wall ms (%) over `ms` of wall time
+  defp speed(pid, ms) do
+    {t0, s0} = {System.monotonic_time(:millisecond), next_status(pid)}
+    s1 = status_after(pid, ms)
+    {round((s1.ms - s0.ms) * 100 / (System.monotonic_time(:millisecond) - t0)), s1}
+  end
+
+  test "the CPU clock (op 0x08): a firmware too slow at 240 MHz keeps up at 80, its time and sound still right",
+       ctx do
+    # (interpreted, Dinghy runs at ~0.65x real time on this computer at 240 MHz, ~1.8x at 80: a slow phone)
+    {pid, _} = start_engine(ctx, env: [{"FM1_NO_JIT", "1"}])
+    Engine.commands(pid, [{:key, 7, true}, {:key, 11, true}, {:key, 14, true}])
+    status_after(pid, 1_000)
+    {slow, s} = speed(pid, 2_000)
+    assert s.cpu_mhz == 240
+    assert slow < 90, "slower than real time at 240 MHz (#{slow} %)"
+
+    Engine.commands(pid, [{:cpu_mhz, 80}])
+    status_after(pid, 1_000)
+    {fast, s} = speed(pid, 2_000)
+    assert s.cpu_mhz == 80
+    assert fast in 95..105, "real time at 80 MHz (#{fast} %): the firmware's clock stays right"
+    {_, loud} = ring_peak(ctx.prefix, 2048)
+    assert loud > 2_000, "the chord still plays (peak #{loud})"
+
+    # (clamped to what the engine takes)
+    Engine.commands(pid, [{:cpu_mhz, 1_000}])
+    assert status_after(pid, 300).cpu_mhz == 240
+  end
+
+  test "a firmware starved of cycles leaves DMA halves stale; at 240 MHz it doesn't", ctx do
+    # (OberVave's package falls behind its own audio at 80 MHz with a chord: measured with --bench too)
+    {pid, _} = start_engine(ctx, package: @obervave)
+    Engine.commands(pid, [{:key, 7, true}, {:key, 11, true}, {:key, 14, true}])
+    s0 = status_after(pid, 1_500)
+    s1 = status_after(pid, 2_000)
+    assert s1.stale == s0.stale, "none at 240 MHz (#{s0.stale} → #{s1.stale})"
+
+    Engine.commands(pid, [{:cpu_mhz, 80}])
+    s2 = status_after(pid, 500)
+    s3 = status_after(pid, 2_000)
+    assert s3.stale - s2.stale >= 10, "stale halves at 80 MHz (#{s2.stale} → #{s3.stale})"
+
+    Engine.commands(pid, [{:cpu_mhz, 180}])
+    s4 = status_after(pid, 500)
+    s5 = status_after(pid, 2_000)
+    assert s5.stale == s4.stale, "none again at 180 MHz (#{s4.stale} → #{s5.stale})"
   end
 
   test "a file that is no FM-1 package fails to boot", ctx do

@@ -54,7 +54,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh`, `native/patches/fm1-emu/` | the emulator engine (Rust, around fm1-emu pinned in the script) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), screens |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -73,10 +73,20 @@ flowchart LR
   "Speed and fill").
 - **System states** (booting, crashed/restarting, safe mode, too slow) show as the Opling's mood plus a short
   message in the firmware screen area ("Starting…", "Restarting…", "Crashed twice · Run anyway" — a tap on the
-  screen is Run anyway —, "Too slow · N % speed" over the bottom of a running screen with "Raise the buffer in
-  I/O"); controls stay. A layout without a screen has the mood only. Too slow is the instance's call
+  screen is Run anyway —, "Too slow · N % speed" over the bottom of a running screen with what is being done or
+  can be: "Slowing the emulated CPU · N MHz…", "Lower the emulated CPU in I/O", "This phone can't run it in real
+  time"; "Audio dropouts · Raise the buffer in I/O" only for an engine fast enough on a fixed buffer that
+  underruns); controls stay. A layout without a screen has the mood only. Too slow is the instance's call
   (`FMutate.Instance.Health`: < 95 % for 3 s on, ≥ 98 % for 3 s off); the I/O card and sibling apps' `{:slow, pct}`
   read the same view.
+- **Emulated CPU clock** (emulator engine): a firmware slower than real time on a phone is cured by fewer emulated
+  instructions, not by a buffer (measured below: OberVave's package underran alike at 1024 and 3840 frames). The
+  engine stalls the emulated CPU below the FM-1's 240 MHz at runtime (op `0x08`, `docs/engine_protocol.md` "The
+  CPU clock"; no fm1-emu change, no restart, the firmware's time and audio stay right). The instance steps it
+  240 → 180 → 120 → 80 MHz while the engine is too slow, steps back up when the firmware's own audio starves (DMA
+  halves it didn't refill: OberVave's package does at 80 MHz, silent at 60), keeps what worked per firmware and
+  tries one step up after a quiet minute with CPU to spare. I/O shows the clock and offers Auto / 240 / 180 / 120
+  / 80 MHz. Native cartridges have no such knob: too slow there is "This phone can't run it in real time".
 - **Root background**: the theme background is the flat skin's `bg` (`Mob.Theme.set/1` in `FmutateApp.App`), so
   the strips Mob insets a screen by (display cutout, hidden bars) match the instrument.
 - **Firmware screen size** (overrides HANDOFF §7's whole multiples, at the player's request: on a small phone a
@@ -147,6 +157,14 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | Merged master d0e1e64 (all streams), same procedure | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 12–13 ms |
 | With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Switch the `mob` dep to the release that includes #236 once published |
 | Classic rearranged, screen filled and sharp-scaled (310 px, ×2 prescale per frame) | 2.5 % / 0 % / 0 % janky, p90 10–11 ms, p99 13–19 ms |
+
+### Emulated CPU clock (emulator engine)
+
+| Where | What |
+|---|---|
+| x86-64 desktop, `--bench`, OberVave's package, 3-note chord (JIT) | 240 MHz 3.7x real time, 180 4.0x, 120 4.8–5.1x, 80 7.1x; stale DMA halves: none at 240–120, ~43/s at 80 (audio peak unchanged: 3971 / 3937); silent at 60 |
+| Same, interpreted (`FM1_NO_JIT=1`) | Dinghy 0.65x at 240, 1.32x at 120, 1.8x at 80; OberVave's package 0.98x / 1.51x / 2.04x (74 stale halves in 3 s at 80) |
+| emulator-5554 (Android 17 x86_64), OberVave's package interpreted (`emu_env` `FM1_NO_JIT=1`), chord held, Auto | 240 MHz at 44 % speed → 180 (3 s after "too slow") → 120 at 61 % → 80 at 81 %, where its audio starved → back to 120 (its floor), 78–87 %: "This phone can't run it in real time". Restarted with the JIT at the kept clock (180), 100 %; after 61 s one step up to 240, 100 %. Fixed 180 in I/O: "Lower the emulated CPU in I/O" |
 
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 

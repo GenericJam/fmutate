@@ -30,7 +30,10 @@ defmodule FMutate.Instance do
   (firmware time against wall time, whole percent, nil until measured), `slow` (too slow, with hysteresis),
   `fill` (the engine's target ring fill, frames) and `buffer` (`:auto` or a fixed fill, `set_buffer/2`,
   saved with the instance). On `:auto` the fill rises when the slot underruns and settles back when it
-  stops; it is set on the running engine (port op `0x07`), no restart.
+  stops; it is set on the running engine (port op `0x07`), no restart. For a firmware in the emulator engine
+  also `cpu_mhz` (the emulated CPU's clock, op `0x08`) and `cpu_mode` (`:auto` or fixed MHz, `set_cpu/2`):
+  on `:auto` the clock steps down while the engine is too slow and is kept per firmware (`cpu` in the saved
+  state), so its next engine starts there. `advice` says what the instrument shows beside "Too slow".
 
   ## Subscribers
 
@@ -67,6 +70,8 @@ defmodule FMutate.Instance do
             subscribers: %{},
             stopping: %{},
             buffer: :auto,
+            # per firmware (emulator engine): the CPU clock kept by FMutate.Instance.Health.memory/1
+            cpu: %{},
             health: nil
 
   ## API
@@ -125,6 +130,14 @@ defmodule FMutate.Instance do
   def set_buffer(id, buffer) when buffer == :auto or (is_integer(buffer) and buffer > 0),
     do: GenServer.call(via(id), {:buffer, buffer})
 
+  @doc """
+  The emulated CPU clock for the current firmware (emulator engine): `:auto` (lowered while the engine is too
+  slow, `FMutate.Instance.Health`) or fixed MHz (`FMutate.Instance.Health.clocks/0`). Applies to the running
+  engine at once; saved per firmware.
+  """
+  def set_cpu(id, mode) when mode == :auto or (is_integer(mode) and mode > 0),
+    do: GenServer.call(via(id), {:cpu, mode})
+
   # --- library hooks (FMutate.Library / LibraryScreen) ---
   @doc "The firmwares quarantined on this instance (any, not only the current one)."
   @spec quarantined(String.t()) :: [String.t()]
@@ -151,7 +164,8 @@ defmodule FMutate.Instance do
       firmware: saved[:firmware] || Firmware.default_id(),
       master: saved[:master] || 1.0,
       quarantined: MapSet.new(saved[:quarantined] || []),
-      buffer: saved[:buffer] || :auto
+      buffer: saved[:buffer] || :auto,
+      cpu: saved[:cpu] || %{}
     }
 
     {:ok, state, {:continue, :boot}}
@@ -209,6 +223,24 @@ defmodule FMutate.Instance do
           state
       end
 
+    {:reply, :ok, publish(state)}
+  end
+
+  def handle_call({:cpu, mode}, _from, state) do
+    state =
+      case {state.health, state.live} do
+        {%Health{cpu: %{}} = h, %{ready: true} = eng} ->
+          {h, mhz} = Health.cpu_mode(h, mode)
+          Engine.commands(eng.pid, [{:cpu_mhz, mhz}])
+          remember_cpu(%{state | health: h}, eng.firmware)
+
+        _ ->
+          mem = state.cpu |> Map.get(state.firmware, %{}) |> Map.put(:mode, mode)
+          mem = if is_integer(mode), do: Map.put(mem, :mhz, mode), else: mem
+          %{state | cpu: Map.put(state.cpu, state.firmware, mem)}
+      end
+
+    save_state(state)
     {:reply, :ok, publish(state)}
   end
 
@@ -309,10 +341,12 @@ defmodule FMutate.Instance do
           cart: cart,
           prefix: prefix,
           flash: Paths.flash(state.id, fw, backend),
-          fill: fill
+          fill: fill,
+          # (development: e.g. [{"FM1_NO_JIT", "1"}] to see a slow phone's behaviour on a fast one)
+          env: if(backend == :emu, do: Application.get_env(:fmutate_app, :emu_env, []), else: [])
         )
 
-      eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false, fill: fill}
+      eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false, fill: fill, backend: backend}
       phase = if role == :live, do: :booting, else: state.phase
       Map.put(%{state | phase: phase}, role, eng)
     else
@@ -359,7 +393,10 @@ defmodule FMutate.Instance do
     eng = %{eng | ready: true}
     Engine.commands(eng.pid, [{:master, round(state.master * 1024)}])
 
-    health = Health.new(state.buffer, Audio.engine_fill(), eng.fill)
+    # the emulator engine's CPU clock: where it was last kept for this firmware
+    cpu = if eng.backend == :emu, do: Map.get(state.cpu, eng.firmware, %{})
+    health = Health.new(state.buffer, Audio.engine_fill(), eng.fill, cpu)
+    if cpu, do: Engine.commands(eng.pid, [{:cpu_mhz, Health.cpu_mhz(health)}])
 
     case role do
       :live ->
@@ -435,7 +472,15 @@ defmodule FMutate.Instance do
               Engine.commands(eng.pid, [{:fill, fill}])
             end
 
-            %{state | health: h}
+            {h, mhz} =
+              if status[:cpu_mhz], do: Health.cpu(h, now, status.stale, status.cpu_ms), else: {h, nil}
+
+            if mhz do
+              Logger.info("instance #{state.id}: emulated CPU #{mhz} MHz (speed #{h.pct} %)")
+              Engine.commands(eng.pid, [{:cpu_mhz, mhz}])
+            end
+
+            remember_cpu(%{state | health: h}, eng.firmware)
 
           _ ->
             %{state | health: Health.pause(h)}
@@ -562,9 +607,37 @@ defmodule FMutate.Instance do
     )
   end
 
-  # speed and fill of the running engine (nil / false while nothing runs)
-  defp health_view(%{phase: :running, health: %Health{} = h}), do: %{clock_pct: h.pct, slow: h.slow, fill: h.fill}
-  defp health_view(_state), do: %{clock_pct: nil, slow: false, fill: nil}
+  # speed, fill and emulated CPU clock of the running engine (nil / false while nothing runs); `advice`: what
+  # the instrument says beside "Too slow" (FMutate.Instance.Health.advice/1)
+  defp health_view(%{phase: :running, health: %Health{} = h}) do
+    %{
+      clock_pct: h.pct,
+      slow: h.slow,
+      fill: h.fill,
+      cpu_mhz: Health.cpu_mhz(h),
+      cpu_mode: h.cpu && h.cpu.mode,
+      advice: Health.advice(h)
+    }
+  end
+
+  defp health_view(_state), do: %{clock_pct: nil, slow: false, fill: nil, cpu_mhz: nil, cpu_mode: nil, advice: nil}
+
+  # keep the emulator engine's clock for its firmware (saved when it changed)
+  defp remember_cpu(state, fw) do
+    case Health.memory(state.health) do
+      nil ->
+        state
+
+      mem ->
+        if Map.get(state.cpu, fw) == mem do
+          state
+        else
+          state = %{state | cpu: Map.put(state.cpu, fw, mem)}
+          save_state(state)
+          state
+        end
+    end
+  end
 
   defp publish(state) do
     view = view_of(state)
@@ -591,7 +664,8 @@ defmodule FMutate.Instance do
       firmware: state.firmware,
       master: state.master,
       quarantined: MapSet.to_list(state.quarantined),
-      buffer: state.buffer
+      buffer: state.buffer,
+      cpu: state.cpu
     }
 
     File.write!(Paths.instance_state(state.id), :erlang.term_to_binary(data))

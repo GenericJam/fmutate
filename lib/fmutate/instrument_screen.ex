@@ -119,7 +119,10 @@ defmodule FMutate.InstrumentScreen do
       buffer: :auto,
       clock_pct: nil,
       slow: false,
-      fill: nil
+      fill: nil,
+      cpu_mhz: nil,
+      cpu_mode: nil,
+      advice: nil
     }
   end
 end

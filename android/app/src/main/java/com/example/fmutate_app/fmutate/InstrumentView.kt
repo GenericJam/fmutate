@@ -81,8 +81,9 @@ import kotlin.math.sin
  * button (its own animation) and an overlay (fingers, bubbles, banner).
  *
  * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
- * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %): the Opling's
- * mood and the message in the firmware screen area (Starting…, Restarting…, Crashed twice · Run anyway, Too slow).
+ * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %), hint (what is
+ * being done or can be, under "Too slow"; alone: dropouts a larger buffer would cure): the Opling's mood and the
+ * message in the firmware screen area (Starting…, Restarting…, Crashed twice · Run anyway, Too slow, Audio dropouts).
  */
 
 private object C {
@@ -204,6 +205,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         restarts = (props["restarts"] as? Number)?.toInt() ?: 0,
         slow = props["slow"] == true,
         speed = (props["speed"] as? Number)?.toInt() ?: 0,
+        hint = props["hint"] as? String ?: "",
         editing = props["editing"] == true,
         pageProp = props["page"] as? String ?: "",
         addMenuJson = props["add_menu"] as? String,
@@ -225,6 +227,7 @@ private fun InstrumentSurface(
     restarts: Int,
     slow: Boolean,
     speed: Int,
+    hint: String,
     editing: Boolean,
     pageProp: String,
     addMenuJson: String?,
@@ -310,7 +313,7 @@ private fun InstrumentSurface(
     }
     val screenImage = remember(shm) { shm?.bitmap?.asImageBitmap() }
     val screenScaler = remember(shm) { shm?.let { ScreenScaler(it.bitmap) } }
-    val message = screenMessage(phase, restarts, slow, speed)
+    val message = screenMessage(phase, restarts, slow, speed, hint)
 
     val page = layout.pages[state.page.coerceIn(0, layout.pages.size - 1)]
     val wDp = sizePx.width / density
@@ -942,12 +945,16 @@ private fun InstrumentSurface(
 /** What the firmware screen area says about the instance: a title, an action (tap the screen) and a hint. */
 private data class ScreenMessage(val title: String, val color: Color, val action: String = "", val hint: String = "")
 
-private fun screenMessage(phase: String, restarts: Int, slow: Boolean, speed: Int): ScreenMessage? = when (phase) {
+private fun screenMessage(phase: String, restarts: Int, slow: Boolean, speed: Int, hint: String): ScreenMessage? = when (phase) {
     "booting" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Starting…", C.muted)
     "crashed" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Crashed", C.muted)
     "safe_mode" -> ScreenMessage("Crashed twice", C.muted, action = "Run anyway")
     "not_installed" -> ScreenMessage("Doesn't run here yet", C.warn)
-    "running" -> if (slow) ScreenMessage("Too slow · $speed % speed", C.warn, hint = "Raise the buffer in I/O") else null
+    "running" -> when {
+        slow -> ScreenMessage("Too slow · $speed % speed", C.warn, hint = hint)
+        hint.isNotEmpty() -> ScreenMessage("Audio dropouts", C.warn, hint = hint)
+        else -> null
+    }
     else -> null
 }
 

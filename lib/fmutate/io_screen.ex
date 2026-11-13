@@ -164,10 +164,13 @@ defmodule FMutate.IOScreen do
   defp phase_label(:not_installed), do: "can't run here"
   defp phase_label(phase), do: to_string(phase)
 
-  # the instance's speed (FMutate.Instance.Health): one source for this card, the instrument and sibling apps
-  defp clock_label(%{slow: true, clock_pct: pct}), do: " · too slow, clock #{pct}%"
-  defp clock_label(%{clock_pct: pct}) when is_integer(pct), do: " · clock #{pct}%"
-  defp clock_label(_view), do: ""
+  # the instance's speed (FMutate.Instance.Health): one source for this card, the instrument and sibling apps;
+  # and the emulated CPU's clock for a firmware in the emulator engine
+  defp clock_label(v), do: speed_label(v) <> if(v[:cpu_mhz], do: " · CPU #{v.cpu_mhz} MHz", else: "")
+
+  defp speed_label(%{slow: true, clock_pct: pct}), do: " · too slow, speed #{pct}%"
+  defp speed_label(%{clock_pct: pct}) when is_integer(pct), do: " · speed #{pct}%"
+  defp speed_label(_view), do: ""
 
   # the Opling "twins" form (creature.md): two columns of two ops, one eye on each head op, lime tint
   defp creature do
@@ -251,12 +254,13 @@ defmodule FMutate.IOScreen do
       ~MOB"""
       <Text text={detail} text_size={11} text_color={0xFFA9A3B8} font="monospace" />
       """,
-      buffer_row(assigns)
+      buffer_row(assigns),
+      cpu_row(assigns)
     ])
   end
 
   # the engine's ring fill (FMutate.Instance.set_buffer/2): Auto, or a fixed larger one; each choice shows
-  # the latency it gives. The instrument's "too slow" hint points here.
+  # the latency it gives. The instrument's "Audio dropouts" hint points here.
   defp buffer_row(assigns) do
     a = assigns.audio
     v = assigns.view
@@ -271,14 +275,17 @@ defmodule FMutate.IOScreen do
 
     note =
       case v do
+        %{slow: true} ->
+          "Too slow: no buffer helps an engine slower than real time"
+
         %{fill: fill} when is_integer(fill) and current == :auto ->
           "Auto: #{ms.(fill)} now (engine #{fill} frames); rises while the engine underruns"
 
         %{fill: fill} when is_integer(fill) ->
-          "Fixed: engine #{fill} frames. Larger plays later but rides out a slow phone"
+          "Fixed: engine #{fill} frames. Larger plays later but rides out a jittery phone"
 
         _ ->
-          "Larger plays later but rides out a slow phone"
+          "Larger plays later but rides out a jittery phone"
       end
 
     ~MOB"""
@@ -292,6 +299,51 @@ defmodule FMutate.IOScreen do
       </Row>
       <Text text={note} text_size={11} text_color={0xFFA9A3B8} font="monospace" />
     </Column>
+    """
+  end
+
+  # the emulated CPU's clock (FMutate.Instance.set_cpu/2), for a firmware in the emulator engine: Auto lowers it
+  # while the engine is too slow; a fixed one is used as is
+  defp cpu_row(%{view: %{cpu_mode: mode, cpu_mhz: mhz}}) when mode != nil do
+    chips = [cpu_chip("Auto", mode == :auto, :auto) | for(n <- Health.clocks(), do: cpu_chip("#{n} MHz", mode == n, n))]
+    {row1, row2} = Enum.split(chips, 3)
+
+    note =
+      if mode == :auto,
+        do: "Auto: #{mhz} MHz now (an FM-1's is 240); lowered while the phone can't keep up",
+        else: "Fixed: #{mhz} MHz. Lower costs the phone less; too low and the firmware's own sound breaks up"
+
+    ~MOB"""
+    <Column gap={6}>
+      <Text text="Emulated CPU" text_size={13} text_color={0xFFF3EFF8} />
+      <Row align={:center} gap={6}>
+        {row1}
+      </Row>
+      <Row align={:center} gap={6}>
+        {row2}
+      </Row>
+      <Text text={note} text_size={11} text_color={0xFFA9A3B8} font="monospace" />
+    </Column>
+    """
+  end
+
+  defp cpu_row(_assigns), do: nil
+
+  defp cpu_chip(label, selected, mode) do
+    tap = {self(), {:cpu, mode}}
+    {bg, fg} = if selected, do: {c(:selected), c(:fm)}, else: {c(:raised), c(:text)}
+
+    ~MOB"""
+    <Button
+      text={label}
+      on_tap={tap}
+      background={bg}
+      text_color={fg}
+      text_size={12}
+      corner_radius={9}
+      padding={4}
+      weight={1}
+    />
     """
   end
 
@@ -1045,6 +1097,11 @@ defmodule FMutate.IOScreen do
 
   def handle_info({:tap, {:buffer, buffer}}, socket) do
     :ok = Instance.set_buffer(@instance, buffer)
+    {:noreply, socket}
+  end
+
+  def handle_info({:tap, {:cpu, mode}}, socket) do
+    :ok = Instance.set_cpu(@instance, mode)
     {:noreply, socket}
   end
 
