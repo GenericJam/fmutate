@@ -3,30 +3,75 @@ defmodule FMutate.PairScreenTest do
   # joining client (MobPair.Client, as Humdinger runs it): what the player sees and what each answer does.
   use Mob.ScreenCase, async: false
 
-  alias FMutate.{Pairing, PairScreen}
+  alias FMutate.{Dist, Pairing, PairScreen}
   alias MobPair.{Cert, Client, Code, Link, Pairings, Transport}
 
   @moduletag :capture_log
 
+  defmodule FakeClipboard do
+    # Mob.Clipboard's stand-in (it calls the NIF): the clipboard is the test process's dictionary
+    def put(socket, text) do
+      Process.put(:clipboard, text)
+      socket
+    end
+
+    def get(_socket) do
+      case Process.get(:clipboard) do
+        nil -> {:clipboard, :empty}
+        text -> {:clipboard, :ok, text}
+      end
+    end
+  end
+
+  # Tags: `host_opts` (more MobPair.Host options), `wifi` (the Wi-Fi address FMutate.Pairing sees at first),
+  # `cert` (pair_cert.json before FMutate.Pairing starts: its contents, or :unreadable), `allowed` (node
+  # names FMutate.Dist allowed with the sibling cookie in an earlier run: starts FMutate.Dist)
   setup context do
     dir = Path.join(System.tmp_dir!(), "fmutate_pair_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
+    write_cert(dir, context[:cert])
 
     start_supervised!({Pairings, default_cookie: :keep, allow_list: false})
+    if allowed = context[:allowed], do: start_dist(allowed)
+
+    wifi = if ip = context[:wifi], do: [{~c"wlan0", [flags: [:up, :running], addr: ip]}], else: []
+    addresses = start_supervised!({Agent, fn -> wifi end})
 
     start_supervised!(
       {Pairing,
        dir: dir,
-       addresses: fn -> [] end,
+       addresses: fn -> Agent.get(addresses, & &1) end,
        advertise: false,
        node: :"fmutate_a@127.0.0.1",
        dist_port: 9150,
        host_opts: Map.get(context, :host_opts, [])}
     )
 
-    %{dir: dir}
+    %{dir: dir, addresses: addresses}
   end
+
+  defp write_cert(_dir, nil), do: :ok
+
+  defp write_cert(dir, :unreadable) do
+    path = Path.join(dir, "pair_cert.json")
+    File.write!(path, "{}")
+    File.chmod!(path, 0o000)
+  end
+
+  defp write_cert(dir, contents), do: File.write!(Path.join(dir, "pair_cert.json"), contents)
+
+  # FMutate.Dist without distribution; its files are in the data directory Mob.ScreenCase sets up
+  defp start_dist(allowed) do
+    dir = FMutate.Paths.dist_dir()
+    files = for name <- ["allowed.term", "sibling", "sibling_cookie"], do: Path.join(dir, name)
+    on_exit(fn -> Enum.each(files, &File.rm/1) end)
+    File.write!(Path.join(dir, "allowed.term"), :erlang.term_to_binary(allowed))
+    start_supervised!({Dist, start: false})
+  end
+
+  defp mount, do: mount_screen(PairScreen, %{}, %{clipboard: FakeClipboard})
+  defp clipboard, do: Process.get(:clipboard)
 
   defp identity(name \\ "Humdinger") do
     %{
@@ -80,7 +125,9 @@ defmodule FMutate.PairScreenTest do
     view = mount_screen(PairScreen)
     {task, view} = ask(view)
 
-    assert text(view) =~ "Humdinger wants to connect"
+    # any app can send any name: on this phone too, the sheet says it is a claim
+    assert text(view) =~ "An app on this phone says it is Humdinger"
+    refute text(view) =~ "Humdinger wants to connect"
     assert text(view) =~ "this phone · on moto e"
 
     view = render_info(view, {:tap, {:decide, :allow}})
@@ -89,7 +136,9 @@ defmodule FMutate.PairScreenTest do
     assert record.node == "fmutate_a@127.0.0.1"
     assert %{app_name: "Humdinger", cookie: cookie} = Pairings.get(record.self_node)
     assert cookie == record.cookie
-    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"}}}, 1_000
+    # the screen hears of the pairing, without its cookie
+    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"} = paired}}, 1_000
+    refute Map.has_key?(paired, :cookie)
 
     refute find(view, :sheet, id: "pair_request")
     assert text(view) =~ "Humdinger is paired"
@@ -167,15 +216,141 @@ defmodule FMutate.PairScreenTest do
 
   @tag host_opts: [ttl: 1_000]
   test "an expired code can't pair; New code makes a fresh one" do
-    view = mount_screen(PairScreen)
+    view = mount()
     {target, auth} = {target(view), token(view)}
+    view = render_info(view, {:tap, :copy_code})
     Process.sleep(1_100)
 
     view = render_info(view, :tick)
     assert text(view) =~ "This code has expired"
     assert Client.pair(target, auth, identity()) == {:error, :expired}
+    # the expired code is taken off the clipboard
+    assert clipboard() == ""
 
     view = render_info(view, {:tap, :renew})
     assert text(view) =~ ~r/expires in 0:0[01]/
+  end
+
+  # the Host listens on loopback only here: 10.9.8.7 isn't this machine's
+  @tag wifi: {10, 9, 8, 7}, host_opts: [ip: {127, 0, 0, 1}]
+  test "Copy link copies the link to 127.0.0.1; the copied secret leaves the clipboard once spent" do
+    view = mount()
+    info = assigns(view).info
+    assert {:ok, %{host: "10.9.8.7"}} = Link.parse(info.link)
+
+    view = render_info(view, {:tap, :copy_link})
+    assert clipboard() == info.local_link
+    assert {:ok, %{host: "127.0.0.1", token: token}} = Link.parse(clipboard())
+    assert {:ok, %{token: ^token}} = Link.parse(info.link)
+
+    # New code: emptied
+    view = render_info(view, {:tap, :renew})
+    assert clipboard() == ""
+
+    # used (the app proved the secret): emptied
+    view = render_info(view, {:tap, :copy_code})
+    assert clipboard() == assigns(view).info.code
+    {task, view} = ask(view)
+    assert_receive {:pairing, {:secret, :used}} = msg, 1_000
+    view = render_info(view, msg)
+    assert clipboard() == ""
+    view = render_info(view, {:tap, {:decide, :deny}})
+    assert Task.await(task) == {:error, :denied}
+
+    # something the player copied since stays
+    view = view |> render_info({:tap, :renew}) |> render_info({:tap, :copy_code})
+    FakeClipboard.put(nil, "the player's own text")
+    view = render_info(view, {:tap, :renew})
+    assert clipboard() == "the player's own text"
+
+    # the screen closing: emptied
+    view = render_info(view, {:tap, :copy_link})
+    PairScreen.terminate(:shutdown, view.socket)
+    assert clipboard() == ""
+  end
+
+  test "a second app asking while the sheet shows is refused; Allow answers the app on the sheet" do
+    view = mount_screen(PairScreen)
+    {first, view} = ask(view, "Humdinger")
+
+    # a new secret (the first is used up), proven by another app while the player reads the sheet
+    :ok = Pairing.renew()
+    view = render_info(view, :tick)
+    {target, auth, magpie} = {target(view), token(view), identity("Magpie")}
+    second = Task.async(fn -> Client.pair(target, auth, magpie) end)
+    assert_receive {:pairing, {:request, _ref, %{app_name: "Magpie"}}} = msg, 5_000
+    view = render_info(view, msg)
+
+    assert Task.await(second, 2_000) == {:error, :denied}
+    assert text(view) =~ "says it is Humdinger"
+    refute text(view) =~ "says it is Magpie"
+
+    view = render_info(view, {:tap, {:decide, :allow}})
+    assert {:ok, _record} = Task.await(first)
+    assert [%{app_name: "Humdinger"}] = Pairings.list()
+    assert text(view) =~ "Humdinger is paired"
+  end
+
+  @tag host_opts: [ip: {127, 0, 0, 1}]
+  test "a new Wi-Fi address while the screen is open: pairing moves to it with a new secret",
+       context do
+    view = mount()
+    old = assigns(view).info
+    assert old.host == "127.0.0.1"
+    view = render_info(view, {:tap, :copy_code})
+
+    Agent.update(context.addresses, fn _ -> [{~c"wlan0", [flags: [:up], addr: {10, 9, 8, 7}]}] end)
+
+    send(Pairing, :check_front)
+    view = render_info(view, :tick)
+
+    info = assigns(view).info
+    assert info.host == "10.9.8.7"
+    assert info.code != old.code
+    assert {:ok, %{host: "10.9.8.7"}} = Link.parse(info.link)
+    assert text(view) =~ "on this Wi-Fi (10.9.8.7)"
+    # the old code is gone from the clipboard, and the screen still owns pairing
+    assert clipboard() == ""
+    {task, _view} = ask(view)
+    Task.shutdown(task, :brutal_kill)
+  end
+
+  @tag cert: ~s({"cert": "MIIB)
+  test "a certificate file cut short is replaced by a new certificate", %{dir: dir} do
+    view = mount_screen(PairScreen)
+    assert find(view, :canvas, id: "pair_qr")
+
+    path = Path.join(dir, "pair_cert.json")
+    assert {:ok, %{"cert" => _, "key" => _}} = path |> File.read!() |> JSON.decode()
+    assert File.stat!(path).mode |> Bitwise.band(0o777) == 0o600
+  end
+
+  @tag cert: :unreadable
+  test "a certificate that can't be read turns pairing off without stopping FMutate" do
+    assert Pairing.open() == {:error, {:certificate, :eacces}}
+    view = mount_screen(PairScreen)
+    assert text(view) =~ "FMutate's pairing certificate can't be read."
+    refute find(view, :canvas, id: "pair_qr")
+  end
+
+  @tag allowed: ["voice@127.0.0.1"]
+  test "a name a sibling-cookie app has can't be paired; a merely pending one can" do
+    view = mount_screen(PairScreen)
+    voice = %{identity("Voice") | node: "voice@127.0.0.1"}
+    assert Client.pair(target(view), token(view), voice) == {:error, :bad_node}
+    refute_received {:pairing, {:request, _, _}}
+
+    # a knock (no cookie needed) makes a name pending, not claimed
+    view = render_info(view, {:tap, :renew})
+    me = identity()
+    send(Dist, {:knock, String.to_atom(me.node)})
+    task = Task.async(fn -> Client.pair(target(view), token(view), me) end)
+    assert_receive {:pairing, {:request, _ref, %{app_name: "Humdinger"}}}, 5_000
+    Task.shutdown(task, :brutal_kill)
+
+    # a name never seen is no claim, and asking makes no atom of it
+    name = "never_seen_#{System.unique_integer([:positive])}@127.0.0.1"
+    refute Dist.claimed?(name)
+    assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
   end
 end

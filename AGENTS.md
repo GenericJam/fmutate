@@ -78,7 +78,8 @@ JNI symbols in Mob's generated code follow it.)
   [mob_pair](https://github.com/GenericJam/mob_pair): the protocol, its security model and what stays in FMutate
   are in that package's DECISIONS.md. Change protocol behaviour there, not here (Humdinger and Magpie use it
   too); FMutate keeps the screen (`FMutate.PairScreen`), the service (`FMutate.Pairing`) and admission
-  (`FMutate.Dist` follows `MobPair.Pairings`). Over rpc: `FMutate.Pairing.info()`, `MobPair.Pairings.list()`.
+  (`FMutate.Dist` follows `MobPair.Pairings`). Over rpc: `FMutate.Pairing.info()` (shows the live secret),
+  `MobPair.Pairings.list()` (shows every paired app's cookie): keep their output out of logs and issues.
 
 ## Conventions
 

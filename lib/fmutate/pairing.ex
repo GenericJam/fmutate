@@ -6,9 +6,11 @@ defmodule FMutate.Pairing do
   ## While the Pair screen is open
 
   `open/1` starts a `MobPair.Host` (the pairing endpoint) owned by the screen: one secret shown as a QR code
-  (the link) and a typed code, single use, 5 minutes, 5 wrong attempts (`MobPair.Host`). It listens on every
-  interface (loopback for apps on this phone, Wi-Fi for other phones) and advertises `_fmutate._tcp` over
-  mDNS where it can. A sibling that proves the secret is put to the player: the screen gets
+  (the link) and a typed code, single use, 5 minutes, 5 wrong attempts (`MobPair.Host`). It listens on
+  loopback (apps on this phone) and on the Wi-Fi address (other phones), never on mobile data, and advertises
+  `_fmutate._tcp` over mDNS where it can; when the Wi-Fi address changes it starts again on the new one (a
+  new secret). A node name `FMutate.Dist` already knows from the sibling cookie can't be paired
+  (`FMutate.Dist.claimed?/1`). A sibling that proves the secret is put to the player: the screen gets
   `{:pairing, {:request, ref, request}}` and answers with `decide/2`. Allow adds the app to
   `MobPair.Pairings` (its own cookie, its client certificate pinned), which `FMutate.Dist` follows: the app
   is allowed at once and connects. The screen closing (or `close/0`) stops pairing.
@@ -32,8 +34,10 @@ defmodule FMutate.Pairing do
 
   FMutate's certificate (ECDSA P-256, self-signed; its SHA-256 is the `fp` in the QR code) and its key are
   made once and kept in `Paths.dist_dir()/pair_cert.json` (0600, app-private storage, like the sibling
-  cookie); the pairings in `pairings.json` next to it (`MobPair.Pairings.FileStore`, 0600). Reinstalling
-  FMutate makes a new certificate, so siblings must pair again (protocol §1.4).
+  cookie, written with `MobPair.Pairings.write_private/2`); the pairings in `pairings.json` next to it
+  (`MobPair.Pairings.FileStore`, 0600). Reinstalling FMutate makes a new certificate, so siblings must pair
+  again (protocol §1.4); so does a certificate file that doesn't decode (it is replaced). One that can't be
+  read turns pairing off: `open/1` answers `{:error, {:certificate, reason}}`.
   """
 
   use GenServer
@@ -61,16 +65,18 @@ defmodule FMutate.Pairing do
   def tls_port(<<c>>) when c in ?a..?z, do: @tls_base_port + (c - ?a)
 
   @doc """
-  Opens pairing for `owner` (the Pair screen): `{:ok, info}` (see `info/1`) or `{:error, reason}`. An owner
-  that opens again gets the same secret; another owner takes it over. `owner` gets `{:pairing, event}`:
-  `{:request, ref, request}` (the Allow sheet; `request` is `MobPair.Host`'s), `{:withdrawn, ref}`,
-  `{:secret, status}` (a failed attempt, used, too many attempts) and `{:paired, pairing}` after an Allow.
+  Opens pairing for `owner` (the Pair screen): `{:ok, info}` (see `info/1`) or `{:error, reason}`
+  (`{:certificate, reason}` when FMutate's certificate can't be read). An owner that opens again gets the
+  same secret; another owner takes it over. `owner` gets `{:pairing, event}`: `{:request, ref, request}`
+  (the Allow sheet; `request` is `MobPair.Host`'s), `{:withdrawn, ref}`, `{:secret, status}` (a failed
+  attempt, used, too many attempts) and `{:paired, pairing}` (without its cookie) after an Allow.
   """
   def open(owner \\ self(), server \\ __MODULE__), do: GenServer.call(server, {:open, owner})
 
   @doc """
-  What the screen shows: `%{code, link, status, attempts_left, expires_in, advertising, host, wifi}` (`host`
-  the address in the link; `wifi` false when only apps on this phone can pair), or nil when closed.
+  What the screen shows: `%{code, link, local_link, status, attempts_left, expires_in, advertising, host,
+  wifi}` (`host` the address in the link, `local_link` the same link to 127.0.0.1 for an app on this phone;
+  `wifi` false when only apps on this phone can pair), or nil when closed.
   """
   def info(server \\ __MODULE__), do: GenServer.call(server, :info)
 
@@ -118,35 +124,44 @@ defmodule FMutate.Pairing do
     instance = Keyword.get(opts, :instance, "a")
     dir = Keyword.get_lazy(opts, :dir, &Paths.dist_dir/0)
 
-    case load_cert(Path.join(dir, "pair_cert.json")) do
-      {:ok, cert} ->
-        if Process.whereis(MobPair.Pairings), do: MobPair.Pairings.subscribe(self())
-        Process.send_after(self(), :check_front, 5_000)
+    # without a certificate FMutate still runs, with pairing off (open/1 says why)
+    {cert, cert_error} =
+      case load_cert(Path.join(dir, "pair_cert.json")) do
+        {:ok, cert} ->
+          {cert, nil}
 
-        {:ok,
-         %{
-           instance: instance,
-           cert: cert,
-           addresses: Keyword.get(opts, :addresses, &getifaddrs/0),
-           tls_port: Keyword.get(opts, :tls_port, tls_port(instance)),
-           node: Keyword.get(opts, :node, Dist.node_name(instance)),
-           dist_port: Keyword.get(opts, :dist_port, Dist.port(instance)),
-           advertise: Keyword.get(opts, :advertise, true),
-           host_opts: Keyword.get(opts, :host_opts, []),
-           owner: nil,
-           owner_ref: nil,
-           host: nil,
-           host_address: nil,
-           front: nil,
-           front_ip: nil
-         }}
+        {:error, reason} ->
+          Logger.error("pairing: no certificate, pairing is off: #{inspect(reason)}")
+          {nil, reason}
+      end
 
-      {:error, reason} ->
-        {:stop, {:certificate, reason}}
-    end
+    if Process.whereis(MobPair.Pairings), do: MobPair.Pairings.subscribe(self())
+    Process.send_after(self(), :check_front, 5_000)
+
+    {:ok,
+     %{
+       instance: instance,
+       cert: cert,
+       cert_error: cert_error,
+       addresses: Keyword.get(opts, :addresses, &getifaddrs/0),
+       tls_port: Keyword.get(opts, :tls_port, tls_port(instance)),
+       node: Keyword.get(opts, :node, Dist.node_name(instance)),
+       dist_port: Keyword.get(opts, :dist_port, Dist.port(instance)),
+       advertise: Keyword.get(opts, :advertise, true),
+       host_opts: Keyword.get(opts, :host_opts, []),
+       owner: nil,
+       owner_ref: nil,
+       host: nil,
+       host_address: nil,
+       front: nil,
+       front_ip: nil
+     }}
   end
 
   @impl true
+  def handle_call({:open, _owner}, _from, %{cert: nil} = state),
+    do: {:reply, {:error, {:certificate, state.cert_error}}, state}
+
   def handle_call({:open, owner}, _from, %{owner: owner, host: host} = state) when host != nil,
     do: {:reply, {:ok, host_info(state)}, state}
 
@@ -186,15 +201,16 @@ defmodule FMutate.Pairing do
   def handle_info({:mob_pair_secret, host, status}, %{host: host} = state),
     do: {:noreply, tell(state, {:secret, status})}
 
+  # the screen gets the pairing without its cookie (a secret it has no use for)
   def handle_info({:mob_pair_pairings, :added, pairing}, state),
-    do: {:noreply, state |> tell({:paired, pairing}) |> check_front()}
+    do: {:noreply, state |> tell({:paired, Map.delete(pairing, :cookie)}) |> check_front()}
 
   def handle_info({:mob_pair_pairings, :revoked, _pairing}, state),
     do: {:noreply, check_front(state)}
 
   def handle_info(:check_front, state) do
     Process.send_after(self(), :check_front, @check_ms)
-    {:noreply, check_front(state)}
+    {:noreply, state |> check_host() |> check_front()}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{owner_ref: ref} = state),
@@ -214,6 +230,7 @@ defmodule FMutate.Pairing do
 
   ## The pairing endpoint
 
+  # Listens on loopback and the Wi-Fi address (MobPair.Host's default for `host`), never on mobile data
   defp start_host(state) do
     wifi = wifi_address(state.addresses.())
     host = wifi || "127.0.0.1"
@@ -226,13 +243,14 @@ defmodule FMutate.Pairing do
       device: device_name(),
       firmware: firmware_name(state.instance),
       node: Atom.to_string(state.node),
-      ip: {0, 0, 0, 0},
       host: host,
       # no Wi-Fi: plain loopback distribution only, so apps on other phones get loopback_only
       dist_host: host,
       dist_port: if(wifi, do: state.tls_port, else: state.dist_port),
       dist_proto: if(wifi, do: :inet_tls, else: :inet_tcp),
       loopback_dist: %{port: state.dist_port, proto: :inet_tcp},
+      # a sibling-cookie app's name (FMutate.Dist knows it) can't be taken over by pairing
+      reserved: &Dist.claimed?/1,
       approve: {:ask, self()},
       notify: self(),
       advertise: if(wifi && state.advertise, do: [], else: false)
@@ -241,6 +259,30 @@ defmodule FMutate.Pairing do
     case MobPair.Host.start_link(Keyword.merge(opts, state.host_opts)) do
       {:ok, pid} -> {:ok, %{state | host: pid, host_address: host}}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # The Wi-Fi address changed while the screen is open: pair on the new one (a new secret; the screen
+  # redraws the QR code on its next refresh)
+  defp check_host(%{host: nil} = state), do: state
+
+  defp check_host(state) do
+    if (wifi_address(state.addresses.()) || "127.0.0.1") == state.host_address do
+      state
+    else
+      restart_host(stop_host(state))
+    end
+  end
+
+  defp restart_host(state) do
+    case start_host(state) do
+      {:ok, state} ->
+        Logger.info("pairing: the address changed, pairing on #{state.host_address}")
+        state
+
+      {:error, reason} ->
+        Logger.warning("pairing: the pairing endpoint can't restart: #{inspect(reason)}")
+        state
     end
   end
 
@@ -280,7 +322,7 @@ defmodule FMutate.Pairing do
 
   defp check_front(state) do
     ip = wifi_address(state.addresses.())
-    wanted? = ip != nil and Node.self() == state.node and tls_paired?()
+    wanted? = ip != nil and state.cert != nil and Node.self() == state.node and tls_paired?()
 
     cond do
       wanted? and state.front != nil and state.front_ip == ip -> state
@@ -330,16 +372,35 @@ defmodule FMutate.Pairing do
 
   ## Identity
 
-  # FMutate's certificate and key, made once (JSON: base64url DER, the file 0600)
+  # FMutate's certificate and key, made once (JSON: base64url DER, the file 0600). A file that doesn't decode
+  # (cut short by a power loss) is replaced: paired apps must pair again.
   defp load_cert(path) do
-    with {:ok, json} <- File.read(path),
-         {:ok, %{"cert" => cert, "key" => key}} <- JSON.decode(json),
+    case File.read(path) do
+      {:ok, json} ->
+        with :error <- decode_cert(json) do
+          Logger.warning(
+            "pairing: #{path} is corrupt, making a new certificate (paired apps pair again)"
+          )
+
+          new_cert(path)
+        end
+
+      {:error, :enoent} ->
+        new_cert(path)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp decode_cert(json) do
+    with {:ok, %{"cert" => cert, "key" => key}} when is_binary(cert) and is_binary(key) <-
+           JSON.decode(json),
          {:ok, cert} <- Base.url_decode64(cert, padding: false),
          {:ok, key} <- Base.url_decode64(key, padding: false) do
       {:ok, %{cert: cert, key: key, fp: MobPair.Cert.fingerprint(cert)}}
     else
-      {:error, :enoent} -> new_cert(path)
-      _corrupt -> {:error, :corrupt}
+      _ -> :error
     end
   end
 
@@ -352,14 +413,7 @@ defmodule FMutate.Pairing do
         "key" => Base.url_encode64(cert.key, padding: false)
       })
 
-    tmp = path <> ".tmp"
-
-    with :ok <- File.write(tmp, ""),
-         :ok <- File.chmod(tmp, 0o600),
-         :ok <- File.write(tmp, json),
-         :ok <- File.rename(tmp, path) do
-      {:ok, cert}
-    end
+    with :ok <- MobPair.Pairings.write_private(path, json), do: {:ok, cert}
   end
 
   # what the sibling's screen shows ("FMutate A on moto e"): Mob.Device.model/0 answers "Android" on Android,

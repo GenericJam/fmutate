@@ -83,9 +83,11 @@ defmodule FMutate.PairingTest do
   end
 
   # FMutate in a :peer BEAM, started without distribution (FMutate.Dist starts it); `wifi` is the address
-  # FMutate.Pairing sees as its Wi-Fi interface (nil: none)
-  defp start_fmutate(wifi) do
-    data = Path.join(System.tmp_dir!(), "fmutate_peer_#{System.unique_integer([:positive])}")
+  # FMutate.Pairing sees as its Wi-Fi interface (nil: none); `data` its data directory (a new one by default)
+  defp start_fmutate(wifi, data \\ nil) do
+    data =
+      data || Path.join(System.tmp_dir!(), "fmutate_peer_#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(data)
     on_exit(fn -> File.rm_rf(data) end)
 
@@ -105,7 +107,7 @@ defmodule FMutate.PairingTest do
     {:ok, _} = :peer.call(peer, PairingTestBoot, :start, [@inst, data, wifi])
     node = FMutate.Dist.node_name(@inst)
     wait(fn -> :peer.call(peer, Node, :self, []) == node end)
-    %{peer: peer, node: node}
+    %{peer: peer, node: node, data: data}
   end
 
   defp open(fmutate, answer) do
@@ -162,6 +164,13 @@ defmodule FMutate.PairingTest do
     assert conn.node == fmutate.node
     assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
     wait(fn -> app(fmutate, me_node).state == :connected end)
+
+    # a stale Allow tap in I/O doesn't give the paired app the sibling cookie
+    assert :peer.call(fmutate.peer, FMutate.Dist, :allow, [me_node]) == {:error, :paired}
+
+    assert :peer.call(fmutate.peer, :erlang, :get_cookie, [me_node]) ==
+             String.to_atom(record.cookie)
+
     events = :peer.call(fmutate.peer, PairingTestScreen, :events, [screen])
 
     assert [{:request, _, %{app_name: "Humdinger"}}] =
@@ -201,7 +210,14 @@ defmodule FMutate.PairingTest do
         do:
           {:ok, _} = :peer.call(fmutate.peer, Supervisor, :restart_child, [PairingTestSup, child])
 
-    assert {:ok, _conn} = Transport.connect(record, self())
+    assert {:ok, conn} = Transport.connect(record, self())
+    assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
+
+    # a new BEAM: the pairings load before the node is up, and get their cookies once it is
+    Transport.disconnect(conn)
+    :peer.stop(fmutate.peer)
+    fmutate = start_fmutate(nil, fmutate.data)
+    wait(fn -> match?({:ok, _}, Transport.connect(record, self())) end)
     assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
   end
 

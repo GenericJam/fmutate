@@ -121,8 +121,8 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
   I/O screen says so. Two ways in: the signature-protected sibling cookie (same key, same phone), or pairing
   (below), where the single-use code or QR, the player's Allow and the per-app cookie (plus, across phones,
   both pinned certificates) are the boundary. Third-party apps that pair get the same full trust: the Allow
-  sheet names the app as it claims to be ("says it is …" from another phone). App display names come from the
-  pairing (`app_name`), else from the node name.
+  sheet names the app as it claims to be ("says it is …", from this phone or another). App display names come
+  from the pairing (`app_name`), else from the node name.
 
 ### Pairing (menu › Pair an app)
 
@@ -131,16 +131,24 @@ its DECISIONS.md is the security model). The wire format is Humdinger's `design/
 byte for byte; the link adds `app=fmutate`.
 
 - **Screen.** `FMutate.PairScreen`: the QR code (the link `fmutate://pair?v=1&app=fmutate&inst=a&node=fmutate_a
-  &host=<Wi-Fi IP>&port=<pairing port>&fp=…&t=…`), the code (`KQ7M-X2PD`), a countdown, Copy code, Copy link,
-  New code; expired, used and too-many-attempts states offer New code. Pairing runs only while it is open
-  (`FMutate.Pairing` starts a `MobPair.Host` on any interface, port chosen by the system; mDNS
-  `_fmutate._tcp` where the BEAM can bind 5353, see "Not yet").
+  &host=<Wi-Fi IP>&port=<pairing port>&fp=…&t=…`), the code (`KQ7M-X2PD`), a countdown, Copy code, Copy link
+  (the same link with `host=127.0.0.1`, for an app on this phone), New code; expired, used and
+  too-many-attempts states offer New code. Pairing runs only while it is open (`FMutate.Pairing` starts a
+  `MobPair.Host` on 127.0.0.1 and the Wi-Fi address, never mobile data, port chosen by the system; mDNS
+  `_fmutate._tcp` where the BEAM can bind 5353, see "Not yet"). When the Wi-Fi address changes (checked every
+  30 s) the Host starts again on the new one, with a new secret.
 - **Secret.** One per screen: code (40 bits) and token (128 bits), single use, 5 minutes, 5 failed attempts
-  kill both. A typed code is proven with SRP-6a bound to FMutate's certificate and the TLS session.
-- **Allow.** A sibling that proves the secret gets a sheet: "Humdinger wants to connect · this phone · on
-  moto e" (loopback) or "An app on another phone says it is Humdinger · Wi-Fi 192.168.1.40 · on Pixel 7";
-  "Replaces …" when another certificate is paired under the same node name. Don't allow, swiping the sheet
-  away and the sibling hanging up all refuse.
+  kill both. A typed code is proven with SRP-6a bound to FMutate's certificate and the TLS session. Copy code
+  and Copy link put the secret on the clipboard, which other apps can read (on Android 9, any background
+  app): the screen empties the clipboard, if it still holds what it copied, once the secret is used, expired,
+  dead or replaced, and when the screen closes.
+- **Allow.** A sibling that proves the secret gets a sheet. The name is the requester's claim, wherever it
+  connects from: "An app on this phone says it is Humdinger · this phone · on moto e" (loopback) or "An app on
+  another phone says it is Humdinger · Wi-Fi 192.168.1.40 · on Pixel 7"; "Replaces …" when an app is already
+  paired under the same node name. Don't allow, swiping the sheet away and the sibling hanging up all refuse.
+  One request at a time: another app asking while the sheet shows is refused at once. A node name that a
+  sibling-cookie app has (allowed, connected or disconnected in I/O; a merely pending knock doesn't count) is
+  refused before the sheet (`bad_node`), so pairing can't take it over.
 - **Grant.** `MobPair.Pairings` makes a per-app cookie (32 random bytes) for exactly the node name the sibling
   declared and pins its client certificate; `FMutate.Dist` follows it and allows the node at once (no knock).
   A sibling on this phone gets `dist_host 127.0.0.1`, `dist_port 9150`, `inet_tcp` (the existing node). A
@@ -151,18 +159,22 @@ byte for byte; the link adds `app=fmutate`.
   handshake is reframed and forwarded to `127.0.0.1:9150`. It listens on the Wi-Fi address only, and only
   while an `inet_tls` pairing exists (checked on every change and every 30 s, so it follows a new address).
 - **Storage.** FMutate's certificate and key: `files/…/dist/pair_cert.json`; pairings (cookies, pinned
-  fingerprints, names): `pairings.json`; both 0600 in app-private storage, like `sibling_cookie`.
-  Reinstalling FMutate makes a new certificate: paired apps must pair again.
+  fingerprints, names): `pairings.json`; both 0600 in app-private storage, like `sibling_cookie`, written
+  through a synced temporary file. Reinstalling FMutate makes a new certificate: paired apps must pair again.
+  So does a certificate file that doesn't decode (replaced by a new one); one that can't be read leaves
+  FMutate running with pairing off (the Pair screen says the certificate can't be read).
 - **Disconnect / unpair.** I/O lists paired apps with their name and "paired · this phone" or "paired · Wi-Fi ·
   <device>"; Disconnect revokes the pairing (connection cut, cookie replaced, certificate unpinned): the app
   must pair again. A sibling forgetting FMutate calls `{:unpair, its_own_node}` on `:fmutate_instance` → `:ok`,
   then the same revocation.
 - **Both paths coexist.** The signature-permission content provider (Android, same key) still works as above;
   pairing doesn't replace it. An app could use either; a node name is either a sibling-cookie app or a paired
-  app, never both.
+  app, never both: pairing refuses a sibling-cookie app's name, and I/O's Allow refuses a paired name.
 - **Not yet:** mDNS on Android through `NsdManager` (the Erlang responder shares 5353 with the system responder
   where the kernel allows it and the phone delivers multicast without a `MulticastLock`; otherwise only the QR
   code / link pairs from another phone, and a typed code needs the sibling to know FMutate's address); iOS
   (the Elixir side is platform-neutral, but needs `NSLocalNetworkUsageDescription` and `NSBonjourServices`
   `_fmutate._tcp` in Info.plist, and the same-phone loopback path doesn't exist between iOS apps); keeping
-  pairings and the certificate key in Android Keystore (`mob_secure_store`) instead of a 0600 file.
+  pairings and the certificate key in Android Keystore (`mob_secure_store`) instead of a 0600 file; keeping
+  the secret off the clipboard altogether (handing the link to the sibling with an explicit intent) or at
+  least marking it sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`, which `Mob.Clipboard` can't set yet).

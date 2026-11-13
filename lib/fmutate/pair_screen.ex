@@ -4,9 +4,16 @@ defmodule FMutate.PairScreen do
   sibling app (Humdinger, Magpie) on this phone or another phone on the same Wi-Fi.
 
   The code is single use, expires after 5 minutes and dies after 5 wrong tries; the screen counts down and
-  offers New code. An app that proves the code is put to the player on a sheet ("Humdinger wants to connect"
-  / "says it is Humdinger" for another phone, whose name can't be checked) with Don't allow / Allow. Allow
-  pairs it (`FMutate.Pairing`, `FMutate.Dist`): it connects and shows up in I/O, where Disconnect unpairs it.
+  offers New code. An app that proves the code is put to the player on a sheet with Don't allow / Allow. Its
+  name is only a claim (any app can send any name), so the sheet says so: "An app on this phone says it is
+  Humdinger" / "An app on another phone says it is Humdinger". A second app asking while the sheet shows is
+  refused at once, so Allow answers the app the sheet names. Allow pairs it (`FMutate.Pairing`,
+  `FMutate.Dist`): it connects and shows up in I/O, where Disconnect unpairs it.
+
+  Copy code and Copy link (the link to 127.0.0.1, for an app on this phone) put the secret on the clipboard,
+  which other apps can read (on Android 9 any app in the background). The screen takes it off again
+  (clipboard emptied, unless the player copied something else since) once the secret is used, expired, dead
+  or replaced, and when the screen closes.
 
   Pairing runs only while this screen is open (`FMutate.Pairing.open/1`, closed when the screen goes).
   """
@@ -20,9 +27,15 @@ defmodule FMutate.PairScreen do
   @qr_target 232
   @quiet 4
 
-  def mount(_params, _session, socket) do
+  # `session` `:clipboard`: `Mob.Clipboard` (the default) or a module with its `put/2` and `get/1`, for tests
+  def mount(_params, session, socket) do
     Process.send_after(self(), :tick, @tick_ms)
-    {:ok, socket |> Mob.Socket.assign(request: nil, note: nil) |> open()}
+    clipboard = Map.get(session, :clipboard, Mob.Clipboard)
+
+    {:ok,
+     socket
+     |> Mob.Socket.assign(request: nil, note: nil, clipboard: clipboard, copied: nil)
+     |> open()}
   end
 
   defp open(socket) do
@@ -303,15 +316,14 @@ defmodule FMutate.PairScreen do
   end
 
   def handle_info({:tap, :copy_code}, %{assigns: %{info: %{code: code}}} = socket),
-    do:
-      {:noreply,
-       socket |> Mob.Clipboard.put(code) |> Mob.Socket.assign(:note, {:ok, "Code copied."})}
+    do: {:noreply, socket |> copy(code) |> Mob.Socket.assign(:note, {:ok, "Code copied."})}
 
-  def handle_info({:tap, :copy_link}, %{assigns: %{info: %{link: link}}} = socket),
+  # the link to 127.0.0.1: the app it is pasted in runs on this phone
+  def handle_info({:tap, :copy_link}, %{assigns: %{info: %{local_link: link}}} = socket),
     do:
       {:noreply,
        socket
-       |> Mob.Clipboard.put(link)
+       |> copy(link)
        |> Mob.Socket.assign(:note, {:ok, "Link copied: paste it in the other app."})}
 
   def handle_info({:tap, {:decide, decision}}, %{assigns: %{request: {ref, request}}} = socket) do
@@ -333,6 +345,12 @@ defmodule FMutate.PairScreen do
      Mob.Socket.assign(socket, request: nil, note: {:warn, "#{request.app_name} wasn't allowed."})}
   end
 
+  # one request at a time: Allow answers the app the sheet names, so another one asking meanwhile is refused
+  def handle_info({:pairing, {:request, ref, _request}}, %{assigns: %{request: {_, _}}} = socket) do
+    _ = Pairing.decide(ref, :deny)
+    {:noreply, socket}
+  end
+
   def handle_info({:pairing, {:request, ref, request}}, socket),
     do: {:noreply, socket |> Mob.Socket.assign(:request, {ref, request}) |> refresh()}
 
@@ -348,21 +366,45 @@ defmodule FMutate.PairScreen do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
+  def terminate(_reason, socket), do: forget_copied(socket)
+
   # the code, its status and the countdown; a new link (New code) redraws the QR
   defp refresh(%{assigns: %{error: nil}} = socket) do
     case Pairing.info() do
       nil ->
-        open(socket)
+        socket |> forget_copied() |> open()
 
       info ->
         qr = if info.link == socket.assigns.info.link, do: socket.assigns.qr, else: qr(info.link)
-        Mob.Socket.assign(socket, info: info, qr: qr)
+        socket |> Mob.Socket.assign(info: info, qr: qr) |> forget_spent()
     end
   catch
     :exit, _ -> socket
   end
 
   defp refresh(socket), do: socket
+
+  ## The clipboard
+
+  defp copy(socket, secret) do
+    socket.assigns.clipboard.put(socket, secret)
+    Mob.Socket.assign(socket, :copied, secret)
+  end
+
+  # the copied secret no longer pairs: used, expired, too many tries, or replaced (New code, a new address)
+  defp forget_spent(%{assigns: %{copied: copied, info: info}} = socket) do
+    if copied != nil and (info.status != :open or copied not in [info.code, info.local_link]),
+      do: forget_copied(socket),
+      else: socket
+  end
+
+  # empties the clipboard if it still holds what this screen copied (not what the player copied since)
+  defp forget_copied(%{assigns: %{copied: nil}} = socket), do: socket
+
+  defp forget_copied(%{assigns: %{copied: copied, clipboard: clipboard}} = socket) do
+    if clipboard.get(socket) == {:clipboard, :ok, copied}, do: clipboard.put(socket, "")
+    Mob.Socket.assign(socket, :copied, nil)
+  end
 
   ## Text
 
@@ -393,7 +435,9 @@ defmodule FMutate.PairScreen do
   defp error_text({:certificate, _}), do: "FMutate's pairing certificate can't be read."
   defp error_text(reason), do: "Couldn't open the pairing port (#{inspect(reason)})."
 
-  defp request_title(%{remote_ip: {127, _, _, _}, app_name: name}), do: "#{name} wants to connect"
+  defp request_title(%{remote_ip: {127, _, _, _}, app_name: name}),
+    do: "An app on this phone says it is #{name}"
+
   defp request_title(%{app_name: name}), do: "An app on another phone says it is #{name}"
 
   defp request_origin(%{remote_ip: {127, _, _, _}, device_name: device}),

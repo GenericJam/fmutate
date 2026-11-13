@@ -42,8 +42,11 @@ defmodule FMutate.Dist do
   Allow) are kept by `MobPair.Pairings` with a cookie of their own, set for exactly the node name they
   declared; this process follows it (`MobPair.Pairings.subscribe/1`): a new pairing is allowed at once, and
   Disconnect (or the app's `{:unpair, node}`) revokes the pairing, which drops the node until it pairs again.
-  Paired names never get the sibling cookie and aren't written to `allowed.term`. A paired app on another
-  phone arrives through `MobPair.Front` (TLS) as a loopback connection under its paired name.
+  Paired names never get the sibling cookie (an I/O Allow for one answers `{:error, :paired}`) and aren't
+  written to `allowed.term`; a name the player already let in with the sibling cookie can't be paired
+  (`claimed?/1`). `MobPair.Pairings` sets the paired nodes' cookies once the node is up
+  (`MobPair.Pairings.distribution_started/0`). A paired app on another phone arrives through
+  `MobPair.Front` (TLS) as a loopback connection under its paired name.
 
   Subscribers get `{:dist, info}` (see `info/0`) on every change.
   """
@@ -76,7 +79,7 @@ defmodule FMutate.Dist do
   @doc "Subscribe the caller to `{:dist, info}`; returns the current info."
   def subscribe, do: GenServer.call(__MODULE__, {:subscribe, self()})
 
-  @doc "The player allows a pending app."
+  @doc "The player allows a pending app. A paired app isn't the sibling cookie's: `{:error, :paired}`."
   def allow(node), do: GenServer.call(__MODULE__, {:allow, node})
 
   @doc "The player cuts an app off. A paired app's pairing is revoked (it has to pair again)."
@@ -88,6 +91,21 @@ defmodule FMutate.Dist do
   @doc "Whether calls from `node` are served: this node, or an allowed app."
   def permitted?(node) when node == node(), do: true
   def permitted?(node), do: GenServer.call(__MODULE__, {:permitted?, node})
+
+  @doc """
+  Whether the node name `name` (as a sibling declares it) belongs to a sibling-cookie app the player let in
+  (allowed, connected or disconnected in `FMutate.Dist.Access`, not paired). Pairing refuses such names, so
+  it can't take one over. A pending name isn't claimed: anyone can knock, and a sibling whose pairing was
+  revoked knocks with its old cookie before it pairs again. Makes no atom (a name never seen is unknown);
+  false when this process isn't running.
+  """
+  @spec claimed?(String.t()) :: boolean()
+  def claimed?(name) when is_binary(name) do
+    node = String.to_existing_atom(name)
+    Process.whereis(__MODULE__) != nil and GenServer.call(__MODULE__, {:claimed?, node})
+  rescue
+    ArgumentError -> false
+  end
 
   @doc "An instance got remote input (`FMutate.Remote`): it counts as driven from outside for 2 s."
   def driving(instance), do: GenServer.cast(__MODULE__, {:driving, instance})
@@ -132,6 +150,10 @@ defmodule FMutate.Dist do
     {:reply, info_of(state), %{state | subscribers: Map.put(state.subscribers, pid, ref)}}
   end
 
+  # a stale Allow tap (I/O) on an app that has paired meanwhile: its cookie is the pairing's
+  def handle_call({:allow, node}, _from, state) when is_map_key(state.paired, node),
+    do: {:reply, {:error, :paired}, state}
+
   def handle_call({:allow, node}, _from, state) do
     case Access.allow(state.access, node, now()) do
       {:ok, access} ->
@@ -172,6 +194,11 @@ defmodule FMutate.Dist do
 
   def handle_call({:permitted?, node}, _from, state),
     do: {:reply, Access.permitted?(state.access, node), state}
+
+  def handle_call({:claimed?, node}, _from, state) do
+    known? = Access.state(state.access, node) in [:allowed, :connected, :disconnected]
+    {:reply, known? and not is_map_key(state.paired, node), state}
+  end
 
   @impl true
   def handle_cast({:driving, instance}, state) do
@@ -229,10 +256,10 @@ defmodule FMutate.Dist do
     end
   end
 
-  # MobPair.Pairings (subscribed in paired_apps/0): the Pair screen's Allow, and revocations
+  # MobPair.Pairings (subscribed in paired_apps/0): the Pair screen's Allow, and revocations. Pairings sets the
+  # paired node's cookie itself.
   def handle_info({:mob_pair_pairings, :added, pairing}, state) do
     node = String.to_atom(pairing.node)
-    if Node.alive?(), do: Node.set_cookie(node, String.to_atom(pairing.cookie))
     access = Access.pair(state.access, node, now())
     paired = Map.put(state.paired, node, summary(pairing))
     save_allowed(access, paired)
@@ -291,9 +318,8 @@ defmodule FMutate.Dist do
         not is_map_key(state.paired, node),
         do: Node.set_cookie(node, state.sibling)
 
-    # MobPair.Pairings sets these itself when the node is up; it may have loaded them before
-    for pairing <- pairings(),
-        do: Node.set_cookie(String.to_atom(pairing.node), String.to_atom(pairing.cookie))
+    # MobPair.Pairings sets the paired nodes' cookies, and guards revoked names, once the node is up
+    if Process.whereis(MobPair.Pairings), do: MobPair.Pairings.distribution_started()
 
     :ok = :net_kernel.monitor_nodes(true, node_type: :all)
     Knock.install(self())
