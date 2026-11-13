@@ -105,7 +105,8 @@ cartridge, before each pass; it replaces the cartridge's old tap latch for butto
 `.fwsc` a real FM-1 installs) in [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (MIT; both CPU cores, the
 SoC, the screen, the panel matrix, the DAC), with everything above unchanged: arguments, port messages, ring,
 `.fb`, pacing on the ring fill, STATUS, the watchdog's view of it. Source: `native/emu/` (Rust), fm1-emu pinned in
-`native/build_emu.sh`, patches in `native/patches/fm1-emu/`. `FMutate.Firmware` picks it for `backend: :emu`.
+`native/build_emu.sh` (local changes to it would be patches in `native/patches/fm1-emu/`; none at present: FMutate's
+one, the JIT on x86-64 Android, is upstream as fm1-emu #171). `FMutate.Firmware` picks it for `backend: :emu`.
 
 What differs inside:
 
