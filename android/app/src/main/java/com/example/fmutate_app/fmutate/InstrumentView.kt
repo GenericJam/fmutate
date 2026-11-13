@@ -162,6 +162,7 @@ private class Grab(
     var note = -1                // velocity strips: the MIDI note this finger sounds (-1: a firmware key press)
     var vel = 0                  // and the velocity it struck with (a glissando keeps it)
     var cc7 = -1                 // the volume this finger's swell last sent
+    var at = -1                  // the pressure (the held note's own level) this finger last sent
     var bendRaw = 8192           // the pitch bend this finger last sent
 }
 
@@ -397,6 +398,13 @@ private fun InstrumentSurface(
         input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, v.coerceIn(0, 127))))
     }
 
+    /** Pressure: the held note's own level (MIDI polyphonic aftertouch), for firmwares that take it. */
+    fun pressureTo(g: Grab, v: Int) {
+        if (g.note < 0 || v == g.at) return
+        g.at = v
+        input(mapOf("t" to "midi", "bytes" to listOf(0xA0, g.note, v.coerceIn(0, 127))))
+    }
+
     /**
      * A keyboard strip's key down: a velocity strip plays a MIDI note (FM-1 key 0 = F3 = MIDI 53, plus its own
      * octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
@@ -405,8 +413,9 @@ private fun InstrumentSurface(
         val layerHeld = fnButtons.any { state.pressed[it] == true }
         if (c.strikeVelocity && !layerHeld) {
             g.note = (53 + k + 12 * state.noteOct).coerceIn(0, 127)
+            g.at = -1
             input(mapOf("t" to "midi", "bytes" to listOf(0x90, g.note, g.vel.coerceIn(1, 127))))
-            if (c.velSwell && g.cc7 < 0) swellTo(g, g.vel)
+            if (c.velSwell && !c.velPressure && g.cc7 < 0) swellTo(g, g.vel)
         } else {
             g.note = -1
             fire(Target.Key(k), true)
@@ -522,16 +531,19 @@ private fun InstrumentSurface(
             ?: keys.firstOrNull { (k, kr) -> !isBlack(k) && kr.contains(p.x, p.y) }?.first
     }
 
-    /**
-     * Velocity from where key [k] is struck: its front edge (away from the black keys) is [Control.velMax], its
-     * back edge [Control.velMin], linear in between.
-     */
-    fun strikeVelocity(c: Control, r: Grid.Rect, k: Int, p: Offset): Int {
-        val kr = keyboardKeys(c, r).firstOrNull { it.first == k }?.second ?: return c.velMax
+    // where on key [k] the finger is: 1 at its front edge (away from the black keys), 0 at its back edge
+    fun frontAt(c: Control, r: Grid.Rect, k: Int, p: Offset): Float {
+        val kr = keyboardKeys(c, r).firstOrNull { it.first == k }?.second ?: return 1f
         // horizontal strips: black keys at the top, the front is the bottom; vertical: black keys on the right
-        val front = if (c.vertical) 1f - (p.x - kr.x) / kr.w else (p.y - kr.y) / kr.h
-        return (c.velMin + (c.velMax - c.velMin) * front.coerceIn(0f, 1f)).roundToInt().coerceIn(1, 127)
+        return (if (c.vertical) 1f - (p.x - kr.x) / kr.w else (p.y - kr.y) / kr.h).coerceIn(0f, 1f)
     }
+
+    /** Velocity from where key [k] is struck: [Control.velMax] at its front edge, [Control.velMin] at its back. */
+    fun strikeVelocity(c: Control, r: Grid.Rect, k: Int, p: Offset): Int =
+        (c.velMin + (c.velMax - c.velMin) * frontAt(c, r, k, p)).roundToInt().coerceIn(1, 127)
+
+    /** A held note's level from where the finger is now: full at the key's front edge, silent at its back edge. */
+    fun levelAt(c: Control, r: Grid.Rect, k: Int, p: Offset): Int = (127 * frontAt(c, r, k, p)).roundToInt()
 
     fun arrowAt(c: Control, r: Grid.Rect, p: Offset): Int {
         if (!c.octaveArrows || hasRail(c)) return 0
@@ -630,6 +642,7 @@ private fun InstrumentSurface(
                     g.vel = strikeVelocity(c, r, k, p)
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
+                    if (c.velPressure) pressureTo(g, levelAt(c, r, k, p))
                 }
             }
             "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
@@ -682,7 +695,10 @@ private fun InstrumentSurface(
             "keyboard" -> {
                 if (g.sub == RAIL_GRAB) { state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 if (g.sub < 0) return
-                if (g.note >= 0 && c.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
+                if (g.note >= 0) {
+                    if (c.velPressure) pressureTo(g, levelAt(c, r, g.sub, p))
+                    else if (c.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
+                }
                 if (bends(c)) { bend(c, g, r, p); return }
                 val k = keyAt(c, r, p)
                 if (k != null && k != g.sub) {
@@ -691,6 +707,7 @@ private fun InstrumentSurface(
                     g.sub = k
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
+                    if (c.velPressure) pressureTo(g, levelAt(c, r, k, p))
                 }
             }
             "strum" -> {

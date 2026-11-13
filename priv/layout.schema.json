@@ -130,7 +130,8 @@
                 "source": { "enum": ["fixed", "position"], "default": "fixed" },
                 "min": { "type": "integer", "minimum": 1, "maximum": 127, "default": 40 },
                 "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 },
-                "swell": { "type": "boolean", "default": false, "description": "position only, opt-in: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together (a note's own velocity is fixed once it starts)." }
+                "swell": { "type": "boolean", "default": false, "description": "position only, opt-in: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together (a note's own velocity is fixed once it starts)." },
+                "pressure": { "type": "boolean", "default": false, "description": "position only, opt-in, for firmwares that take MIDI polyphonic aftertouch as a note's level (FMutate's OberVave): the held note's own level follows the finger, full at the key's front edge, silent at its back edge. Takes precedence over swell." }
               },
               "additionalProperties": false
             },

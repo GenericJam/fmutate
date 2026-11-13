@@ -48,7 +48,7 @@ defmodule FMutate.Editor do
       layout_json: Layouts.encode(layout),
       page: hd(layout["pages"])["id"],
       sheet: nil,
-      bend: pitch_bend?(firmware),
+      bend: cap?(firmware, :pitch_bend),
       toast: Map.get(socket.assigns, :toast, {0, ""}),
       add_menu: nil,
       draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false}
@@ -271,6 +271,9 @@ defmodule FMutate.Editor do
 
   def ui(:change, {:editor, :kb_swell}, v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "swell", v == true)}) end)
+
+  def ui(:change, {:editor, :kb_pressure}, v, socket),
+    do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"velocity" => Map.put(velocity(c), "pressure", v == true)}) end)
 
   def ui(:change, {:editor, :kb_colors}, v, socket),
     do: with_control(socket, fn l, c, _ -> put_kb(l, c, %{"pitch_colors" => v == true}) end)
@@ -952,6 +955,8 @@ defmodule FMutate.Editor do
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
     swell = vel["swell"] == true
+    pressure = vel["pressure"] == true
+    pressure_ok = vel_source == "position" and cap?(assigns.firmware, :note_pressure)
 
     children = [
       title("Keyboard strip"),
@@ -991,8 +996,11 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
+      toggle("Note level follows the finger", "Strike position only: while a key is held, its own note is full at the key's front edge and silent at its back edge, other notes untouched." <>
+        if(cap?(assigns.firmware, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
+        :kb_pressure, pressure and pressure_ok, disabled: not pressure_ok),
       toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together.",
-        :kb_swell, swell and vel_source == "position", disabled: vel_source != "position"),
+        :kb_swell, swell and vel_source == "position" and not pressure, disabled: vel_source != "position" or pressure),
       toggle("Vertical", "A side keyboard: low notes at the bottom.", :kb_vertical, vertical),
       toggle("Pitch colours", "Key caps carry the 88-key colour; a vertical strip gets the colour rail to scroll it.", :kb_colors, colors),
       ~MOB"""
@@ -1056,9 +1064,9 @@ defmodule FMutate.Editor do
     end
   end
 
-  defp pitch_bend?(firmware_id) do
+  defp cap?(firmware_id, cap) do
     case firmware_id && Firmware.get(firmware_id) do
-      %{caps: caps} -> Map.get(caps, :pitch_bend, false)
+      %{caps: caps} -> Map.get(caps, cap, false)
       _ -> false
     end
   end

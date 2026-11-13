@@ -1,0 +1,104 @@
+diff --git a/firmware/src/obervave.c b/firmware/src/obervave.c
+index 8cc2008..0380c5c 100644
+--- a/firmware/src/obervave.c
++++ b/firmware/src/obervave.c
+@@ -1825,6 +1825,7 @@ static void midi_in(uint32_t notes_only)
+             uint32_t t = ch - set.midi_ch;
+             if (kind == 0x90u && d2) note_event_p(t, 1, d1, d2);
+             else if (kind == 0x80u || kind == 0x90u) note_event_p(t, 0, d1, 0);
++            else if (kind == 0xA0u) note_event_p(t, 2, d1, d2);   /* polyphonic aftertouch: that note's level */
+             else if (kind == 0xC0u && d1 < NPROG) { trk_load(t, d1); dirty_hdr = dirty_page = dirty_tags = dirty_steps = 1; }
+             else if (kind == 0xB0u && cc_map[d1]) {
+                 uint32_t p = cc_map[d1] - 1u;
+@@ -1842,6 +1843,7 @@ static void midi_in(uint32_t notes_only)
+             note_in(0, d1, 0);
+             dirty_page |= rec || is_seq_page(page); dirty_steps = 1;
+         }
++        else if (kind == 0xA0u) note_event_p(note_part[d1 & 127u], 2, d1, d2);   /* polyphonic aftertouch */
+         else if (kind == 0xE0u) ctl_bend = (int32_t)(d1 | d2 << 7) - 8192;
+         else if (kind == 0xC0u && d1 < NPROG) { trk_load(set.midi_ch ? 0u : seq_trk, d1); dirty_hdr = dirty_page = dirty_tags = dirty_steps = 1; }
+         else if (kind == 0xB0u) {
+diff --git a/firmware/src/obv_engine.h b/firmware/src/obv_engine.h
+index 35d9b17..502ba10 100644
+--- a/firmware/src/obv_engine.h
++++ b/firmware/src/obv_engine.h
+@@ -36,6 +36,7 @@ typedef struct {
+     int32_t lfo_fade;                           /* Q15 */
+     uint32_t seq;                               /* allocation order */
+     uint8_t note, vel, gate;                    /* gate: the key (or the arp) holds it */
++    uint8_t at;                                 /* polyphonic aftertouch: the note's level 0..127 (127 = as played) */
+     uint8_t part;                               /* the track whose sound it is, 0..3 */
+     uint8_t grp;                                /* a card of its sound's MONO / UNISON group */
+ } voice_t;
+@@ -59,7 +60,7 @@ static voice_t vc[NV];
+ static uint32_t vseq, rr;                       /* allocation counter, round-robin pointer */
+ 
+ /* main loop -> ISR: note events */
+-typedef struct { uint8_t type, note, vel, part; } nev_t;   /* type 1 on, 0 off; part: the track's sound */
++typedef struct { uint8_t type, note, vel, part; } nev_t;   /* type 1 on, 0 off, 2 pressure (vel = 0..127); part: the track's sound */
+ #define NQ 64u
+ static nev_t nq[NQ];
+ static volatile uint32_t nq_w, nq_r;
+@@ -134,6 +135,10 @@ static void voice_pan(voice_t *v, int32_t pan)   /* -64..64 */
+     v->gr = PAN_Q12[pos];
+ }
+ 
++/* polyphonic aftertouch per key of each sound, as 127 - level (0 = as played): the voices a held key starts later
++ * (its arp's steps) take it too; a new press of the key starts at full (FMutate) */
++static uint8_t note_quiet[NPART][128];
++
+ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel, int32_t det8, int32_t pan)
+ {
+     const uint8_t *pv = pt[part].p->v;
+@@ -144,6 +149,7 @@ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel,
+     v->seq = ++vseq;
+     v->det8 = det8;
+     v->target16 = (int32_t)note << 16;
++    v->at = (uint8_t)(127u - note_quiet[part % NPART][note & 127u]);
+     v->pitch16 = pv[P_GLIDE] ? pt[part].last_pitch16 : v->target16;
+     v->fe.stage = E_ATT;
+     v->ae.stage = E_ATT;
+@@ -443,6 +449,7 @@ static inline uint32_t part_sus(uint32_t p) { return ctl_sustain || (ctl_hold >>
+ static void ev_note_on(uint32_t p, uint32_t note, uint32_t vel)
+ {
+     uint32_t i, arp_on = pt[p].p->v[P_ARP_MODE] != A_OFF, sus = part_sus(p);
++    note_quiet[p][note & 127u] = 0;             /* a new press: full, until pressure says otherwise */
+     if (arp_on && sus) {                        /* latch: a new chord after all keys were up starts over */
+         for (i = 0; i < nheld[p]; i++)
+             if (held[p][i].phys) break;
+@@ -486,6 +493,17 @@ static void ev_sustain_up(uint32_t p)           /* the pedal / its HOLD let go:
+     }
+ }
+ 
++/* polyphonic aftertouch: the key's level, for every voice of that key of that sound, held or dying away, and the
++ * ones it starts later (FMutate) */
++static void ev_pressure(uint32_t p, uint32_t note, uint32_t val)
++{
++    uint32_t v;
++    if (val > 127u) val = 127u;
++    note_quiet[p][note & 127u] = (uint8_t)(127u - val);
++    for (v = 0; v < NV; v++)
++        if (vc[v].note == note && vc[v].part == p) vc[v].at = (uint8_t)val;
++}
++
+ static void parts_off(uint32_t p)               /* a panic: its keys, its arp, its notes */
+ {
+     nheld[p] = 0;
+@@ -508,7 +526,8 @@ static void engine_events(void)
+         e = nq[nq_r % NQ];
+         p = e.part % NPART;
+         nq_r++;
+-        if (e.type) ev_note_on(p, e.note, e.vel);
++        if (e.type == 1u) ev_note_on(p, e.note, e.vel);
++        else if (e.type == 2u) ev_pressure(p, e.note, e.vel);
+         else ev_note_off(p, e.note);
+     }
+ }
+@@ -683,6 +702,7 @@ static void voice_block(voice_t *v, uint32_t card)
+     trem = 32767 - (((32767 - lfo) * g->lfo_ad) >> 8);
+     v->amp0 = v->amp1;
+     a = (int32_t)(((int64_t)(v->ae.level >> 9) * velg >> 15) * trem >> 15);
++    a = (int32_t)(((int64_t)a * ((int32_t)v->at * v->at * 32767 / 16129)) >> 15);   /* aftertouch: a square law to 0 */
+     v->amp1 = (a * g->gain_q12) >> 12;          /* the sound's VOLUME */
+     ui_vlevel[card] = a;
+     ui_vnote[card] = v->note;

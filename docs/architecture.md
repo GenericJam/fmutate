@@ -96,6 +96,14 @@ flowchart LR
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
+- **Note level** (`velocity.pressure`, opt-in, firmwares with `caps.note_pressure`): the held note's own level
+  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, level = 127 × where the finger is on the key
+  (front edge 127, back edge 0), sent at the strike and on every change; it takes precedence over swell. Only
+  FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
+  firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
+  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched).
+  Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
+  change in most; Clipper and Frasil already take 0xA0.
 - **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's
   factory patches sustain at 100), so the toggle is a long release instead: CC72 (the standard release time,
   OberVave's and ShineOn's amp RELEASE) to 108 (~2.3 s) while on, so let-go notes fall away on the firmware's own
