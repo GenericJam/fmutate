@@ -58,7 +58,7 @@ data class Control(
     val strikeVelocity: Boolean = false,
     val velMin: Int = 40,
     val velMax: Int = 127,
-    val velSwell: Boolean = true,         // position: front/back on a held key sets CC7
+    val velSwell: Boolean = false,        // position, opt-in: front/back on a held key sets CC7 (every sounding note)
     // pad_grid
     val padCols: Int = 1,
     val padRows: Int = 1,
@@ -145,7 +145,7 @@ data class Layout(
                 strikeVelocity = kb?.optJSONObject("velocity")?.optString("source", "fixed") == "position",
                 velMin = kb?.optJSONObject("velocity")?.optInt("min", 40) ?: 40,
                 velMax = kb?.optJSONObject("velocity")?.optInt("max", 127) ?: 127,
-                velSwell = kb?.optJSONObject("velocity")?.optBoolean("swell", true) ?: true,
+                velSwell = kb?.optJSONObject("velocity")?.optBoolean("swell", false) ?: false,
                 padCols = pg?.optInt("cols", 1) ?: 1,
                 padRows = pg?.optInt("rows", 1) ?: 1,
                 pads = pg?.optJSONArray("pads")?.objects()?.map {

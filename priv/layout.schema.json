@@ -130,7 +130,7 @@
                 "source": { "enum": ["fixed", "position"], "default": "fixed" },
                 "min": { "type": "integer", "minimum": 1, "maximum": 127, "default": 40 },
                 "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 },
-                "swell": { "type": "boolean", "default": true, "description": "position only: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together." }
+                "swell": { "type": "boolean", "default": false, "description": "position only, opt-in: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together (a note's own velocity is fixed once it starts)." }
               },
               "additionalProperties": false
             },

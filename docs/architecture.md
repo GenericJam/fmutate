@@ -93,7 +93,7 @@ flowchart LR
   firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
   the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
   Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
-  on by default with `position`): sliding a held key front/back sends CC7 (the firmware's volume, so every
+  opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
 - **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's

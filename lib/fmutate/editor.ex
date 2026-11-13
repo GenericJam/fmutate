@@ -951,7 +951,7 @@ defmodule FMutate.Editor do
     vel_source = vel["source"] || "fixed"
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
-    swell = vel["swell"] != false
+    swell = vel["swell"] == true
 
     children = [
       title("Keyboard strip"),
@@ -991,7 +991,7 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
-      toggle("Swell", "Strike position only: slide a held key toward the front to get louder, back to get softer. It moves the firmware's volume (CC7), so every sounding note swells together.",
+      toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together.",
         :kb_swell, swell and vel_source == "position", disabled: vel_source != "position"),
       toggle("Vertical", "A side keyboard: low notes at the bottom.", :kb_vertical, vertical),
       toggle("Pitch colours", "Key caps carry the 88-key colour; a vertical strip gets the colour rail to scroll it.", :kb_colors, colors),
