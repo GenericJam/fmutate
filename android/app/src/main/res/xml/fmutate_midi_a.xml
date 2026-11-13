@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Instance A's virtual MIDI port (FMutateMidiService). "input" = other apps send into it. -->
+<!-- Instance A's virtual MIDI port (io.mob.midi.MobMidiDeviceService, AndroidManifest.xml). "input" = other apps send into it. -->
 <devices>
     <device name="FMutate A" manufacturer="FMutate" product="FMutate A">
         <input-port name="in" />

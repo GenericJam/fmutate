@@ -66,6 +66,10 @@ JNI symbols in Mob's generated code follow it.)
   procedure and past numbers are in docs/architecture.md "Measured".
 - **A package on a device** (emulator backend): push it to `/data/local/tmp/`, `run-as com.genericjam.fmutate cp`
   it into `files/`, then `FMutate.Library.import_package/2` and `FMutate.Instance.switch_firmware/2` over rpc.
+- **A slow phone on a fast device** (emulator backend): `Application.put_env(:fmutate_app, :emu_env, [{"FM1_NO_JIT",
+  "1"}])` over rpc, then start the package again (switch to it, or `FMutate.Instance.debug("a", :kill9)`): the
+  emulator engine interprets and runs slower than real time, so the instance lowers its emulated CPU clock
+  (`docs/engine_protocol.md` "Speed and fill"). `Application.delete_env(:fmutate_app, :emu_env)` undoes it.
 - **From outside**: `tools/android_probe` is a second app (same debug key) that plays MIDI into `FMutate A` and
   reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
   latency.
@@ -105,6 +109,10 @@ JNI symbols in Mob's generated code follow it.)
   playing by design. Check the input journal before suspecting FMutate.
 - Parallel work: give each stream its own `git worktree` with its own `deps/`, `_build/`, `native/build/`,
   `android/local.properties` and its own device or emulator.
+- In the background the app stays alive only through `FMutate.Background`'s foreground service (while a firmware
+  plays): `FMutate.Background.state()`, `adb shell dumpsys activity services com.genericjam.fmutate`. A fresh
+  install asks for notifications over the instrument at the first engine start; the background check and its
+  numbers are in docs/architecture.md "Background".
 
 ## Mob documentation
 

@@ -45,6 +45,7 @@ defmodule FMutate.InstrumentView do
       restarts: view.restarts,
       slow: view[:slow] == true,
       speed: if(view[:slow] == true, do: view[:clock_pct] || 0, else: 0),
+      hint: hint(view[:advice], view[:cpu_mhz]),
       editing: assigns[:editing] == true,
       page: assigns[:page] || "",
       toast: toast,
@@ -52,6 +53,13 @@ defmodule FMutate.InstrumentView do
       add_menu: assigns[:add_menu] || ""
     }
   end
+
+  # what the screen area says under "Too slow" (or alone: dropouts), from FMutate.Instance.Health.advice/1
+  defp hint(:lowering, mhz), do: "Slowing the emulated CPU · #{mhz} MHz…"
+  defp hint(:lower_in_io, mhz), do: "Lower the emulated CPU in I/O (#{mhz} MHz)"
+  defp hint(:limit, _mhz), do: "This phone can't run it in real time"
+  defp hint(:raise_buffer, _mhz), do: "Raise the buffer in I/O"
+  defp hint(_advice, _mhz), do: ""
 
   @impl true
   def handle_event("in", payload, socket) do

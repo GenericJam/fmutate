@@ -7,7 +7,8 @@
 //! native engine (docs/engine_protocol.md): it emulates while fewer than the target fill frames are queued, so
 //! the mixer's audio clock drives the firmware's. The flash file holds the sectors the firmware changed
 //! (records of a 4-byte little-endian offset and the 4096-byte sector); it is written when a save of the
-//! firmware's has settled, and when the port closes.
+//! firmware's has settled, and when the port closes. Beyond the native engine: op 0x08 sets the emulated CPU's
+//! clock, and STATUS carries that clock, the DMA halves the firmware left stale and the process's CPU time.
 //!
 //!   fm1emu --bench <package.fwsc> [seconds] [key ...]
 //!
@@ -125,6 +126,9 @@ impl Engine {
             (Some(0x04), 4..) => self.m.midi(m[1], m[2], m[3]),
             (Some(0x05), 3..) => self.m.master(u16::from_be_bytes([m[1], m[2]])),
             (Some(0x07), 3..) => self.target_fill = clamp_fill(u16::from_be_bytes([m[1], m[2]]) as u32),
+            (Some(0x08), 3..) => {
+                self.m.set_mhz(u16::from_be_bytes([m[1], m[2]]) as u32);
+            }
             (Some(0x06), 12..) => {
                 let frame = u64::from_be_bytes(m[1..9].try_into().unwrap());
                 if self.q.len() < QMAX {
@@ -207,15 +211,14 @@ fn die(what: &str) -> ! {
     std::process::exit(2);
 }
 
-/// Development knobs, as fm1-live's: FM1_NO_JIT=1 interprets; FM1_MHZ=N clocks the CPU at N MHz instead of the
-/// FM-1's 240 (cheaper to emulate for firmwares that spend cycles waiting rather than idling).
+/// Development knobs, as fm1-live's: FM1_NO_JIT=1 interprets; FM1_MHZ=N starts the CPU at N MHz instead of the
+/// FM-1's 240 (as op 0x08 sets it: cheaper to emulate for firmwares that spend cycles waiting).
 fn jit_on() -> bool {
     std::env::var_os("FM1_NO_JIT").is_none()
 }
 
-fn clock_hz() -> u64 {
-    let mhz = std::env::var("FM1_MHZ").ok().and_then(|v| v.parse::<u64>().ok()).filter(|&m| m > 0);
-    mhz.map_or(fm1_soc::CPU_HZ, |m| m * 1_000_000)
+fn start_mhz() -> u32 {
+    std::env::var("FM1_MHZ").ok().and_then(|v| v.parse::<u32>().ok()).unwrap_or(240)
 }
 
 fn main() {
@@ -231,7 +234,7 @@ fn main() {
     let port = sys::take_port();
 
     let pkg = std::fs::read(&args[1]).unwrap_or_else(|e| die(&format!("{}: {e}", args[1])));
-    let mut m = Machine::boot(&pkg, jit_on(), clock_hz()).unwrap_or_else(|e| die(&format!("{}: {e}", args[1])));
+    let mut m = Machine::boot(&pkg, jit_on(), start_mhz()).unwrap_or_else(|e| die(&format!("{}: {e}", args[1])));
     drop(pkg);
     m.master(1024); // (unity until told otherwise, as the native engine; fm1-emu's pot starts at 900)
     let flash_path = args[3].clone();
@@ -356,7 +359,7 @@ fn main() {
             // STATUS on the wall clock (the firmware's clock stops when nobody drains the ring), and the flash
             // once a save of the firmware's has settled
             last_status_t = t;
-            let mut s = [0u8; 25];
+            let mut s = [0u8; 35];
             s[0] = 0x82;
             put32(&mut s[1..5], e.m.ms() as u32);
             put32(&mut s[5..9], fill);
@@ -364,6 +367,9 @@ fn main() {
             put32(&mut s[13..17], leds.0);
             put32(&mut s[17..21], leds.1);
             put32(&mut s[21..25], leds.2);
+            s[25..27].copy_from_slice(&(e.m.mhz() as u16).to_be_bytes());
+            put32(&mut s[27..31], e.m.stale_halves());
+            put32(&mut s[31..35], (sys::cpu_s() * 1000.0) as u32);
             e.send(&s);
             let rev = e.m.flash_revision();
             if rev != e.flash_rev {
@@ -388,7 +394,7 @@ fn bench(args: &[String]) {
     }
     let pkg = std::fs::read(path).unwrap_or_else(|e| die(&format!("{path}: {e}")));
     let (t0, c0) = (sys::now_s(), sys::cpu_s());
-    let mut m = Machine::boot(&pkg, jit_on(), clock_hz()).unwrap_or_else(|e| die(&format!("{path}: {e}")));
+    let mut m = Machine::boot(&pkg, jit_on(), start_mhz()).unwrap_or_else(|e| die(&format!("{path}: {e}")));
     m.master(1024);
     let (mut held, mut frames, mut peak_before, mut peak_held) = (false, 0u64, 0i32, 0i32);
     let mut first_audio: Option<(u64, f64)> = None;
@@ -421,7 +427,7 @@ fn bench(args: &[String]) {
     println!(
         "{path}: {emu_s:.2} s emulated (jit {}, {} MHz) in {:.2} s wall, {:.2} s CPU (boot included): {:.2}x real time",
         jit_on(),
-        clock_hz() / 1_000_000,
+        m.mhz(),
         t1 - t0,
         c1 - c0,
         emu_s / (c1 - c0)
@@ -433,9 +439,16 @@ fn bench(args: &[String]) {
         100.0 * (c1 - c_held) / held_s
     );
     println!(
-        "audio: {frames} frames ({:.2} s), peak {peak_before} before the keys, {peak_held} with them; wall while held {:.2} s",
+        "audio: {frames} frames ({:.2} s), peak {peak_before} before the keys, {peak_held} with them, {} DMA halves stale; wall while held {:.2} s",
         frames as f64 / RATE as f64,
+        m.stale_halves(),
         t1 - t_held
+    );
+    println!(
+        "CPU: {:.1} M instructions a second of emulated time; stalls {:.1} M ticks a second, {:.1} M forgiven",
+        m.ran as f64 / emu_s / 1e6,
+        m.paid as f64 / emu_s / 1e6,
+        m.forgiven as f64 / emu_s / 1e6
     );
     let (fa_ms, fa_cpu) = first_audio.unwrap_or((0, 0.0));
     println!(

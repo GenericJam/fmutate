@@ -96,7 +96,7 @@ FMutate's patches from `native/patches/` applied.
 | `c_src/` | the AAudio mixer and I/O NIFs |
 | `native/engine/` | the engine executable and cartridge harness (C) |
 | `native/emu/` | the emulator engine around fm1-emu (Rust) |
-| `native/patches/` | FMutate's patches to OberVave and fm1-emu |
+| `native/patches/` | FMutate's patches to the firmwares it builds (OberVave) |
 | `priv/layouts/` | the preset layouts; `priv/layout.schema.json` is their format |
 | `docs/` | architecture, engine protocol, design handoff |
 | `tools/` | `rpc.exs` (evaluate Elixir in the running app), a sibling-app probe, MIDI latency measurement |

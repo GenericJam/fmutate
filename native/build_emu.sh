@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the emulator engine: any FM-1 firmware package (.fwsc) in fm1-emu (Joakim Eriksson, MIT), behind the
 # same engine protocol as libfm1engine.so (docs/engine_protocol.md). The wrapper is native/emu (Rust); fm1-emu
-# is fetched at a pinned commit into native/build/fm1-emu, with native/patches/fm1-emu/*.patch applied.
+# is fetched at a pinned commit into native/build/fm1-emu, with native/patches/fm1-emu/*.patch applied (none at present).
 #
 #   android/app/src/main/jniLibs/<abi>/libfm1emu.so   an executable (PIE), named lib*.so like libfm1engine.so
 #   native/build/host/libfm1emu.so                    the same for this computer (tests; FMutate.Paths.emu_bin)
@@ -28,7 +28,7 @@ API=28                                          # minSdk (android/app/build.grad
 # FMutate.Firmware.runnable/1 reports packages as not runnable on such phones.
 ABIS=${ABIS-"arm64-v8a x86_64"}
 FM1EMU_REPO=https://github.com/joakimeriksson/fm1-emu.git
-FM1EMU_COMMIT=5c6ed85df0b0bf6f0a400ce0887750707c7509ed   # master, 2026-11-08 (after v0.4.0)
+FM1EMU_COMMIT=42c7fef9ae4ef0496e73b3cab9ebaea6d93c310f   # master, 2026-11-13 (has #171: the JIT on x86-64 Android)
 HUB=https://thefirmwarehub.com/
 # firmware ids on the Hub, for the host tests (GPL-3.0 firmwares: fetched, never committed)
 PACKAGES="dinghy obervave"

@@ -7,10 +7,21 @@
   default_font: nil,
   default_style: nil,
   lifecycle: [],
-  nifs: [],
+  nifs: [:mob_midi_nif, :mob_background_nif],
   notification_handlers: [],
-  plugins: [],
-  screens: [],
+  plugins: [:mob_midi, :mob_background],
+  screens: [
+    %{
+      default_route: "/midi_keyboard",
+      module: MobMidi.KeyboardScreen,
+      plugin: :mob_midi
+    },
+    %{
+      default_route: "/midi_input",
+      module: MobMidi.InputScreen,
+      plugin: :mob_midi
+    }
+  ],
   settings: [],
   styles: []
 }

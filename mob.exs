@@ -40,15 +40,20 @@ config :mob_dev,
   # Android ignores it. The per-window navigation needs a mob release with
   # Mob.Scene (not released yet, mob#184): keep false until then.
   multi_window: false,
-  # fm1audio: the AAudio mixer. fm1io: the JNI bridge to fmutate/FMutateIO.kt (MIDI, audio devices).
+  # fm1audio: the AAudio mixer. fm1io: the JNI bridge to fmutate/FMutateIO.kt (audio output devices).
   static_nifs: [%{module: :fm1audio, archs: [:all]}, %{module: :fm1io, archs: [:android]}]
 
 # Activated capability plugins (the packages added in mix.exs). Each contributes
 # its native code, permissions, and any demo screens at build time. Drop a name
 # here to deactivate a plugin without removing the dep; remove both to drop it
 # entirely (the native build shrinks and a clean rebuild prunes its artifacts).
-# mob_sensors: the editor's list of motion sensors on this phone (motion controls).
-config :mob, :plugins, [:mob_sensors]
+# mob_sensors (a signed Hex release): the editor's list of motion sensors on this phone (motion controls).
+config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors]
+
+# mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
+# Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text). A git
+# checkout has no signature (CI signs releases), so they are acknowledged here.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_background]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an
@@ -70,6 +75,8 @@ config :mob, :trusted_plugins, %{
   mob_notify: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_mishka: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_ash: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
+  # recorded by `mix mob.plugin.trust mob_background`
+  mob_background: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   # motion controls (FMutate)
   mob_sensors: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg="
 }

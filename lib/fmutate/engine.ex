@@ -26,7 +26,8 @@ defmodule FMutate.Engine do
 
   @doc """
   Options: `:owner`, `:tag` (anything the owner uses to tell engines apart), `:bin`, `:cart`,
-  `:prefix`, `:flash`, `:fill` (optional target ring fill in frames).
+  `:prefix`, `:flash`, `:fill` (optional target ring fill in frames), `:env` (optional `{name, value}` strings
+  for the engine's environment: development knobs such as the emulator engine's `FM1_NO_JIT`).
   """
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts)
 
@@ -48,13 +49,15 @@ defmodule FMutate.Engine do
         List.wrap(opts[:fill] && Integer.to_string(opts[:fill]))
 
     t0 = now()
+    env = for {k, v} <- Keyword.get(opts, :env, []), do: {to_charlist(k), to_charlist(v)}
 
     try do
       Port.open({:spawn_executable, Keyword.fetch!(opts, :bin)}, [
         :binary,
         {:packet, 2},
         :exit_status,
-        args: args
+        args: args,
+        env: env
       ])
     rescue
       e -> {:stop, {:spawn_failed, Exception.message(e)}}

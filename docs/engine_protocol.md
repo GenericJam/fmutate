@@ -40,6 +40,7 @@ Elixir → engine:
 | `0x05` | `master:u16` | MASTER pot 0..1024 (1024 = unity) |
 | `0x06` | `frame:u64 status:u8 d1:u8 d2:u8` | MIDI at mixer frame `frame` (see the clock below); delivered half a firmware block early so notes land on the nearest 256-frame block (desktop: −1.7…+3.6 ms) |
 | `0x07` | `fill:u16` | target ring fill in frames, from now on (as the `[fill]` argument; clamped to 512..3840). Lowering it plays out what is queued; raising it renders ahead. Both engines |
+| `0x08` | `mhz:u16` | the emulated CPU's clock, from now on (clamped to 20..240; 240 = the FM-1's). Emulator engine only (below) |
 | `0x10` | – | debug: crash (SIGSEGV in the firmware thread) |
 | `0x11` | – | debug: hang (the firmware loop stops yielding) |
 
@@ -48,7 +49,7 @@ Engine → Elixir:
 | Op | Payload | Meaning |
 |---|---|---|
 | `0x81` | `ms:u32` | READY |
-| `0x82` | `ms:u32 fill:u32 fb_seq:u32 led_buttons:u32 led_keys:u32 glow_keys:u32` | STATUS every 100 ms of wall time. No STATUS for 1 s = hung: kill -9. `ms` against wall time is the firmware's speed, `fill` the ring's fill when sent |
+| `0x82` | `ms:u32 fill:u32 fb_seq:u32 led_buttons:u32 led_keys:u32 glow_keys:u32` [`mhz:u16 stale:u32 cpu_ms:u32`] | STATUS every 100 ms of wall time. No STATUS for 1 s = hung: kill -9. `ms` against wall time is the firmware's speed, `fill` the ring's fill when sent. The emulator engine adds its CPU clock, the DMA halves its firmware left stale so far and the process's CPU time so far (ms) |
 | `0x84` | `bytes:u32` | FLASH_SAVED |
 
 ### Panel edges (`0x01`, `0x02`)
@@ -104,7 +105,8 @@ cartridge, before each pass; it replaces the cartridge's old tap latch for butto
 `.fwsc` a real FM-1 installs) in [fm1-emu](https://github.com/joakimeriksson/fm1-emu) (MIT; both CPU cores, the
 SoC, the screen, the panel matrix, the DAC), with everything above unchanged: arguments, port messages, ring,
 `.fb`, pacing on the ring fill, STATUS, the watchdog's view of it. Source: `native/emu/` (Rust), fm1-emu pinned in
-`native/build_emu.sh`, patches in `native/patches/fm1-emu/`. `FMutate.Firmware` picks it for `backend: :emu`.
+`native/build_emu.sh` (local changes to it would be patches in `native/patches/fm1-emu/`; none at present: FMutate's
+one, the JIT on x86-64 Android, is upstream as fm1-emu #171). `FMutate.Firmware` picks it for `backend: :emu`.
 
 What differs inside:
 
@@ -129,9 +131,31 @@ What differs inside:
 - **Exits**: a package that isn't an FM-1 update package (or is an SMK-37 one) exits 2 before READY; a firmware
   the emulator halts (it would have locked up a real FM-1) exits 3. Debug crash raises SIGSEGV, debug hang spins,
   as in the native engine.
-- **Knobs** (environment; development): `FM1_NO_JIT=1` interprets instead of compiling to native code;
-  `FM1_MHZ=N` clocks the CPU at N MHz instead of 240 (cheaper for firmwares that burn cycles waiting).
-  `libfm1emu.so --bench <package> [seconds] [key …]` runs a package flat out with a chord held and prints its speed.
+- **The CPU clock** (op `0x08`, `FM1_MHZ` at start): fm1-soc counts time in CPU cycles at `Periph::hz` (240 MHz)
+  and converts them for every timer, the DAC, the OS tick and the firmware's milliseconds (`periph.rs`:
+  `ms()`, `audio_frames_at`, `half_period`, `t5_period`, …); one instruction is one cycle (`Soc::add_ticks`,
+  `Periph::tick`). Changing `hz` while running would rescale none of the deadlines already scheduled
+  (`alnk_next`, `t5_next`, `tick_next`, the UART's, the watchdog's are absolute cycles), which is why fm1-emu's
+  own plugin reboots the machine for a new clock (`fm1-plugin` `engine.rs`). So the engine leaves `hz` at 240 MHz
+  and stalls the CPU instead (`native/emu/src/machine.rs` `Machine::run`): below 240 MHz, each instruction
+  owes (240 − mhz) / mhz ticks in which both cores stand still, paid between runs of the cores (at least 2048
+  instructions, as many as fit before the SoC's next timed event with their stalls) and never past that event,
+  as fm1-soc's own idle skip (`skip_idle`) jumps; time the firmware spent idling (TIMER4 polling, polling loops
+  skipped: `Periph::skipped`, `LoopSkip::skipped`) owes nothing. The firmware gets mhz million instructions per
+  second of its time; its time, timers and audio stay right, nothing restarts, and the op takes effect at once.
+  No fm1-emu change. Measured (`--bench`, x86-64 desktop, OberVave's package with a chord): 240 MHz 3.7x real
+  time, 180 4.0x, 120 4.8–5.1x (as fast as a 120 MHz `Periph::hz`), 80 7.1x.
+- **Stale DMA halves** (`stale` in STATUS): the DAC plays the firmware's buffer in two halves, and the firmware
+  refills each while the other plays. A half that plays again exactly as it played last time (and isn't
+  quiet: its samples span ≥ 512) is one the firmware didn't refill in time: on a real FM-1 a glitch, here the
+  sign of a clock too slow for the firmware. OberVave's package with a 3-note chord: none at 240, 180 or 120 MHz,
+  ~43 a second at 80 MHz (its audio peak unchanged, so the peak alone doesn't show it); silent at 60 MHz.
+- **Knobs** (environment; development): `FM1_NO_JIT=1` interprets instead of compiling to native code (on this
+  computer a slow phone's speed: Dinghy 0.65x real time at 240 MHz, 1.8x at 80); `FM1_MHZ=N` starts the CPU at
+  N MHz instead of 240. `FMutate.Engine`'s `:env` passes them; the app's `:emu_env` (`Application.put_env(:fmutate_app,
+  :emu_env, [{"FM1_NO_JIT", "1"}])` over `tools/rpc.exs`) applies to the next emulator engine an instance starts.
+  `libfm1emu.so --bench <package> [seconds] [key …]` runs a package flat out with a chord held and prints its
+  speed, its stale halves and the instructions run per second.
 
 fm1-core compiles the firmware to native code on arm64 and x86_64 (x86_64 Android by our patch); armeabi-v7a only
 interprets.
@@ -152,11 +176,17 @@ output isn't running (firmware time stands still then).
 |---|---|
 | Speed (`clock_pct` in the view) | firmware ms per wall ms × 100, whole percent; the shown value moves when the measurement moves ≥ 2 points |
 | Too slow (`slow`) | on after 3 windows in a row < 95 %; off after 3 in a row ≥ 98 % (in between keeps the state) |
-| Auto fill (buffer `:auto`) | starts at `FMutate.Audio.engine_fill/0` (a crash restart keeps what the last engine reached). Underruns grew in 2 of the last 5 windows: +512 frames (op `0x07`), up to 3840, then 5 fresh windows judge again. 60 s without underruns: −512, not below the default; a step down that brings underruns back within 60 s is undone and stays the floor for that engine. Not saved: a new engine starts from the default |
+| Auto fill (buffer `:auto`) | starts at `FMutate.Audio.engine_fill/0` (a crash restart keeps what the last engine reached). Underruns grew in 2 of the last 5 windows (and the engine isn't too slow): +512 frames (op `0x07`), up to 3840, then 5 fresh windows judge again. 60 s without underruns: −512, not below the default; a step down that brings underruns back within 60 s is undone and stays the floor for that engine. Not saved: a new engine starts from the default |
 | Fixed buffer | the I/O screen's choice (2048 / 3072 / 3840 frames), saved with the instance; set on the running engine at once |
+| Emulated CPU, Auto (emulator engine) | starts at the clock kept for the firmware (240 the first time). Too slow (3 windows in a row < 95 %): one step down 240 → 180 → 120 → 80 MHz (op `0x08`), never below 80 or the firmware's floor; 2 windows settle after each change, so the next step comes 3 windows after the last. The firmware's audio starving (`stale` grew by ≥ 2 in a window): one step back up, and that clock becomes the firmware's floor. 60 s after the last change, not too slow, and the engine's CPU use × next clock / clock ≤ 70 % of a core: one step up is tried; a try that turns out too slow is undone and is this engine's ceiling. The clock, its mode and the floor are saved per firmware with the instance (`cpu`) |
+| Emulated CPU, fixed | the I/O screen's 240 / 180 / 120 / 80 MHz, saved per firmware; set on the running engine at once |
 
-More fill only absorbs jitter: an engine slower than real time underruns at any fill, so auto fill climbs to the
-maximum and the instrument shows "Too slow" (with the speed) and points at the buffer in I/O.
+More fill only absorbs jitter: an engine slower than real time underruns at any fill (measured: OberVave's package
+at 81–84 % underran ~66/s at 1024 frames and ~60/s at 3840), so auto fill holds while the engine is too slow, and
+the instrument says what is true (`FMutate.Instance.Health.advice/1`): "Too slow · N % speed" with "Slowing the
+emulated CPU · N MHz…" while auto steps down, "Lower the emulated CPU in I/O" on a fixed clock that could go lower,
+"This phone can't run it in real time" when nothing is left (a native engine, or the floor). "Raise the buffer in
+I/O" (under "Audio dropouts") only for an engine fast enough that underruns on a fixed buffer below the largest.
 
 ## Measured
 
