@@ -120,5 +120,13 @@ defmodule FMutate.Library.HTTP do
     else
       :public_key.cacerts_get()
     end
+  rescue
+    # iOS: OTP finds no system trust store there (pubkey_os_cacerts: eopnotsupp). Requests then fail their TLS
+    # check instead of crashing the library's task (and the app's start with it); a bundled CA file is phase 3
+    # of docs/decisions/2026-11-13-ios-port.md.
+    e ->
+      require Logger
+      Logger.warning("library: no CA certificates (#{Exception.message(e)}): HTTPS requests will fail")
+      []
   end
 end
