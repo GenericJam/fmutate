@@ -15,7 +15,9 @@ defmodule FmutateApp.MixProject do
   end
 
   def application do
-    [extra_applications: [:logger]]
+    # :inets and :ssl for the library's HTTPS (FMutate.Library.HTTP): listed so a release keeps them (Mob's release
+    # bundle strips OTP libs the app doesn't declare)
+    [extra_applications: [:logger, :inets, :ssl, :public_key, :crypto]]
   end
 
   defp deps do

@@ -59,6 +59,20 @@ the view read directly. Details: [docs/architecture.md](docs/architecture.md) an
 [docs/engine_protocol.md](docs/engine_protocol.md). The design (screens, layout model, touch rules, the Opling
 creature) is in [docs/design/](docs/design/HANDOFF.md).
 
+## Installing
+
+Download `fmutate-<version>.apk` from the [latest release](https://github.com/GenericJam/fmutate/releases/latest)
+and open it on the phone (allow installs from your browser or file manager when Android asks), or from a computer:
+`adb install fmutate-<version>.apk`.
+
+- Android 9 or newer; arm64 phones (most), 32-bit ARM, and x86-64. On 32-bit ARM the built-in firmwares play,
+  but downloaded ones don't (the emulator needs 64-bit).
+- Releases are signed with FMutate's release key, so a later release installs over an earlier one and keeps your
+  layouts and saves. A copy built from source is signed with your own debug key: Android won't install a release
+  over it (or the other way round) until the other is uninstalled, which deletes its data.
+- Downloaded firmwares come from the [FM-1 Firmware Hub](https://thefirmwarehub.com/), so the Library needs the
+  internet; the instrument itself doesn't.
+
 ## Building
 
 You need Linux or macOS with:

@@ -11,12 +11,12 @@ defmodule FMutate.Library.HTTP do
   @doc "GET `url` into memory."
   @spec get(String.t()) :: {:ok, binary} | {:error, term}
   def get(url) do
-    start()
-
-    case :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), body_format: :binary) do
-      {:ok, {{_, 200, _}, _headers, body}} -> {:ok, body}
-      {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
-      {:error, reason} -> {:error, reason}
+    with :ok <- start() do
+      case :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), body_format: :binary) do
+        {:ok, {{_, 200, _}, _headers, body}} -> {:ok, body}
+        {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -25,10 +25,10 @@ defmodule FMutate.Library.HTTP do
   """
   @spec download(String.t(), Path.t(), (non_neg_integer, non_neg_integer | nil -> any)) :: :ok | {:error, term}
   def download(url, dest, progress) do
-    start()
     opts = [sync: false, stream: :self, body_format: :binary]
 
-    with {:ok, ref} <- :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), opts),
+    with :ok <- start(),
+         {:ok, ref} <- :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), opts),
          {:ok, io} <- File.open(dest, [:write, :binary]) do
       try do
         receive_body(ref, io, 0, nil, progress)
@@ -73,9 +73,12 @@ defmodule FMutate.Library.HTTP do
     end
   end
 
+  # (a release without :inets or :ssl answers {:error, ...} here rather than taking the library down)
   defp start do
-    {:ok, _} = Application.ensure_all_started([:ssl, :inets])
-    :ok
+    case Application.ensure_all_started([:ssl, :inets]) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, {:not_started, reason}}
+    end
   end
 
   defp headers, do: [{~c"user-agent", ~c"FMutate (Android)"}]
