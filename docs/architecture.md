@@ -4,6 +4,9 @@ FMutate runs M-VAVE FM-1 community firmwares on Android with a customisable inst
 `docs/design/HANDOFF.md` (+ boards, layouts, `protocol.md`, `creature.md`, `style.ex`). Tech spec: this file
 and `docs/engine_protocol.md`; where they disagree with the design on *how*, the tech spec wins.
 
+The iOS port (in progress, branch `ios`): engines in the app process, the emulator interpreted, RemoteIO audio,
+a Swift surface; design and measurements in `docs/decisions/2026-11-13-ios-port.md`.
+
 ## Processes
 
 ```mermaid
@@ -200,6 +203,7 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | Same, the slow ones at lower clocks | Melodee 0.76x / 0.86x / 0.96x at 180 / 120 / 80 (never real time: its second core's work isn't helped much); Clipper 1.10x / 1.22x / 1.24x; Skiff 1.20x / 1.66x / 2.35x, but **silent at 80 with no stale halves** (starving that the stale-half check misses; Auto only reaches 80 when 120 is too slow) |
 | Same phone, in the app, chord held, Auto | Skiff: 87 % at 240 → 180 MHz, 100 % from then on, no new underruns. Melodee: 75 % at 180 → 80 MHz, 83–95 %: "Too slow · 94 % speed / This phone can't run it in real time". OberVave's package: 101 % at 240, no change. (Melodee's "Setup unfinished / Factory sounds missing" is its own first-boot screen: its web installer adds the factory sounds; OCT+ continues without them.) |
 | Same phone, gfxinfo with native OberVave (6 × 300 ms key holds, 3 runs; the display runs at 120 Hz, so the budget is 8.3 ms) | mob 0.9.27: 8.0 % / 3.7 % / 3.7 % janky, p90 15–18 ms, p99 20–23 ms. mob 0.9.29 (with #236, no repaint on unchanged renders): 0.7 % / 0 % / 1.3 % janky, p90 13–14 ms, p99 15–17 ms |
+| Apple M4 Pro, macOS host build, `--bench` 8 s, keys 7 11 14 held, 15 Hub packages | JIT 2.87–7.61x real time at 240 MHz; interpreted 0.68–1.04x (FMini 2.37x), 1.18–2.78x at 120 MHz; per package in `docs/decisions/2026-11-13-ios-port.md` (the iOS build interprets) |
 
 ### Background (emulator-5560, Android 17 x86_64, OberVave)
 

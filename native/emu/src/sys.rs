@@ -1,6 +1,6 @@
-//! The few POSIX calls the engine needs beyond std (Linux and Android, 64- and 32-bit): the port's file
-//! descriptors, poll, the shared mappings, the debug crash and the CPU clock. Declared here so the crate
-//! has no dependencies besides fm1-emu's own.
+//! The few POSIX calls the engine needs beyond std (Linux and Android, 64- and 32-bit; macOS and iOS): the
+//! port's file descriptors, poll, the shared mappings, the debug crash and the CPU clock. Declared here so the
+//! crate has no dependencies besides fm1-emu's own.
 
 use std::ffi::{c_int, c_long, c_void};
 use std::fs::OpenOptions;
@@ -12,13 +12,22 @@ pub const POLLIN: i16 = 0x1;
 pub const POLLHUP: i16 = 0x10;
 const F_GETFL: c_int = 3;
 const F_SETFL: c_int = 4;
-const O_NONBLOCK: c_int = 0o4000;
 const PROT_READ_WRITE: c_int = 0x1 | 0x2;
 const MAP_SHARED: c_int = 0x1;
 const SIGSEGV: c_int = 11;
 const SIG_DFL: usize = 0;
+#[cfg(not(target_vendor = "apple"))]
+const O_NONBLOCK: c_int = 0o4000;
+#[cfg(not(target_vendor = "apple"))]
 const CLOCK_MONOTONIC: c_int = 1;
+#[cfg(not(target_vendor = "apple"))]
 const CLOCK_PROCESS_CPUTIME_ID: c_int = 2;
+#[cfg(target_vendor = "apple")]
+const O_NONBLOCK: c_int = 0x4;
+#[cfg(target_vendor = "apple")]
+const CLOCK_MONOTONIC: c_int = 6;
+#[cfg(target_vendor = "apple")]
+const CLOCK_PROCESS_CPUTIME_ID: c_int = 12;
 
 #[repr(C)]
 pub struct PollFd {
