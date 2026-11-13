@@ -22,12 +22,16 @@ const O_NONBLOCK: c_int = 0o4000;
 const CLOCK_MONOTONIC: c_int = 1;
 #[cfg(not(target_vendor = "apple"))]
 const CLOCK_PROCESS_CPUTIME_ID: c_int = 2;
+#[cfg(not(target_vendor = "apple"))]
+const CLOCK_THREAD_CPUTIME_ID: c_int = 3;
 #[cfg(target_vendor = "apple")]
 const O_NONBLOCK: c_int = 0x4;
 #[cfg(target_vendor = "apple")]
 const CLOCK_MONOTONIC: c_int = 6;
 #[cfg(target_vendor = "apple")]
 const CLOCK_PROCESS_CPUTIME_ID: c_int = 12;
+#[cfg(target_vendor = "apple")]
+const CLOCK_THREAD_CPUTIME_ID: c_int = 16;
 
 #[repr(C)]
 pub struct PollFd {
@@ -50,6 +54,7 @@ extern "C" {
     fn read(fd: c_int, buf: *mut c_void, n: usize) -> isize;
     fn write(fd: c_int, buf: *const c_void, n: usize) -> isize;
     fn mmap(addr: *mut c_void, len: usize, prot: c_int, flags: c_int, fd: c_int, off: c_long) -> *mut c_void;
+    fn munmap(addr: *mut c_void, len: usize) -> c_int;
     fn signal(sig: c_int, handler: usize) -> usize;
     fn raise(sig: c_int) -> c_int;
     fn clock_gettime(clock: c_int, ts: *mut Timespec) -> c_int;
@@ -67,18 +72,18 @@ pub fn take_port() -> c_int {
     }
 }
 
-/// Wait up to `timeout_ms` for stdin; returns its revents.
-pub fn poll_stdin(timeout_ms: i32) -> i16 {
-    let mut p = PollFd { fd: 0, events: POLLIN, revents: 0 };
+/// Wait up to `timeout_ms` for input on `fd`; returns its revents.
+pub fn poll_in(fd: c_int, timeout_ms: i32) -> i16 {
+    let mut p = PollFd { fd, events: POLLIN, revents: 0 };
     // SAFETY: one valid pollfd.
     unsafe { poll(&mut p, 1, timeout_ms) };
     p.revents
 }
 
-/// Read what stdin has: Ok(0) = EOF, Err(WouldBlock) = nothing yet.
-pub fn read_stdin(buf: &mut [u8]) -> io::Result<usize> {
+/// Read what `fd` has: Ok(0) = EOF, Err(WouldBlock) = nothing yet.
+pub fn read_fd(fd: c_int, buf: &mut [u8]) -> io::Result<usize> {
     // SAFETY: the buffer is valid for its length.
-    let n = unsafe { read(0, buf.as_mut_ptr().cast(), buf.len()) };
+    let n = unsafe { read(fd, buf.as_mut_ptr().cast(), buf.len()) };
     if n < 0 { Err(io::Error::last_os_error()) } else { Ok(n as usize) }
 }
 
@@ -112,6 +117,12 @@ pub fn map_new_file(path: &str, n: usize) -> io::Result<*mut u8> {
     Ok(p.cast())
 }
 
+/// Unmap what `map_new_file` mapped.
+pub fn unmap(p: *mut u8, n: usize) {
+    // SAFETY: a mapping of exactly `n` bytes from map_new_file, no longer used.
+    unsafe { munmap(p.cast(), n) };
+}
+
 /// Die of SIGSEGV, as a firmware that dereferenced garbage would (std's stack-overflow handler is taken
 /// off first: it would swallow a raised SIGSEGV).
 pub fn crash() -> ! {
@@ -138,4 +149,9 @@ pub fn now_s() -> f64 {
 /// CPU seconds this process has used.
 pub fn cpu_s() -> f64 {
     clock(CLOCK_PROCESS_CPUTIME_ID)
+}
+
+/// CPU seconds this thread has used (an engine on a thread of the app).
+pub fn thread_cpu_s() -> f64 {
+    clock(CLOCK_THREAD_CPUTIME_ID)
 }

@@ -40,8 +40,27 @@ config :mob_dev,
   # Android ignores it. The per-window navigation needs a mob release with
   # Mob.Scene (not released yet, mob#184): keep false until then.
   multi_window: false,
-  # fm1audio: the AAudio mixer. fm1io: the JNI bridge to fmutate/FMutateIO.kt (audio output devices).
-  static_nifs: [%{module: :fm1audio, archs: [:all]}, %{module: :fm1io, archs: [:android]}]
+  # iOS: Apple forbids "_" in a bundle id; the Android application id's form. Signing: Kevin's team.
+  ios_bundle_id: "com.genericjam.fmutate",
+  ios_team_id: "Q89CW299G8",
+  # iOS: FMutate's Swift (the audio session for fm1audio's RemoteIO output; the instrument surface, registered
+  # from ios/AppDelegate.m)
+  project_swift_sources: Path.wildcard(Path.join(__DIR__, "ios/FMutate*.swift")),
+  # fm1audio: the audio output (AAudio on Android, RemoteIO on iOS). fm1io: the JNI bridge to
+  # fmutate/FMutateIO.kt (audio output devices). fm1host: engines on threads of the app (iOS has no processes),
+  # linked with the engines native/build_ios.sh builds.
+  static_nifs: [
+    %{module: :fm1audio, archs: [:all]},
+    %{module: :fm1io, archs: [:android]},
+    %{
+      module: :fm1host,
+      archs: [:ios],
+      extra_static_libs: %{
+        ios_sim: "native/build/ios/sim/libfm1native.a",
+        ios_device: "native/build/ios/device/libfm1native.a"
+      }
+    }
+  ]
 
 # Activated capability plugins (the packages added in mix.exs). Each contributes
 # its native code, permissions, and any demo screens at build time. Drop a name

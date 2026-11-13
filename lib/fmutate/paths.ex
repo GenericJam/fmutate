@@ -1,9 +1,10 @@
 defmodule FMutate.Paths do
   @moduledoc """
-  Where things live. On a device: the engine and cartridges in the APK's native library dir
-  (`MOB_NATIVE_LIB_DIR`), state in the app's private data dir (`MOB_DATA_DIR`). On a host (tests,
-  development) both come from application env, so the same code runs against a desktop build of the
-  engine.
+  Where things live. On Android: the engine and cartridges in the APK's native library dir
+  (`MOB_NATIVE_LIB_DIR`), state in the app's private data dir (`MOB_DATA_DIR`). On iOS the engines are linked
+  into the app and run on its threads (`FMutate.EngineNif`): `engine_bin/0` and `emu_bin/0` are `:inproc` and a
+  cartridge is its id. On a host (tests, development) both come from application env, so the same code runs
+  against a desktop build of the engine.
   """
 
   @doc "Directory holding `libfm1engine.so` and `libcart_<id>.so`."
@@ -18,22 +19,39 @@ defmodule FMutate.Paths do
       Path.join(System.tmp_dir!(), "fmutate")
   end
 
-  def engine_bin, do: Path.join(native_lib_dir(), "libfm1engine.so")
+  @doc "True when engines run on threads of the app (iOS) instead of as executables of their own."
+  def inproc?, do: FMutate.EngineNif.available?()
 
-  @doc "The emulator engine (fm1-emu behind the same protocol), for `.fwsc` packages."
-  def emu_bin, do: Path.join(native_lib_dir(), "libfm1emu.so")
+  @doc "The engine executable for cartridges, or `:inproc`."
+  def engine_bin, do: if(inproc?(), do: :inproc, else: Path.join(native_lib_dir(), "libfm1engine.so"))
+
+  @doc "The emulator engine (fm1-emu behind the same protocol), for `.fwsc` packages, or `:inproc`."
+  def emu_bin, do: if(inproc?(), do: :inproc, else: Path.join(native_lib_dir(), "libfm1emu.so"))
+
+  @doc "Whether this build carries the emulator engine."
+  def emu?, do: inproc?() or File.exists?(emu_bin())
 
   @doc "Where downloaded and imported firmware packages are kept."
   def packages_dir, do: ensure(Path.join(data_dir(), "packages"))
 
-  @doc "A bundled cartridge's path, or nil if this build doesn't carry it."
+  @doc "A bundled cartridge (its path, or in-process its id), or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
-    path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
-    if File.exists?(path), do: path
+    if inproc?() do
+      if List.keymember?(FMutate.EngineNif.cartridges(), firmware_id, 0), do: firmware_id
+    else
+      path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
+      if File.exists?(path), do: path
+    end
   end
 
-  @doc "Shared-memory prefix for an instance's engine slot (`<prefix>.ring`, `<prefix>.fb`)."
-  def shm_prefix(instance, slot), do: Path.join(ensure(Path.join(data_dir(), "run")), "#{instance}#{slot}")
+  @doc """
+  Shared-memory prefix for an instance's engine slot (`<prefix>.ring`, `<prefix>.fb`): under the data dir, or on
+  iOS under the app's temporary directory (its data dir, Documents, is backed up).
+  """
+  def shm_prefix(instance, slot) do
+    base = if inproc?(), do: Path.join(System.tmp_dir!(), "fmutate"), else: data_dir()
+    Path.join(ensure(Path.join(base, "run")), "#{instance}#{slot}")
+  end
 
   def ring(prefix), do: prefix <> ".ring"
   def fb(prefix), do: prefix <> ".fb"

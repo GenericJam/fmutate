@@ -11,46 +11,125 @@
  * is parked, so nothing is shared while both run.
  *
  * Build: cc -O2 -shared -fPIC -DFW_MAIN='"<repo>/firmware/src/<app>.c"' -I<repo>/firmware/src -I<repo>/firmware/gen
- *        live.c -o <app>.so -lpthread */
+ *        live.c -o <app>.so -lpthread
+ *
+ * Linked into an app instead (iOS, native/build_ios.sh): -DFM1C_TABLE=fm1c_<id> exports the calls as one table
+ * (fm1engine.h's struct fm1c_api) and adds what an engine on a thread needs: the loop stops at a park point
+ * (fm1c_quit: a longjmp back to the thread's start), the debug crash ends the loop instead of the process, and
+ * fm1c_state gives the cartridge's globals (-DFM1C_DATA / -DFM1C_BSS: the sections they were moved to) so the
+ * host can restore them before the next boot. */
 #define OBV_HOST 1
 #define OBV_WASM 1
 #include <pthread.h>
-#include <semaphore.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef FM1C_TABLE
+#define FM1C_INPROC 1
+#define EXPORT static
+#else
 #define EXPORT __attribute__((used, visibility("default")))
+#endif
 
 #include FW_MAIN
 
+/* (after the firmware, so none of these names can clash with its own) */
+#ifdef FM1C_INPROC
+#include <setjmp.h>
+#include "fm1engine.h"
+#endif
+
+/* Semaphores: POSIX unnamed ones on Linux and Android; Darwin has none (sem_init fails), dispatch's instead. */
+#ifdef __APPLE__
+#include <dispatch/dispatch.h>
+typedef dispatch_semaphore_t fm1_sem;
+static void sem_new(fm1_sem *s) { *s = dispatch_semaphore_create(0); }
+static void sem_free(fm1_sem *s) { if (*s) dispatch_release(*s); *s = 0; }
+static void sem_up(fm1_sem *s) { dispatch_semaphore_signal(*s); }
+static void sem_down(fm1_sem *s) { dispatch_semaphore_wait(*s, DISPATCH_TIME_FOREVER); }
+static int sem_down_ms(fm1_sem *s, uint32_t ms)  /* 1 = taken, 0 = timed out */
+{
+    return dispatch_semaphore_wait(*s, dispatch_time(DISPATCH_TIME_NOW, (int64_t)ms * 1000000)) == 0;
+}
+#else
+#include <errno.h>
+#include <semaphore.h>
+#include <time.h>
+typedef sem_t fm1_sem;
+static void sem_new(fm1_sem *s) { sem_init(s, 0, 0); }
+static void sem_free(fm1_sem *s) { sem_destroy(s); }
+static void sem_up(fm1_sem *s) { sem_post(s); }
+static void sem_down(fm1_sem *s) { while (sem_wait(s) && errno == EINTR) {} }
+static int sem_down_ms(fm1_sem *s, uint32_t ms)  /* 1 = taken, 0 = timed out */
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    ts.tv_sec += ms / 1000u;
+    ts.tv_nsec += (long)(ms % 1000u) * 1000000L;
+    if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+    for (;;) {
+        if (!sem_timedwait(s, &ts)) return 1;
+        if (errno != EINTR) return 0;
+    }
+}
+#endif
+
 /* ---- the main loop as a coroutine on its own thread */
-static sem_t run_app, run_caller;
+static fm1_sem run_app, run_caller;
 static pthread_t app_thread;
 static volatile int booted, debug_crash, debug_hang;
+#ifdef FM1C_INPROC
+static fm1_sem loop_done;                       /* posted once the loop's thread is about to end */
+static jmp_buf loop_exit;
+static volatile int quitting, ended;            /* ended: 1 stopped, 2 the debug crash */
+#endif
 
 static void platform_poll(void)                 /* the app, every pass: park until the next millisecond */
 {
+#ifdef FM1C_INPROC
+    if (debug_crash) {                          /* (debug: in-process the loop ends as if it had crashed) */
+        ended = 2;
+        longjmp(loop_exit, 1);
+    }
+    while (debug_hang && !quitting)             /* (debug: as if the firmware's loop never came back to poll) */
+        ;
+    if (quitting) longjmp(loop_exit, 1);
+#else
     if (debug_crash)
         raise(SIGSEGV);                         /* (debug: as if the firmware had dereferenced garbage) */
     while (debug_hang)                          /* (debug: as if the firmware's loop never came back to poll) */
         ;
-    sem_post(&run_caller);
-    sem_wait(&run_app);
+#endif
+    sem_up(&run_caller);
+    sem_down(&run_app);
+#ifdef FM1C_INPROC
+    if (quitting) longjmp(loop_exit, 1);        /* (parked here: leaving the loop leaves nothing half done) */
+#endif
 }
 static void *app_run(void *arg)
 {
     (void)arg;
-    sem_wait(&run_app);
+    sem_down(&run_app);
+#ifdef FM1C_INPROC
+    if (!setjmp(loop_exit)) app_main();         /* (never returns; a stop jumps back here) */
+    if (!ended) ended = 1;
+    sem_up(&run_caller);                        /* a pass waiting for the loop goes on */
+    sem_up(&loop_done);
+#else
     app_main();                                 /* (never returns) */
+#endif
     return 0;
 }
 static void fm1c_pass(void)                     /* one pass of the main loop (the first: boot up to its first poll) */
 {
-    sem_post(&run_app);
-    sem_wait(&run_caller);
+#ifdef FM1C_INPROC
+    if (ended) return;
+#endif
+    sem_up(&run_app);
+    sem_down(&run_caller);
 }
 
 /* ---- the panel's keys and buttons, as the device's debounced matrix delivers them. Input comes in batches (a
@@ -122,11 +201,22 @@ static int32_t master_q12 = 4096;
 EXPORT int fm1c_init(void)                      /* boot; call once. 0 = ok */
 {
     uint32_t i;
+    pthread_attr_t attr;
+    int err;
     if (booted) return -1;
     for (i = 0; i < EDGE_NIN; i++) edge[i].at = fm1_ms - EDGE_GAP_MS;   /* (all settled) */
-    sem_init(&run_app, 0, 0);
-    sem_init(&run_caller, 0, 0);
-    if (pthread_create(&app_thread, 0, app_run, 0)) return -1;
+    sem_new(&run_app);
+    sem_new(&run_caller);
+#ifdef FM1C_INPROC
+    sem_new(&loop_done);
+#endif
+    pthread_attr_init(&attr);
+#ifdef __APPLE__
+    pthread_attr_setstacksize(&attr, 1u << 20);  /* (Darwin's default for a thread is 512 KB) */
+#endif
+    err = pthread_create(&app_thread, &attr, app_run, 0);
+    pthread_attr_destroy(&attr);
+    if (err) return -1;
     booted = 1;
     fm1c_pass();
     return 0;
@@ -218,3 +308,44 @@ EXPORT void fm1c_debug(uint32_t what)           /* 1: crash at the next pass, 2:
     if (what == 1u) debug_crash = 1;
     if (what == 2u) debug_hang = 1;
 }
+
+#ifdef FM1C_INPROC
+/* ---- an engine on a thread of the app (c_src/fm1host.c, through fm1engine.h's table) */
+static int fm1c_ended(void) { return ended; }
+static void fm1c_stop(void) { quitting = 1; }   /* (any thread: a hung debug loop sees it; a parked loop at its next
+                                                   wake) */
+static int fm1c_quit(uint32_t timeout_ms)       /* the engine's thread, after its last pass: end the loop's thread */
+{
+    if (!booted) return 0;
+    quitting = 1;
+    sem_up(&run_app);                           /* (a parked loop wakes and leaves) */
+    if (!sem_down_ms(&loop_done, timeout_ms)) return -1;   /* (firmware code that never parks: it stays) */
+    pthread_join(app_thread, 0);
+    sem_free(&run_app);
+    sem_free(&run_caller);
+    sem_free(&loop_done);
+    booted = 0;
+    return 0;
+}
+
+/* The cartridge's writable globals, where native/build_ios.sh moved them (ld -r -rename_section): all of this
+ * file and the firmware it includes. The host keeps a copy of the data from before the first boot and puts it
+ * back, and zeroes the BSS, before every later boot. */
+#define FM1C_SECT(edge, s) __asm("section$" #edge "$__DATA$" s)
+extern char fm1c_data_start FM1C_SECT(start, FM1C_DATA), fm1c_data_end FM1C_SECT(end, FM1C_DATA);
+extern char fm1c_bss_start FM1C_SECT(start, FM1C_BSS), fm1c_bss_end FM1C_SECT(end, FM1C_BSS);
+static void fm1c_state(void **data, size_t *data_n, void **bss, size_t *bss_n)
+{
+    *data = &fm1c_data_start;
+    *data_n = (size_t)(&fm1c_data_end - &fm1c_data_start);
+    *bss = &fm1c_bss_start;
+    *bss_n = (size_t)(&fm1c_bss_end - &fm1c_bss_start);
+}
+
+__attribute__((used, visibility("default"))) const struct fm1c_api FM1C_TABLE = {
+    fm1c_init, fm1c_rate, fm1c_render, fm1c_ms, fm1c_master, fm1c_key, fm1c_button, fm1c_enc, fm1c_midi,
+    fm1c_fb, fm1c_fb_hash, fm1c_leds_buttons, fm1c_leds_keys, fm1c_glow_keys,
+    fm1c_blob_count, fm1c_blob_size, fm1c_store_hash, fm1c_blob, fm1c_debug,
+    fm1c_ended, fm1c_stop, fm1c_quit, fm1c_state,
+};
+#endif

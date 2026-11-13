@@ -12,6 +12,10 @@ defmodule FMutate.Background do
   (`{:error, :start_not_allowed}`: the instance came back from safe mode while the app was away) is tried
   again when the app returns to the foreground. The first start asks for the notification permission
   (Android 13+), without which the notification shows only in the system's running-apps list.
+
+  iOS keeps an app running in the background while its audio session plays (`UIBackgroundModes` `audio`), which
+  FMutate's own output does whenever an engine runs; mob_background's iOS keep-alive (a silent audio engine)
+  would be a second one, so the keep-alive does nothing there.
   """
 
   use GenServer
@@ -24,12 +28,15 @@ defmodule FMutate.Background do
 
   defmodule Native do
     @moduledoc false
-    # The device side: mob_background's keep-alive and Mob's permission request.
-    def keep_alive,
-      do: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+    # The device side: mob_background's keep-alive and Mob's permission request (Android); nothing on iOS.
+    def keep_alive do
+      if ios?(), do: :ok, else: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+    end
 
-    def stop, do: MobBackground.stop()
-    def request_notifications, do: :mob_nif.request_permission(:notifications)
+    def stop, do: if(ios?(), do: :ok, else: MobBackground.stop())
+    def request_notifications, do: unless(ios?(), do: :mob_nif.request_permission(:notifications))
+
+    defp ios?, do: :mob_nif.platform() == :ios
   end
 
   def start_link(opts),

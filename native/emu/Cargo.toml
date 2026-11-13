@@ -1,11 +1,15 @@
 # fm1emu: any FM-1 firmware package (.fwsc) in Joakim Eriksson's fm1-emu (MIT), behind the engine protocol of
-# native/engine/fm1engine.c (docs/engine_protocol.md). Built by native/build_emu.sh, which fetches fm1-emu at a
-# pinned commit into native/build/fm1-emu and applies native/patches/fm1-emu/.
+# native/engine/fm1engine.c (docs/engine_protocol.md). Built by native/build_emu.sh (the executable, Android and
+# the host) and native/build_ios.sh (the library, as a static archive: `cargo rustc --lib --crate-type
+# staticlib`), which fetch fm1-emu at a pinned commit into native/build/fm1-emu and apply native/patches/fm1-emu/.
 [package]
 name = "fm1emu"
 version = "0.1.0"
 edition = "2021"
 publish = false
+
+[lib]
+path = "src/lib.rs"
 
 [[bin]]
 name = "fm1emu"

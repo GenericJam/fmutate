@@ -339,6 +339,7 @@ defmodule FMutate.Instance do
           tag: {state.id, fw, slot},
           bin: bin,
           cart: cart,
+          backend: backend,
           prefix: prefix,
           flash: Paths.flash(state.id, fw, backend),
           fill: fill,
