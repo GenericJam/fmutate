@@ -36,6 +36,15 @@ defmodule FMutate.Dist do
   attempt connects (siblings retry). Disconnect sets a throwaway cookie and cuts the connection. Allowed
   nodes are kept across restarts. The state machine is `FMutate.Dist.Access`.
 
+  ## Paired apps
+
+  Apps paired on the Pair screen (`FMutate.Pairing`, protocol.md §1: QR code or typed code, the player's
+  Allow) are kept by `MobPair.Pairings` with a cookie of their own, set for exactly the node name they
+  declared; this process follows it (`MobPair.Pairings.subscribe/1`): a new pairing is allowed at once, and
+  Disconnect (or the app's `{:unpair, node}`) revokes the pairing, which drops the node until it pairs again.
+  Paired names never get the sibling cookie and aren't written to `allowed.term`. A paired app on another
+  phone arrives through `MobPair.Front` (TLS) as a loopback connection under its paired name.
+
   Subscribers get `{:dist, info}` (see `info/0`) on every change.
   """
 
@@ -58,7 +67,8 @@ defmodule FMutate.Dist do
 
   @doc """
   `%{node, port, status, apps, dev_tools, driven}`: `status` is `:starting | :running | {:error, reason}`;
-  `apps` is `FMutate.Dist.Access.list/1`; `driven` the instances that got remote input in the last 2 s
+  `apps` is `FMutate.Dist.Access.list/1`, each with `paired` (nil, or `%{app_name, device_name, remote}` for
+  an app paired on the Pair screen); `driven` the instances that got remote input in the last 2 s
   (protocol.md §2; inputs are casts, so they can't be told apart by app).
   """
   def info, do: GenServer.call(__MODULE__, :info)
@@ -69,8 +79,11 @@ defmodule FMutate.Dist do
   @doc "The player allows a pending app."
   def allow(node), do: GenServer.call(__MODULE__, {:allow, node})
 
-  @doc "The player cuts an app off."
+  @doc "The player cuts an app off. A paired app's pairing is revoked (it has to pair again)."
   def disconnect(node), do: GenServer.call(__MODULE__, {:disconnect, node})
+
+  @doc "A paired app forgets its pairing (`{:unpair, node}`, protocol §1.5): revoked like Disconnect."
+  def unpair(node), do: GenServer.call(__MODULE__, {:unpair, node})
 
   @doc "Whether calls from `node` are served: this node, or an allowed app."
   def permitted?(node) when node == node(), do: true
@@ -86,6 +99,9 @@ defmodule FMutate.Dist do
     instance = Keyword.get(opts, :instance, "a")
     dev_cookie = dev_cookie()
     sibling = sibling_cookie()
+    paired = paired_apps()
+    remembered = Access.new(load_allowed() -- Map.keys(paired), dev: dev_cookie != nil)
+    access = Enum.reduce(Map.keys(paired), remembered, &Access.pair(&2, &1, 0))
 
     state = %{
       instance: instance,
@@ -93,7 +109,8 @@ defmodule FMutate.Dist do
       port: port(instance),
       sibling: sibling,
       default: dev_cookie || random_cookie(),
-      access: Access.new(load_allowed(), dev: dev_cookie != nil),
+      access: access,
+      paired: paired,
       status: :starting,
       driving: %{},
       subscribers: %{}
@@ -119,12 +136,18 @@ defmodule FMutate.Dist do
     case Access.allow(state.access, node, now()) do
       {:ok, access} ->
         Node.set_cookie(node, state.sibling)
-        save_allowed(access)
+        save_allowed(access, state.paired)
         {:reply, :ok, notify(%{state | access: access})}
 
       error ->
         {:reply, error, state}
     end
+  end
+
+  # a paired app's Disconnect revokes its pairing; the :revoked event drops it (handle_info below)
+  def handle_call({:disconnect, node}, _from, state) when is_map_key(state.paired, node) do
+    :ok = MobPair.Pairings.revoke(node)
+    {:reply, :ok, state}
   end
 
   def handle_call({:disconnect, node}, _from, state) do
@@ -132,13 +155,20 @@ defmodule FMutate.Dist do
       {:ok, access} ->
         Node.set_cookie(node, random_cookie())
         Node.disconnect(node)
-        save_allowed(access)
+        save_allowed(access, state.paired)
         {:reply, :ok, notify(%{state | access: access})}
 
       error ->
         {:reply, error, state}
     end
   end
+
+  def handle_call({:unpair, node}, _from, state) when is_map_key(state.paired, node) do
+    :ok = MobPair.Pairings.revoke(node)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:unpair, _node}, _from, state), do: {:reply, {:error, :not_paired}, state}
 
   def handle_call({:permitted?, node}, _from, state),
     do: {:reply, Access.permitted?(state.access, node), state}
@@ -199,6 +229,27 @@ defmodule FMutate.Dist do
     end
   end
 
+  # MobPair.Pairings (subscribed in paired_apps/0): the Pair screen's Allow, and revocations
+  def handle_info({:mob_pair_pairings, :added, pairing}, state) do
+    node = String.to_atom(pairing.node)
+    if Node.alive?(), do: Node.set_cookie(node, String.to_atom(pairing.cookie))
+    access = Access.pair(state.access, node, now())
+    paired = Map.put(state.paired, node, summary(pairing))
+    save_allowed(access, paired)
+    {:noreply, notify(%{state | access: access, paired: paired})}
+  end
+
+  def handle_info({:mob_pair_pairings, :revoked, pairing}, state) do
+    node = String.to_atom(pairing.node)
+
+    {:noreply,
+     notify(%{
+       state
+       | access: Access.forget(state.access, node),
+         paired: Map.delete(state.paired, node)
+     })}
+  end
+
   def handle_info({:DOWN, _ref, :process, pid, _}, state),
     do: {:noreply, %{state | subscribers: Map.delete(state.subscribers, pid)}}
 
@@ -235,7 +286,15 @@ defmodule FMutate.Dist do
 
   defp configure(state) do
     Node.set_cookie(state.default)
-    for node <- Access.allowed(state.access), do: Node.set_cookie(node, state.sibling)
+
+    for node <- Access.allowed(state.access),
+        not is_map_key(state.paired, node),
+        do: Node.set_cookie(node, state.sibling)
+
+    # MobPair.Pairings sets these itself when the node is up; it may have loaded them before
+    for pairing <- pairings(),
+        do: Node.set_cookie(String.to_atom(pairing.node), String.to_atom(pairing.cookie))
+
     :ok = :net_kernel.monitor_nodes(true, node_type: :all)
     Knock.install(self())
     %{state | status: :running}
@@ -246,7 +305,8 @@ defmodule FMutate.Dist do
       node: state.node,
       port: state.port,
       status: state.status,
-      apps: Access.list(state.access),
+      apps:
+        for(app <- Access.list(state.access), do: Map.put(app, :paired, state.paired[app.node])),
       driven: state.driving |> Map.keys() |> Enum.sort(),
       dev_tools: state.access.dev_nodes |> MapSet.to_list() |> Enum.sort()
     }
@@ -308,10 +368,33 @@ defmodule FMutate.Dist do
     _ -> []
   end
 
-  defp save_allowed(access) do
-    names = access |> Access.allowed() |> Enum.map(&Atom.to_string/1)
+  # paired names are MobPair.Pairings' (with their own cookies), never the sibling cookie's
+  defp save_allowed(access, paired) do
+    names =
+      for node <- Access.allowed(access), not is_map_key(paired, node), do: Atom.to_string(node)
+
     File.write!(Path.join(Paths.dist_dir(), "allowed.term"), :erlang.term_to_binary(names))
   end
+
+  # ── pairings (MobPair.Pairings; absent in tests that run Dist alone) ──
+
+  defp paired_apps do
+    if Process.whereis(MobPair.Pairings) do
+      MobPair.Pairings.subscribe(self())
+      Map.new(pairings(), &{String.to_atom(&1.node), summary(&1)})
+    else
+      %{}
+    end
+  end
+
+  defp pairings, do: if(Process.whereis(MobPair.Pairings), do: MobPair.Pairings.list(), else: [])
+
+  defp summary(pairing),
+    do: %{
+      app_name: pairing.app_name,
+      device_name: pairing.device_name,
+      remote: pairing[:dist_proto] == :inet_tls
+    }
 
   defp now, do: System.monotonic_time(:millisecond)
 end

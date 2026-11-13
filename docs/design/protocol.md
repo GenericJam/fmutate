@@ -1,13 +1,15 @@
 # FMutate ↔ sibling apps: Erlang distribution contract (v1 draft)
 
 Sibling apps (voice app, host app with agent + rig + Strudel) drive FMutate over Erlang
-distribution on the same phone. Everything a touch control can do, a remote message can do.
+distribution, on the same phone or (after pairing, §7) from another phone on the same Wi-Fi.
+Everything a touch control can do, a remote message can do.
 
 ## 1. Discovery and naming
 
 - Each instance runs as node `fmutate_<instance>@127.0.0.1` (v1: `fmutate_a@127.0.0.1`).
 - One registered process per instance: `:fmutate_instance` (global name `{:fmutate, "a"}`).
-- Distribution listens on 127.0.0.1 only (`-kernel inet_dist_use_interface {127,0,0,1}`).
+- Distribution listens on 127.0.0.1 only (`-kernel inet_dist_use_interface {127,0,0,1}`); apps paired from
+  another phone come in through a TLS front (§7 "Pairing").
 - All messages carry a protocol version: `{:fmutate, 1, instance_id, payload}`.
 
 ## 2. Inputs (sibling → FMutate)
@@ -80,6 +82,8 @@ code on the other node. A facade process does not prevent that. So:
 - Anything else (third-party apps, network, laptop): use a separate socket protocol carrying
   only the messages above (e.g. length-prefixed `:erlang.term_to_binary/2` decoded with
   `binary_to_term(bin, [:safe])`, or JSON over WebSocket) with explicit pairing. Not in v1.
+- **Pairing** (QR code or typed code, the player's Allow, a per-app cookie, TLS from another phone) is the
+  path for sibling apps that aren't signed with FMutate's key or run on another phone: §7.
 
 ## 6. Instances
 
@@ -113,7 +117,52 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
   `:layout` subscriptions are accepted but produce nothing: the engine protocol has no firmware MIDI out, and
   layouts don't change from outside the editor yet. The "externally driven" indicator isn't designed; the
   I/O screen shows "controlling this instance" for 2 s after remote input.
-- **Trust (decided):** an allowed app has full Erlang trust (it can run code here); Allow is consent, the
-  signature-protected cookie is the security boundary, and the I/O screen says so. Apps not signed with
-  FMutate's key (third-party, network) have no path in v1 (§5, HANDOFF §12 Q4 still open for them). App display
-  names come from the node name (no hello message in the protocol).
+- **Trust (decided):** an allowed app has full Erlang trust (it can run code here); Allow is consent, and the
+  I/O screen says so. Two ways in: the signature-protected sibling cookie (same key, same phone), or pairing
+  (below), where the single-use code or QR, the player's Allow and the per-app cookie (plus, across phones,
+  both pinned certificates) are the boundary. Third-party apps that pair get the same full trust: the Allow
+  sheet names the app as it claims to be ("says it is …" from another phone). App display names come from the
+  pairing (`app_name`), else from the node name.
+
+### Pairing (menu › Pair an app)
+
+Implemented with the shared package [mob_pair](https://github.com/GenericJam/mob_pair) (`service: "fmutate"`;
+its DECISIONS.md is the security model). The wire format is Humdinger's `design/fmutate/protocol.md` §1.5,
+byte for byte; the link adds `app=fmutate`.
+
+- **Screen.** `FMutate.PairScreen`: the QR code (the link `fmutate://pair?v=1&app=fmutate&inst=a&node=fmutate_a
+  &host=<Wi-Fi IP>&port=<pairing port>&fp=…&t=…`), the code (`KQ7M-X2PD`), a countdown, Copy code, Copy link,
+  New code; expired, used and too-many-attempts states offer New code. Pairing runs only while it is open
+  (`FMutate.Pairing` starts a `MobPair.Host` on any interface, port chosen by the system; mDNS
+  `_fmutate._tcp` where the BEAM can bind 5353, see "Not yet").
+- **Secret.** One per screen: code (40 bits) and token (128 bits), single use, 5 minutes, 5 failed attempts
+  kill both. A typed code is proven with SRP-6a bound to FMutate's certificate and the TLS session.
+- **Allow.** A sibling that proves the secret gets a sheet: "Humdinger wants to connect · this phone · on
+  moto e" (loopback) or "An app on another phone says it is Humdinger · Wi-Fi 192.168.1.40 · on Pixel 7";
+  "Replaces …" when another certificate is paired under the same node name. Don't allow, swiping the sheet
+  away and the sibling hanging up all refuse.
+- **Grant.** `MobPair.Pairings` makes a per-app cookie (32 random bytes) for exactly the node name the sibling
+  declared and pins its client certificate; `FMutate.Dist` follows it and allows the node at once (no knock).
+  A sibling on this phone gets `dist_host 127.0.0.1`, `dist_port 9150`, `inet_tcp` (the existing node). A
+  sibling on another phone gets the Wi-Fi address, `dist_port 9250` (instance b: 9251), `inet_tls`.
+- **TLS front.** FMutate's node starts at runtime on plain `inet_tcp` (`-proto_dist` is a boot argument), so
+  `MobPair.Front` serves TLS distribution: TLS 1.3 with FMutate's certificate, only pinned client
+  certificates, the first handshake message must name the node paired with that certificate, then the
+  handshake is reframed and forwarded to `127.0.0.1:9150`. It listens on the Wi-Fi address only, and only
+  while an `inet_tls` pairing exists (checked on every change and every 30 s, so it follows a new address).
+- **Storage.** FMutate's certificate and key: `files/…/dist/pair_cert.json`; pairings (cookies, pinned
+  fingerprints, names): `pairings.json`; both 0600 in app-private storage, like `sibling_cookie`.
+  Reinstalling FMutate makes a new certificate: paired apps must pair again.
+- **Disconnect / unpair.** I/O lists paired apps with their name and "paired · this phone" or "paired · Wi-Fi ·
+  <device>"; Disconnect revokes the pairing (connection cut, cookie replaced, certificate unpinned): the app
+  must pair again. A sibling forgetting FMutate calls `{:unpair, its_own_node}` on `:fmutate_instance` → `:ok`,
+  then the same revocation.
+- **Both paths coexist.** The signature-permission content provider (Android, same key) still works as above;
+  pairing doesn't replace it. An app could use either; a node name is either a sibling-cookie app or a paired
+  app, never both.
+- **Not yet:** mDNS on Android through `NsdManager` (the Erlang responder shares 5353 with the system responder
+  where the kernel allows it and the phone delivers multicast without a `MulticastLock`; otherwise only the QR
+  code / link pairs from another phone, and a typed code needs the sibling to know FMutate's address); iOS
+  (the Elixir side is platform-neutral, but needs `NSLocalNetworkUsageDescription` and `NSBonjourServices`
+  `_fmutate._tcp` in Info.plist, and the same-phone loopback path doesn't exist between iOS apps); keeping
+  pairings and the certificate key in Android Keystore (`mob_secure_store`) instead of a 0600 file.

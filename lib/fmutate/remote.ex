@@ -109,7 +109,21 @@ defmodule FMutate.Remote do
      }}
   end
 
+  # a paired app forgetting its pairing (protocol §1.5): only its own, answered before the connection goes
   @impl true
+  def handle_call({:fmutate, @version, id, {:unpair, name}}, {pid, _} = from, %{id: id} = state)
+      when is_binary(name) or is_atom(name) do
+    caller = node(pid)
+
+    if to_string(name) == Atom.to_string(caller) do
+      GenServer.reply(from, :ok)
+      _ = Dist.unpair(caller)
+      {:noreply, state}
+    else
+      {:reply, {:error, :not_allowed}, state}
+    end
+  end
+
   def handle_call({:fmutate, @version, id, payload}, {pid, _}, %{id: id} = state) do
     if Dist.permitted?(node(pid)),
       do: call(payload, state),

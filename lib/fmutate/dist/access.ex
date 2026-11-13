@@ -14,6 +14,10 @@ defmodule FMutate.Dist.Access do
     * **nodeup / nodedown** — an allowed node's connection came up or went away.
     * **disconnect** — the player tapped Disconnect: the connection is cut and the node is refused again
       until it knocks and is allowed anew.
+    * **pair** — the player allowed the app on the Pair screen (`FMutate.Pairing`, protocol §1): the node is
+      allowed straight away, with its own cookie from the pairing.
+    * **forget** — a pairing was revoked (Disconnect, or the app unpaired itself): the node is dropped from the
+      table; only pairing again lets it back in.
 
   A node the table doesn't know is refused (`nodeup/2` → `:refuse`), except with `dev: true` (a build
   deployed by mob_dev, whose default cookie is the developer's): nodes that got in with that cookie are
@@ -59,6 +63,16 @@ defmodule FMutate.Dist.Access do
       _ -> {:ok, access}
     end
   end
+
+  @doc "A node the player paired (Pair screen): allowed, or kept connected if it already is."
+  @spec pair(t(), node(), integer()) :: t()
+  def pair(%__MODULE__{} = access, node, now) do
+    if state(access, node) == :connected, do: access, else: put(access, node, :allowed, now)
+  end
+
+  @doc "Drops a node whose pairing was revoked."
+  @spec forget(t(), node()) :: t()
+  def forget(%__MODULE__{} = access, node), do: %{access | apps: Map.delete(access.apps, node)}
 
   @doc "A connection came up: `:accept` (allowed), `:dev` (development tool) or `:refuse`."
   @spec nodeup(t(), node(), integer()) :: {:accept | :dev | :refuse, t()}
