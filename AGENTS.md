@@ -109,6 +109,10 @@ JNI symbols in Mob's generated code follow it.)
   playing by design. Check the input journal before suspecting FMutate.
 - Parallel work: give each stream its own `git worktree` with its own `deps/`, `_build/`, `native/build/`,
   `android/local.properties` and its own device or emulator.
+- In the background the app stays alive only through `FMutate.Background`'s foreground service (while a firmware
+  plays): `FMutate.Background.state()`, `adb shell dumpsys activity services com.genericjam.fmutate`. A fresh
+  install asks for notifications over the instrument at the first engine start; the background check and its
+  numbers are in docs/architecture.md "Background".
 
 ## Mob documentation
 

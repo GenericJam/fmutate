@@ -47,11 +47,12 @@ config :mob_dev,
 # its native code, permissions, and any demo screens at build time. Drop a name
 # here to deactivate a plugin without removing the dep; remove both to drop it
 # entirely (the native build shrinks and a clean rebuild prunes its artifacts).
-config :mob, :plugins, [:mob_midi]
+config :mob, :plugins, [:mob_midi, :mob_background]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
-# Bluetooth central); a git checkout has no signature (CI signs releases), so it is acknowledged here.
-config :mob, :acknowledge_unsafe_plugins, [:mob_midi]
+# Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text). A git
+# checkout has no signature (CI signs releases), so they are acknowledged here.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_background]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an
@@ -72,7 +73,9 @@ config :mob, :trusted_plugins, %{
   mob_photos: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_notify: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_mishka: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
-  mob_ash: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg="
+  mob_ash: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
+  # recorded by `mix mob.plugin.trust mob_background`
+  mob_background: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg="
 }
 
 if File.exists?(Path.join(__DIR__, "mob.local.exs")), do: import_config("mob.local.exs")

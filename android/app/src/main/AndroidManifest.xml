@@ -36,7 +36,12 @@
          plugin's plain-string permission list can't express maxSdkVersion="32"
          on the legacy one — harmless (no-op on API 33+). -->
 
-    <!-- POST_NOTIFICATIONS moved to the mob_notify plugin manifest. -->
+    <!-- POST_NOTIFICATIONS: the keep-alive's "FMutate is playing" notification (FMutate.Background asks for it
+         when the keep-alive first starts; Android 13+ hides the notification without it). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Keep-alive while a firmware plays (the mob_background plugin, FMutate.Background): a mediaPlayback
+         foreground service; the <service> declaration is below. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <!-- AlarmManager for scheduled local notifications -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -90,6 +95,10 @@
         </intent>
     </queries>
 
+    <!-- mob:plugin-permissions BEGIN (managed — regenerated each build; do not edit) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- mob:plugin-permissions END -->
     <application
         android:label="FMutate"
         android:icon="@mipmap/ic_launcher"
@@ -155,6 +164,12 @@
             android:authorities="${applicationId}.siblings"
             android:exported="true"
             android:readPermission="${applicationId}.permission.SIBLING" />
+
+        <!-- mob_background's keep-alive service as mediaPlayback (the plugin declares it as dataSync, which
+             Android 15 limits to 6 h a day in the background); the build leaves this declaration as is. -->
+        <service android:name="io.mob.background.BeamForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
 
     </application>
 </manifest>

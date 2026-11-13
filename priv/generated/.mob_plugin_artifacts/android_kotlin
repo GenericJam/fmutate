@@ -1,1 +1,3 @@
 android/app/src/main/java/io/mob/midi/MobMidiBridge.kt
+android/app/src/main/java/io/mob/background/MobBackgroundBridge.kt
+android/app/src/main/java/io/mob/background/BeamForegroundService.kt

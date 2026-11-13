@@ -13,6 +13,7 @@ flowchart LR
     SUP --> AUD["FMutate.Audio (owns fm1audio NIF: AAudio mixer, master clock)"]
     SUP --> INST["FMutate.Instance &quot;a&quot; (firmware, engine lifecycle, inputs, quarantine)"]
     SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + packages on the phone)"]
+    SUP --> BG["FMutate.Background (mob_background keep-alive while a firmware plays)"]
     SCR["FMutate.InstrumentScreen (Mob.Screen)"] --> VIEW["FMutate.InstrumentView (Mob.Component)"]
     VIEW <--> KT["Kotlin InstrumentView: layout, multitouch, drawing"]
   end
@@ -54,7 +55,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), screens |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -129,6 +130,16 @@ flowchart LR
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
+- **Background** (`FMutate.Background`, the `mob_background` plugin pinned by git ref): while any instance has an
+  engine (phase `:booting`, `:running`, or `:crashed` until its restart) the app holds a `mediaPlayback` foreground
+  service with the notification "FMutate is playing"; safe mode or a firmware that can't run here lets it go (the
+  notification goes, Android may freeze the app). Tied to the engine, not to MIDI clients or sibling apps: they
+  only matter while a firmware plays, and the type has to match what the user hears. `mediaPlayback`, not the
+  plugin's default `dataSync` (Android 15 caps that at 6 h a day in the background): the `<service>` is declared
+  in our `AndroidManifest.xml` with that type and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it.
+  Android starts a foreground service only from the foreground; a refused start is retried when the app comes
+  back. The first start asks for `POST_NOTIFICATIONS` (Android 13+ hides the notification without it; the service
+  runs either way).
 
 ## Inputs: what can lose a press, and how to see it
 
@@ -169,6 +180,24 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | Same, the slow ones at lower clocks | Melodee 0.76x / 0.86x / 0.96x at 180 / 120 / 80 (never real time: its second core's work isn't helped much); Clipper 1.10x / 1.22x / 1.24x; Skiff 1.20x / 1.66x / 2.35x, but **silent at 80 with no stale halves** (starving that the stale-half check misses; Auto only reaches 80 when 120 is too slow) |
 | Same phone, in the app, chord held, Auto | Skiff: 87 % at 240 → 180 MHz, 100 % from then on, no new underruns. Melodee: 75 % at 180 → 80 MHz, 83–95 %: "Too slow · 94 % speed / This phone can't run it in real time". OberVave's package: 101 % at 240, no change. (Melodee's "Setup unfinished / Factory sounds missing" is its own first-boot screen: its web installer adds the factory sounds; OCT+ continues without them.) |
 | Same phone, gfxinfo with native OberVave (6 × 300 ms key holds, 3 runs; the display runs at 120 Hz, so the budget is 8.3 ms) | mob 0.9.27: 8.0 % / 3.7 % / 3.7 % janky, p90 15–18 ms, p99 20–23 ms. mob 0.9.29 (with #236, no repaint on unchanged renders): 0.7 % / 0 % / 1.3 % janky, p90 13–14 ms, p99 15–17 ms |
+
+### Background (emulator-5560, Android 17 x86_64, OberVave)
+
+HOME, then `input keyevent KEYCODE_SLEEP` (screen off, `mWakefulness=Asleep`) for 5 minutes. A sampler on the
+device recorded `FMutate.Audio.stats/0` every ~5 s (frames, the window's peak); `dumpsys activity processes` and
+`get-standby-bucket` every 30 s; at 5 min `tools/android_probe` played note 60 for 2 s into `FMutate A`.
+
+| | keep-alive on | keep-alive off (`Background` stopped, `MobBackground.stop()`) |
+|---|---|---|
+| process | procstate 4 (foreground service), adj 50 → 200, never frozen; `dumpsys activity services`: `isForeground=true types=0x00000002` (mediaPlayback) | procstate 15 (cached), adj 700 → 900, `isFrozen=true` from ~70–90 s on |
+| audio frames | 44.0–44.3 k per s (44.1 kHz) for all 308 s, no sample gap over 5.07 s | real time for 70 s, then one 236.7 s gap: nothing ran until the probe's MIDI connection thawed the app |
+| engine | the same engine all along | thawed, the watchdog saw it as hung and killed and restarted it |
+| the MIDI note | journaled `:sent`, peak 7851 in its window | journaled `:sent` to the just-restarted engine (still booting its firmware), peak 0: not heard |
+| distribution | `tools/rpc.exs` answered with the screen off | answered only after the thaw |
+| standby bucket | 10 (active) | 10 |
+
+The notification shows in the shade as "FMutate · FMutate is playing" (silent section). Safe mode (two `kill9`
+within a minute) turns the keep-alive off and removes the notification; Run anyway turns it on again.
 
 ### Library list (emulator-5556, Android 17 x86_64, debug build, 199–201 cards)
 
