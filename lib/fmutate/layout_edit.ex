@@ -25,6 +25,7 @@ defmodule FMutate.LayoutEdit do
     {"knob", "Knob", {1, 1}},
     {"slider", "Slider", {1, 2}},
     {"xy_pad", "XY pad", {2, 2}},
+    {"motion", "Motion", {2, 2}},
     {"pad_grid", "Pad grid", {2, 2}},
     {"strum", "Strum strip", {1, 3}},
     {"keyboard", "Keyboard strip", {4, 2}},
@@ -40,7 +41,8 @@ defmodule FMutate.LayoutEdit do
   @doc """
   Minimum size in cells `{w, h}` (HANDOFF §5). Sliders, keyboards and strum strips are measured along
   their own orientation: a horizontal slider needs 2×1, a vertical keyboard 2×4. The firmware screen needs
-  2×2, the smallest span that holds its 240 px at 1× on a 3× phone (§7).
+  2×2, the smallest span that holds its 240 px at 1× on a 3× phone (§7). A motion control needs only 1×1:
+  it is held like a button.
   """
   def min_size(%{"type" => "slider"} = c), do: if(vertical_slider?(c), do: {1, 2}, else: {2, 1})
   def min_size(%{"type" => "keyboard"} = c), do: if(vertical_keyboard?(c), do: {2, 4}, else: {4, 2})
@@ -286,6 +288,10 @@ defmodule FMutate.LayoutEdit do
     do: %{"label" => name, "slider" => %{"orientation" => if(w > h, do: "horizontal", else: "vertical")}}
 
   defp defaults("page_switcher", _name, _at), do: %{"page_switcher" => %{"look" => "names"}}
+
+  defp defaults("motion", name, _at),
+    do: %{"label" => label16(name), "motion" => FMutate.Motion.defaults()}
+
   defp defaults(type, name, _at) when type in ["button", "knob", "xy_pad", "label"], do: %{"label" => label16(name)}
 
   defp label16(s), do: String.slice(s, 0, 16)
@@ -365,7 +371,7 @@ defmodule FMutate.LayoutEdit do
 
   @doc "The gesture a new binding of this control listens to (`press`, `value`, `x`)."
   def default_on(%{"type" => type}) when type in ["knob", "slider"], do: "value"
-  def default_on(%{"type" => "xy_pad"}), do: "x"
+  def default_on(%{"type" => type}) when type in ["xy_pad", "motion"], do: "x"
   def default_on(_), do: "press"
 
   ## Pages

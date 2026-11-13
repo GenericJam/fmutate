@@ -23,6 +23,9 @@ defmodule FmutateApp.MixProject do
       {:mob,     "~> 0.9.26"},
       {:mob_dev, "~> 0.7.31", only: :dev, runtime: false},
       {:ecto_sqlite3, "~> 0.18"},
+      # motion controls: the editor lists which motion sensors this phone has (MobSensors.list/0);
+      # readings never go through the BEAM (the surface reads them, InstrumentView.kt / MotionControl.kt)
+      {:mob_sensors, "~> 0.2.0"},
       # Code quality — Credo + ex_slop (catches AI-generated patterns
       # like blanket rescue, narrator docs, redundant Enum chains, etc).
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
