@@ -47,7 +47,8 @@ config :mob_dev,
 # its native code, permissions, and any demo screens at build time. Drop a name
 # here to deactivate a plugin without removing the dep; remove both to drop it
 # entirely (the native build shrinks and a clean rebuild prunes its artifacts).
-config :mob, :plugins, [:mob_midi, :mob_background]
+# mob_sensors (a signed Hex release): the editor's list of motion sensors on this phone (motion controls).
+config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
 # Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text). A git
@@ -75,7 +76,9 @@ config :mob, :trusted_plugins, %{
   mob_mishka: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_ash: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   # recorded by `mix mob.plugin.trust mob_background`
-  mob_background: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg="
+  mob_background: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
+  # motion controls (FMutate)
+  mob_sensors: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg="
 }
 
 if File.exists?(Path.join(__DIR__, "mob.local.exs")), do: import_config("mob.local.exs")

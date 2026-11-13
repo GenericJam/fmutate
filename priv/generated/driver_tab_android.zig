@@ -41,6 +41,7 @@ extern fn fm1audio_nif_init() callconv(.c) ?*anyopaque;
 extern fn fm1io_nif_init() callconv(.c) ?*anyopaque;
 extern fn mob_midi_nif_nif_init() callconv(.c) ?*anyopaque;
 extern fn mob_background_nif_nif_init() callconv(.c) ?*anyopaque;
+extern fn mob_sensors_nif_nif_init() callconv(.c) ?*anyopaque;
 
 // Comptime flags threaded from build.zig via b.addOptions().
 // Each per-feature flag defaults to false; the build sets it to true
@@ -76,6 +77,7 @@ const base_nifs = [_]ErtsStaticNif{
     .{ .nif_init = fm1io_nif_init, .is_builtin = 0, .nif_mod = THE_NON_VALUE, .entry = null },
     .{ .nif_init = mob_midi_nif_nif_init, .is_builtin = 0, .nif_mod = THE_NON_VALUE, .entry = null },
     .{ .nif_init = mob_background_nif_nif_init, .is_builtin = 0, .nif_mod = THE_NON_VALUE, .entry = null },
+    .{ .nif_init = mob_sensors_nif_nif_init, .is_builtin = 0, .nif_mod = THE_NON_VALUE, .entry = null },
 };
 
 const nx_eigen_const = ErtsStaticNif{ .nif_init = nx_eigen_nif_init, .is_builtin = 0, .nif_mod = THE_NON_VALUE, .entry = null };

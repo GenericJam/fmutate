@@ -19,6 +19,9 @@ object MobPluginBootstrap {
         io.mob.background.MobBackgroundBridge.register()
         handOff(io.mob.background.MobBackgroundBridge, activity)
         collectPermissionProvider(io.mob.background.MobBackgroundBridge)
+        io.mob.sensors.MobSensorsBridge.register()
+        handOff(io.mob.sensors.MobSensorsBridge, activity)
+        collectPermissionProvider(io.mob.sensors.MobSensorsBridge)
     }
 
     // Returns the first plugin-supplied Android permission mapping for `cap`,

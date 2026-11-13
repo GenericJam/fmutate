@@ -15,10 +15,13 @@
       "name": "Design",
       "controls": [
         { "id": "screen", "type": "screen", "at": { "col": 0, "row": 0, "w": 5, "h": 4 } },
-        { "id": "k1", "type": "slider", "label": "KNOB1", "at": { "col": 5, "row": 0, "w": 2, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob1" } }] },
-        { "id": "k2", "type": "slider", "label": "KNOB2", "at": { "col": 7, "row": 0, "w": 2, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob2" } }] },
-        { "id": "k3", "type": "slider", "label": "KNOB3", "at": { "col": 9, "row": 0, "w": 2, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob3" } }] },
-        { "id": "k4", "type": "slider", "label": "KNOB4", "at": { "col": 11, "row": 0, "w": 2, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob4" } }] },
+        { "id": "k1", "type": "slider", "label": "KNOB1", "at": { "col": 5, "row": 0, "w": 1, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob1" } }] },
+        { "id": "k2", "type": "slider", "label": "KNOB2", "at": { "col": 6, "row": 0, "w": 1, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob2" } }] },
+        { "id": "k3", "type": "slider", "label": "KNOB3", "at": { "col": 7, "row": 0, "w": 1, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob3" } }] },
+        { "id": "k4", "type": "slider", "label": "KNOB4", "at": { "col": 8, "row": 0, "w": 1, "h": 4 }, "bindings": [{ "on": "value", "to": { "encoder": "knob4" } }] },
+        { "id": "tilt", "type": "motion", "label": "TILT", "at": { "col": 9, "row": 0, "w": 4, "h": 4 },
+          "motion": { "engage": "hold", "range": 45, "on_release": "spring_back" },
+          "bindings": [{ "on": "x", "to": { "encoder": "knob1" } }, { "on": "y", "to": { "midi": { "type": "pitch_bend", "channel": 1 } } }] },
         { "id": "oct_up", "type": "button", "label": "OCT+", "at": { "col": 13, "row": 1, "w": 1, "h": 1 }, "bindings": [{ "to": { "button": "oct_up" } }] },
         { "id": "oct_down", "type": "button", "label": "OCT−", "at": { "col": 13, "row": 2, "w": 1, "h": 1 }, "bindings": [{ "to": { "button": "oct_down" } }] },
         { "id": "save", "type": "button", "label": "SAVE", "at": { "col": 13, "row": 3, "w": 1, "h": 1 }, "bindings": [{ "to": { "button": "save" } }] },
@@ -27,5 +30,5 @@
       ]
     }
   ],
-  "meta": { "made_by": "preset", "note": "Slider labels should be Felucca's parameter names; ask the firmware author or read its docs." }
+  "meta": { "made_by": "preset", "note": "Slider labels should be Felucca's parameter names; ask the firmware author or read its docs. TILT: hold it and tilt the phone: left/right turns KNOB1, forward/back bends the pitch; both spring back on release." }
 }

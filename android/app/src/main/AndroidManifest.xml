@@ -98,6 +98,7 @@
     <!-- mob:plugin-permissions BEGIN (managed — regenerated each build; do not edit) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     <!-- mob:plugin-permissions END -->
     <application
         android:label="FMutate"

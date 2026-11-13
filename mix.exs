@@ -23,6 +23,9 @@ defmodule FmutateApp.MixProject do
       {:mob, "~> 0.9.29"},
       {:mob_dev, "~> 0.7.31", only: :dev, runtime: false},
       {:ecto_sqlite3, "~> 0.18"},
+      # motion controls: the editor lists which motion sensors this phone has (MobSensors.list/0);
+      # readings never go through the BEAM (the surface reads them, InstrumentView.kt / MotionControl.kt)
+      {:mob_sensors, "~> 0.2.0"},
       # MIDI in/out, the virtual port, Bluetooth MIDI (activated in mob.exs)
       {:mob_midi, github: "GenericJam/mob_midi", ref: "052b7754dcf3c79bbe7b333a7527ff8dc5930251"},
       # keeps the app running (mediaPlayback foreground service) while a firmware plays (FMutate.Background)

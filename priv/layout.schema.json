@@ -96,7 +96,7 @@
       "description": "What a control (or one axis/gesture of it) drives.",
       "required": ["to"],
       "properties": {
-        "on": { "enum": ["press", "long_press", "x", "y", "value"], "default": "press" },
+        "on": { "enum": ["press", "long_press", "x", "y", "value", "twist", "shake", "near"], "default": "press", "description": "A motion control's gestures: x (tilt X, roll), y (tilt Y, pitch), twist (gyroscope yaw) are values; shake and near (proximity) are presses." },
         "to": { "$ref": "#/$defs/firmware_input" },
         "mode": { "enum": ["momentary", "toggle"], "default": "momentary" }
       }
@@ -106,7 +106,7 @@
       "required": ["id", "type", "at"],
       "properties": {
         "id": { "type": "string" },
-        "type": { "enum": ["menu", "key", "keyboard", "pad_grid", "button", "knob", "slider", "xy_pad", "strum", "screen", "label", "page_switcher"], "description": "'menu' is the creature button. Every layout has exactly one, in the dock; if missing, the renderer adds it at the first free cell from the top-left." },
+        "type": { "enum": ["menu", "key", "keyboard", "pad_grid", "button", "knob", "slider", "xy_pad", "motion", "strum", "screen", "label", "page_switcher"], "description": "'menu' is the creature button. Every layout has exactly one, in the dock; if missing, the renderer adds it at the first free cell from the top-left. 'motion' drives its bindings from the phone's motion sensors while engaged." },
         "at": { "$ref": "#/$defs/cell" },
         "label": { "type": "string", "maxLength": 16 },
         "color": { "enum": ["default", "coral", "amber", "sky", "violet"] },
@@ -157,6 +157,17 @@
         "xy_pad": {
           "type": "object",
           "properties": { "on_release": { "enum": ["stay", "spring_back"], "default": "stay" } }
+        },
+        "motion": {
+          "type": "object",
+          "description": "type = motion. Sensors are read only while the control is engaged.",
+          "additionalProperties": false,
+          "properties": {
+            "engage": { "enum": ["hold", "latch"], "default": "hold", "description": "hold: active only while a finger is on the tile, values move relative to the orientation at touch-down. latch: a tap turns it on, another tap off." },
+            "range": { "enum": [15, 30, 45, 60, 90], "default": 45, "description": "Degrees of tilt (or twist) that sweep a value's whole span; pitch bend goes centre→end in half of it." },
+            "on_release": { "enum": ["stay", "spring_back"], "default": "stay", "description": "On disengage values stay, or spring back to where they were at engage (encoders get the reverse clicks)." },
+            "shake": { "enum": ["gentle", "firm", "hard"], "default": "firm", "description": "Shake threshold: 0.6 / 1.2 / 2.0 g of acceleration beyond gravity." }
+          }
         },
         "strum": {
           "type": "object",
