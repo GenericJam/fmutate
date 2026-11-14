@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""A stand-in for Emscripten's emcc (and emar / emranlib, by the name it is called as).
+
+A firmware's browser build (web/emu/build.sh, fm1-base's tools/build.py --web, a Makefile ...) runs as its
+author wrote it, generating its tables and fonts, with this on PATH in place of emcc. Each emcc call is appended to
+$FM1_EMCC_LOG as one JSON line ({"tool", "cwd", "args"}) and leaves a placeholder where its output would go (an
+empty object, a minimal .wasm), so the script carries on. tools/native_catalog/build.py then replays the calls
+with a real compiler for each target (this computer, an Android ABI, iOS). Nothing is compiled here.
+"""
+import json
+import os
+import sys
+
+tool = os.path.basename(sys.argv[0])
+args = sys.argv[1:]
+
+if tool == "emcc" and any(a in ("--version", "-v", "-dumpversion") for a in args):
+    print("emcc (Emscripten gcc/clang-like replacement) 3.1.74 (fmutate native_catalog stand-in)")
+    sys.exit(0)
+
+log = os.environ.get("FM1_EMCC_LOG")
+if log:
+    with open(log, "a") as f:
+        f.write(json.dumps({"tool": tool, "cwd": os.getcwd(), "args": args}) + "\n")
+
+
+def touch(path, data=b""):
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+if tool in ("emar", "emranlib"):
+    if tool == "emar" and len(args) >= 2:
+        touch(args[1], b"!<arch>\n")
+    sys.exit(0)
+
+out = None
+for i, a in enumerate(args):
+    if a == "-o" and i + 1 < len(args):
+        out = args[i + 1]
+    elif a.startswith("-o") and len(a) > 2:
+        out = a[2:]
+if out:
+    if out.endswith(".wasm"):
+        touch(out, b"\0asm\1\0\0\0")
+    elif out.endswith((".js", ".mjs")):
+        touch(out, b"/* native_catalog: no JavaScript */\n")
+        touch(os.path.splitext(out)[0] + ".wasm", b"\0asm\1\0\0\0")
+    else:
+        touch(out)
+elif "-c" in args:
+    for a in args:
+        if a.endswith((".c", ".cc", ".cpp")) and not a.startswith("-"):
+            touch(os.path.splitext(os.path.basename(a))[0] + ".o")
