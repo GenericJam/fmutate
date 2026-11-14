@@ -248,17 +248,19 @@ defmodule FMutate.Release do
         git!(["worktree", "add", "--orphan", "-b", "gh-pages", site])
     end
 
-    # served as files, no Jekyll
+    # served as files, no Jekyll; only manifests/ and beam/ are published: replaced/ (the manifests a publish
+    # replaced, for mob_deliver.prune) and .locks/ (a publish in progress) stay in this checkout
     File.write!(Path.join(site, ".nojekyll"), "")
+    File.write!(Path.join(site, ".gitignore"), "/ota/replaced/\n/ota/.locks/\n")
     site
   end
 
   defp commit_site!(site, message, push?) do
-    git!(["-C", site, "add", "-A", ".nojekyll", "ota"])
+    git!(["-C", site, "add", "-A", ".nojekyll", ".gitignore", "ota"])
     git!(["-C", site, "commit", "--quiet", "-m", message])
 
     if push? do
-      git!(["-C", site, "push", "--quiet", "origin", "gh-pages"])
+      git!(["-C", site, "push", "--quiet", "--set-upstream", "origin", "gh-pages"])
       IO.puts("pushed gh-pages; GitHub Pages serves it within a few minutes (and caches up to 10)")
     else
       IO.puts("committed in #{site}; push gh-pages to publish (or rerun with --push)")

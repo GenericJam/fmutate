@@ -37,7 +37,7 @@ defmodule FmutateApp.MixProject do
       {:mob_deliver, github: "GenericJam/mob_deliver", ref: "c461e5b"},
       {:mob_app_update, github: "GenericJam/mob_app_update", ref: "9a1b98113039150872944764c36fb1c3c2b50a31"},
       # tools/release.exs ota: builds and signs the OTA publish (dating after the replaced one: mob_deliver_server#2)
-      {:mob_deliver_server, github: "GenericJam/mob_deliver_server", ref: "31256f2", only: :dev, runtime: false},
+      {:mob_deliver_server, github: "GenericJam/mob_deliver_server", ref: "0df975f", only: :dev, runtime: false},
       # Code quality — Credo + ex_slop (catches AI-generated patterns
       # like blanket rescue, narrator docs, redundant Enum chains, etc).
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
