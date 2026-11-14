@@ -88,7 +88,9 @@ static void edge_apply(uint32_t i, uint32_t down)
         host_edges |= bit;
     } else {
         fm1_in.buttons &= ~bit;
+#if DH_HAS_host_rel
         host_rel |= bit;
+#endif
     }
 }
 static int edge_settled(uint32_t i) { return fm1_ms - edge[i].at >= EDGE_GAP_MS; }
@@ -216,7 +218,12 @@ EXPORT void fm1c_key(uint32_t k, uint32_t down) { if (k < 27u) edge_in(EDGE_KEY0
 EXPORT void fm1c_button(uint32_t b, uint32_t down) { if (b < 14u) edge_in(b, down); }
 EXPORT void fm1c_enc(uint32_t e, int32_t steps)
 {
-    if (e < (uint32_t)HOST_NENC) { host_enc[e] += steps; host_enc_pos[e] += steps; }
+    if (e < sizeof host_enc / sizeof host_enc[0]) {
+        host_enc[e] += steps;
+#if DH_HAS_host_enc_pos
+        host_enc_pos[e] += steps;
+#endif
+    }
 }
 EXPORT void fm1c_midi(uint32_t st, uint32_t d1, uint32_t d2)
 {
@@ -237,9 +244,29 @@ EXPORT uint32_t fm1c_fb_hash(void)
     for (i = 0; i < 240u * 240u / 2u; i++) h = (h ^ p[i]) * 16777619u;
     return h;
 }
-EXPORT uint32_t fm1c_leds_buttons(void) { return (uint32_t)(host_leds & 0x3FFFu); }
-EXPORT uint32_t fm1c_leds_keys(void) { return (uint32_t)(host_leds >> 14) & 0x7FFFFFFu; }
+/* the fake FM-1's LEDs, by its version: host_leds (+ host_glow) as 64-bit ids, host_led as 64-bit ids or bytes */
+static uint64_t leds64(void)
+{
+#if DH_HAS_host_leds
+    return host_leds;
+#elif DH_HAS_host_led64
+    return host_led;
+#elif DH_HAS_host_led_arr
+    uint64_t m = 0;
+    for (uint32_t i = 0; i < 64u && i < sizeof host_led; i++)
+        if (host_led[i]) m |= 1ull << i;
+    return m;
+#else
+    return 0;
+#endif
+}
+EXPORT uint32_t fm1c_leds_buttons(void) { return (uint32_t)(leds64() & 0x3FFFu); }
+EXPORT uint32_t fm1c_leds_keys(void) { return (uint32_t)(leds64() >> 14) & 0x7FFFFFFu; }
+#if DH_HAS_host_glow
 EXPORT uint32_t fm1c_glow_keys(void) { return (uint32_t)(host_glow >> 14) & 0x7FFFFFFu; }
+#else
+EXPORT uint32_t fm1c_glow_keys(void) { return 0; }
+#endif
 EXPORT void fm1c_debug(uint32_t what)
 {
     if (what == 1u) debug_crash = 1;

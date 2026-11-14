@@ -6,11 +6,11 @@
 Both run through the engine protocol (docs/engine_protocol.md), each in its own engine process, driven by this
 script as the mixer would be (it drains the audio ring as fast as the engine fills it, so a run takes less wall time
 than firmware time): libfm1engine.so + the cartridge, and libfm1emu.so + the package at 240 MHz (JIT). The same
-script for both, on firmware time: boot and settle BOOT_MS, hold a chord (keys 7 11 14) for CHORD_MS, release, a
-tail. Measured per run: boot (wall ms to READY; firmware ms to the first screen), audio level (RMS, peak) idle and
-during the chord, the chord's spectrum (1/3-octave bands), the screen after boot and during the chord (and its
-pixels). Compared: level difference (dB), spectral similarity (cosine of the band levels in dB), screen difference
-(mean absolute RGB difference after boot and in the chord, 0-255). Writes native/build/catalog/verify/<id>.json and
+script for both, on firmware time: boot and settle BOOT_MS, hold a chord (keys 7 11 14) for CHORD_MS, release, tap
+PLAY (a sequencer, drum machine or looper starts), tap it again PLAY_MS later. Measured per run: boot (wall ms to READY; firmware ms to the first screen), audio level (RMS, peak) idle and
+during the chord and while playing, their spectra (1/3-octave bands), the screen after boot, in the chord and while
+playing. Compared: level difference (dB), spectral similarity (cosine of the band levels in dB), screen difference
+(mean absolute RGB difference at each of the three, 0-255), audio in the louder window of the native run. Writes native/build/catalog/verify/<id>.json and
 the screens as PNG, prints a one-line verdict. Needs native/build/host/libfm1engine.so and libfm1emu.so
 (native/build_host.sh, native/build_emu.sh). The package is fetched from the Hub once (its size and SHA-256 checked).
 """
@@ -180,8 +180,12 @@ def level(a):
     return {"rms_db": round(20 * np.log10(rms / 32768 + 1e-12), 1), "peak": int(np.abs(a).max()) if len(a) else 0}
 
 
+PLAY_AT = BOOT_MS + CHORD_MS + 500             # PLAY tapped (a sequencer, a drum machine, a looper starts) ...
+PLAY_MS = 2500                                 # ... and tapped again after this long
+END_MS = PLAY_AT + PLAY_MS + 500
+
+
 def run(exe, file, env=None):
-    t_start = time.monotonic()
     e = Engine(exe, file, env)
     res = {"ready_wall_ms": round(e.ready_wall_ms), "ready_fw_ms": e.ready_ms}
     first_screen_ms = None
@@ -190,42 +194,48 @@ def run(exe, file, env=None):
     ms = 0
     step = 50
     t_run = time.monotonic()
-    while ms < BOOT_MS + CHORD_MS + TAIL_MS:
+    while ms < END_MS:
         if ms == BOOT_MS:
             for k in CHORD:
                 e.send(0x01, k, 1)
         if ms == BOOT_MS + CHORD_MS:
             for k in CHORD:
                 e.send(0x01, k, 0)
+        if ms in (PLAY_AT, PLAY_AT + PLAY_MS):
+            e.send(0x02, 12, 1)
+        if ms in (PLAY_AT + 100, PLAY_AT + PLAY_MS + 100):
+            e.send(0x02, 12, 0)
         audio.append(e.drain(FS * step // 1000))
         ms += step
         seq, px = e.screen()
         if first_screen_ms is None and seq > 0 and px.any():
             first_screen_ms = ms
-        if ms == BOOT_MS - step:
-            shots["boot"] = px
-        if ms == BOOT_MS + CHORD_MS - step:
-            shots["chord"] = px
+        for name, at in (("boot", BOOT_MS), ("chord", BOOT_MS + CHORD_MS), ("play", PLAY_AT + PLAY_MS)):
+            if ms == at - step:
+                shots[name] = px
     wall = time.monotonic() - t_run
     e.close()
     a = np.concatenate(audio)
-    b0, c0, c1 = FS * (BOOT_MS - 1000) // 1000, FS * (BOOT_MS + 500) // 1000, FS * (BOOT_MS + CHORD_MS) // 1000
-    res.update(first_screen_fw_ms=first_screen_ms, speed_x=round((BOOT_MS + CHORD_MS + TAIL_MS) / 1000 / wall, 2),
-               idle=level(a[b0:FS * BOOT_MS // 1000]), chord=level(a[c0:c1]),
-               lit_screen=bool(shots.get("chord") is not None and shots["chord"].any()))
-    return res, a, shots, bands(a[c0:c1].astype(np.float64).mean(1))
+    f = lambda t: FS * t // 1000
+    win = {"chord": a[f(BOOT_MS + 500):f(BOOT_MS + CHORD_MS)], "play": a[f(PLAY_AT + 500):f(PLAY_AT + PLAY_MS)]}
+    res.update(first_screen_fw_ms=first_screen_ms, speed_x=round(END_MS / 1000 / wall, 2),
+               idle=level(a[f(BOOT_MS - 1000):f(BOOT_MS)]), chord=level(win["chord"]), play=level(win["play"]),
+               lit_screen=any(px.any() for px in shots.values()))
+    return res, a, shots, {k: bands(w.astype(np.float64).mean(1)) for k, w in win.items()}
 
 
 def compare(n, e):
-    na, ea = n[3], e[3]
-    out = {"level_diff_db": round(n[0]["chord"]["rms_db"] - e[0]["chord"]["rms_db"], 1)}
+    """the window where the native run is loudest (the chord, or PLAY for what keys alone don't sound)"""
+    k = "chord" if n[0]["chord"]["rms_db"] >= n[0]["play"]["rms_db"] else "play"
+    na, ea = n[3][k], e[3][k]
+    out = {"window": k, "level_diff_db": round(n[0][k]["rms_db"] - e[0][k]["rms_db"], 1)}
     # spectral similarity: correlation of the band levels where either has energy within 60 dB of its loudest band
     mask = (na > na.max() - 60) | (ea > ea.max() - 60)
-    if mask.sum() >= 3:
+    if mask.sum() >= 3 and n[0][k]["peak"] >= 64 and e[0][k]["peak"] >= 64:
         out["spectrum_corr"] = round(float(np.corrcoef(na[mask], ea[mask])[0, 1]), 3)
-    for k in ("boot", "chord"):
-        if k in n[2] and k in e[2]:
-            out[f"screen_diff_{k}"] = round(float(np.abs(rgb(n[2][k]).astype(int) - rgb(e[2][k]).astype(int)).mean()), 1)
+    for s in ("boot", "chord", "play"):
+        if s in n[2] and s in e[2]:
+            out[f"screen_diff_{s}"] = round(float(np.abs(rgb(n[2][s]).astype(int) - rgb(e[2][s]).astype(int)).mean()), 1)
     return out
 
 
@@ -266,10 +276,10 @@ def main():
     (vdir / f"{fid}.json").write_text(json.dumps(rep, indent=1) + "\n")
     c = rep.get("compare", {})
     print(f"{fid}: native {'ok' if n else 'FAILED'}"
-          + (f" chord {n[0]['chord']['rms_db']} dB x{n[0]['speed_x']}" if n else "")
-          + (f" | emu chord {e[0]['chord']['rms_db']} dB x{e[0]['speed_x']}" if e else "")
-          + (f" | dL {c.get('level_diff_db')} dB, spec {c.get('spectrum_corr')}, screen {c.get('screen_diff_boot')}/{c.get('screen_diff_chord')}" if c else ""))
-
+          + (f" chord {n[0]['chord']['rms_db']} play {n[0]['play']['rms_db']} dB x{n[0]['speed_x']}" if n else "")
+          + (f" | emu chord {e[0]['chord']['rms_db']} play {e[0]['play']['rms_db']} dB" if e else "")
+          + (f" | {c.get('window')} dL {c.get('level_diff_db')} dB, spec {c.get('spectrum_corr')}, screens "
+             f"{c.get('screen_diff_boot')}/{c.get('screen_diff_chord')}/{c.get('screen_diff_play')}" if c else ""))
 
 if __name__ == "__main__":
     main()

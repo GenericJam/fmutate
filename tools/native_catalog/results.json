@@ -1,0 +1,4671 @@
+{
+ "zp12": {
+  "id": "zp12",
+  "repo": "zvenson/zp12",
+  "commit": "a7cc3dcf3b59303024dcfb69f34aac98007425c5",
+  "pin": "head",
+  "version": "2.5",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 9531,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "hortator": {
+  "id": "hortator",
+  "repo": "deadactive/hortator",
+  "commit": "c8cca2ce9a6a1ba5a055ef3bd4aadc9ef5237bb4",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 41089,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "hortator-bt": {
+  "id": "hortator-bt",
+  "repo": "deadactive/hortator",
+  "commit": "c8cca2ce9a6a1ba5a055ef3bd4aadc9ef5237bb4",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 41089,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "felucca": {
+  "id": "felucca",
+  "repo": "hugelton/Felucca",
+  "commit": "6162de864075ad9edb8cd35e0e45ba75faa5d0db",
+  "pin": "tag",
+  "version": "1.8.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 43339,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "salt": {
+  "id": "salt",
+  "repo": "ChanceTheMaker/Felucca",
+  "commit": "949052728758229ab5ab1816ccf9fa61fafc5803",
+  "pin": "tag",
+  "version": "0.9-salt14",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 13853,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "jangada": {
+  "id": "jangada",
+  "repo": "zednaked/jangada",
+  "commit": "46e6c2c2ed94b609918aa6f5f7381fac915ffc45",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 27546,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "ghoulbox": {
+  "id": "ghoulbox",
+  "repo": "jasonpersinger/ghoulbox-fm1-dungeon-synth",
+  "commit": "9f2b9a22e456d7fe9552b40f7a1d0c13200913bb",
+  "pin": "tag",
+  "version": "2.4",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 37694,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1126320,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -22.8,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 3.4
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "melodee": {
+  "id": "melodee",
+  "repo": "keremimo/melodee",
+  "commit": "165d177a425944f3d30b0b669255a6ed0050c3a5",
+  "pin": "provenance",
+  "version": "1.6.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 69371,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1828512,
+  "check": "diverges",
+  "why": [
+   "screen boot 48.8",
+   "screen chord 48.7"
+  ],
+  "native_chord_db": -16.1,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.944,
+   "screen_diff_boot": 48.8,
+   "screen_diff_chord": 48.7
+  },
+  "boot_ms": {
+   "native_first_screen": 250,
+   "emu_first_screen": 200
+  }
+ },
+ "sloop": {
+  "id": "sloop",
+  "repo": "isod89/sloop-fm1",
+  "commit": "bac9c05ea7627449405aa10e48da21d75b6c8c56",
+  "pin": "tag",
+  "version": "2.8.5",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 31124,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "clipper": {
+  "id": "clipper",
+  "repo": "isod89/clipper-fm1",
+  "commit": "7bc15a950a8b3fd51aec280514905448e4faaf1b",
+  "pin": "tag",
+  "version": "1.3.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 39359,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "bubba": {
+  "id": "bubba",
+  "repo": "Erbubar23/bubba-machine",
+  "commit": "bfa7951991e079996ab158281f1b66b7fdc29838",
+  "pin": "tag",
+  "version": "0.10.0-beta",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "floyd": {
+  "id": "floyd",
+  "repo": "renebohne/sloop-fm1",
+  "commit": "f8f9f9d021bb5c9d60b01aa9d43e0d1e6d118a85",
+  "pin": "tag",
+  "version": "2.4",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 19811,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sloopbanks": {
+  "id": "sloopbanks",
+  "repo": "majnikool/sloop-fm1",
+  "commit": "c741193ba46b20994d70526f92cf160006be513b",
+  "pin": "tag",
+  "version": "2.5-b28-test",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 25236,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sloopdx": {
+  "id": "sloopdx",
+  "repo": "zvenson/dxsloop",
+  "commit": "f2c377a43bcd7443d30521c4c7b874c6d51b94e3",
+  "pin": "provenance",
+  "version": "4.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 25270,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "x0x": {
+  "id": "x0x",
+  "repo": "charlesvestal/fm1-x0x",
+  "commit": "512c0daaf25f82c5b70e9eceee195864e7da378c",
+  "pin": "provenance",
+  "version": "1.2.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 22573,
+  "recipe": "web",
+  "build": "clean",
+  "size": 771840,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "x0xrmx": {
+  "id": "x0xrmx",
+  "repo": "Mr-Roboto/fm1-x0x-rmx",
+  "commit": "a4e78f3a6e16fa310b7614e5876d07e16a0020f9",
+  "pin": "tag",
+  "version": "1.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 21627,
+  "recipe": "web",
+  "build": "clean",
+  "size": 770304,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "fomni": {
+  "id": "fomni",
+  "repo": "charlesvestal/fm1-fomni",
+  "commit": "17a740b7b2d19615ffe19aa73f8eda67f60f223d",
+  "pin": "provenance",
+  "version": "0.4.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 8911,
+  "recipe": "web",
+  "build": "clean",
+  "size": 339760,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -24.3,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "choralroot": {
+  "id": "choralroot",
+  "repo": "Quixotic7/ChoralRootFM1",
+  "commit": "1890b160d0176af33b34bb92b8f5148264e545d4",
+  "pin": "provenance",
+  "version": "0.41",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 73528,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1413896,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord"
+  ],
+  "native_chord_db": -26.6,
+  "compare": {
+   "level_diff_db": 213.4,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 20.6,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "waveloop": {
+  "id": "waveloop",
+  "repo": "ELI7VH/Felucca",
+  "commit": "7bce76090a076cf488ac03b53c83960b7c14e81e",
+  "pin": "tag",
+  "version": "1.0.5.2-midi23",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 30459,
+  "recipe": "web",
+  "build": "clean",
+  "size": 889008,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -23.8,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 1.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "obervave": {
+  "id": "obervave",
+  "repo": "zvenson/obervave",
+  "commit": "4673c4a7579a9dd0260d08febe875ffac9608917",
+  "pin": "provenance",
+  "version": "3.5.2",
+  "lic": "GPL-3.0",
+  "lineage": "dinghy",
+  "dual_core": false,
+  "loc": 15077,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 315952,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -26.7,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 1.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "shineon": {
+  "id": "shineon",
+  "repo": "zvenson/shineon",
+  "commit": "91979ae74af5e8a90ade4ddcb1d6ef331e6b91a8",
+  "pin": "provenance",
+  "version": "3.5",
+  "lic": "GPL-3.0",
+  "lineage": "dinghy",
+  "dual_core": false,
+  "loc": 15096,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 298528,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -24.6,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 1.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "dinghy": {
+  "id": "dinghy",
+  "repo": "zvenson/dinghy",
+  "commit": "ea1b6bf5973b11f9b4b806d08155602aaa0b505e",
+  "pin": "provenance",
+  "version": "0.5",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 7866,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 85888,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -9.5,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "vibe-link": {
+  "id": "vibe-link",
+  "repo": "zvenson/vibe-link",
+  "commit": "4adc7e9e7d020ff51ab8a37b6409f073976ed735",
+  "pin": "provenance",
+  "version": "0.4",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 7930,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 86168,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "fimba": {
+  "id": "fimba",
+  "repo": "jadamsowers/fm1-fimba",
+  "commit": "838aa1d233d934c8a388acaaa47358655d6bfffe",
+  "pin": "provenance",
+  "version": "0.7.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 8512,
+  "recipe": "web",
+  "build": "clean",
+  "size": 293216,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -26.3,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "jiant": {
+  "id": "jiant",
+  "repo": "juanjiant-bit/JIANT",
+  "commit": "6109d7b85dc973aa7fba724006b2a8a02610a157",
+  "pin": "head",
+  "version": "V10.7.23",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 54830,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1475504,
+  "check": "diverges",
+  "why": [
+   "level +12.8 dB",
+   "spectrum r=0.766",
+   "screen boot 15.0",
+   "screen chord 20.2"
+  ],
+  "native_chord_db": -55.3,
+  "compare": {
+   "level_diff_db": 12.8,
+   "spectrum_corr": 0.766,
+   "screen_diff_boot": 15.0,
+   "screen_diff_chord": 20.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "chord": {
+  "id": "chord",
+  "repo": "math0ne/fm1-chord",
+  "commit": "377235d9f39a362e673f8fd60a26f0b1748218e7",
+  "pin": "tag",
+  "version": "0.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 30798,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fumi": {
+  "id": "fumi",
+  "repo": "cartesive/fumi-1",
+  "commit": "6a20fa387cf6bc28a33309a09aaa94a108325e2e",
+  "pin": "tag",
+  "version": "1.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 11158,
+  "recipe": "web",
+  "build": "clean",
+  "size": 377808,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -33.6,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "maku": {
+  "id": "maku",
+  "repo": "okumurari2/maku",
+  "commit": "5671198f1989cbd4a0e674b2059e7f8316faf37d",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 36249,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1308480,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.883"
+  ],
+  "native_chord_db": -30.4,
+  "compare": {
+   "level_diff_db": 2.1,
+   "spectrum_corr": 0.883,
+   "screen_diff_boot": 4.9,
+   "screen_diff_chord": 5.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "rainbow": {
+  "id": "rainbow",
+  "repo": "joshbartlettband-web/felucca-rainbow",
+  "commit": "87036bda158a80bf6a7ee22490e60862ba86e763",
+  "pin": "head",
+  "version": "1.1.5-rb",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 37609,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1060176,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -30.5,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 3.1,
+   "screen_diff_chord": 2.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "amb": {
+  "id": "amb",
+  "repo": "charlesvestal/fm1-amb",
+  "commit": "7c538516d6c52216ff4c8a4881cf2f0dcb07c44b",
+  "pin": "provenance",
+  "version": "1.3.2",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 332816,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -22.9,
+  "compare": {
+   "level_diff_db": -1.8,
+   "spectrum_corr": 0.957,
+   "screen_diff_boot": 0.7,
+   "screen_diff_chord": 0.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "ctl": {
+  "id": "ctl",
+  "repo": "charlesvestal/fm1-ctl",
+  "commit": "9bb5abcc6ef6e0af803a868ecda166e76e90d8d6",
+  "pin": "provenance",
+  "version": "1.0.3",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 642192,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -31.9,
+  "compare": {
+   "level_diff_db": 1.8,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "winampfm": {
+  "id": "winampfm",
+  "repo": "hericdk/winampFM",
+  "commit": "9e3c73f969665a22b50df55d7649f414752db96b",
+  "pin": "head",
+  "version": "0.12",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 37981,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mycelium": {
+  "id": "mycelium",
+  "repo": "megagott/mycelium-fm1",
+  "commit": "750eb125e2850acc62a8391cb742246a7c437745",
+  "pin": "tag",
+  "version": "1.0-test",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "polly": {
+  "id": "polly",
+  "repo": "charlesvestal/fm1-polly",
+  "commit": "fecf93ed5a08d294b6ee2f2bdabf37c30882930e",
+  "pin": "provenance",
+  "version": "0.6.4",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1092032,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -36.3,
+  "compare": {
+   "level_diff_db": -2.6,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "etch": {
+  "id": "etch",
+  "repo": "SikkenWorks/ETCH",
+  "commit": "2eaaad834f153f64dfae0b910e664e17acbb6901",
+  "pin": "tag",
+  "version": "1.88",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 18051,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fm106": {
+  "id": "fm106",
+  "repo": "PatttF/fm-106",
+  "commit": "b795c3d9431c4cd552d5951f70b549eeff5c288d",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 27061,
+  "recipe": "web",
+  "build": "shims",
+  "size": 373904,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": -198.8,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "tribe": {
+  "id": "tribe",
+  "repo": "apiel/fm1-tribe",
+  "commit": "29664b28c9d8b8eb043de0739bf9dd64869958c4",
+  "pin": "head",
+  "version": "0.3-beta",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 26799,
+  "recipe": "web",
+  "build": "clean",
+  "size": 715856,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "duell": {
+  "id": "duell",
+  "repo": "oscillr/DUELL",
+  "commit": "f48c5340be18ab98870fb5a47a237bdbb5729cf2",
+  "pin": "tag",
+  "version": "1.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 63194,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "skiff": {
+  "id": "skiff",
+  "repo": "illuminus5/skiff",
+  "commit": "0ea36820a548dadcb67d9ed29e03e80b32cf6034",
+  "pin": "tag",
+  "version": "2.6",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 53922,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1434048,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "fart": {
+  "id": "fart",
+  "repo": "adamcharleswilsonmusic-code/Fart-Machine-One",
+  "commit": "5e49a216c18c6e0a7e5e42bef43843b40ad9ea5f",
+  "pin": "tag",
+  "version": "1.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 12510,
+  "recipe": "web",
+  "build": "clean",
+  "size": 469776,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -64.9,
+  "compare": {
+   "level_diff_db": -0.6,
+   "spectrum_corr": 0.989,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "orbit": {
+  "id": "orbit",
+  "repo": "dspaudio/orbit",
+  "commit": "1dbb77d61236d77ef363af1f4c8620e0c2996480",
+  "pin": "tag",
+  "version": "1.0.1B",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 36557,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "felucca8": {
+  "id": "felucca8",
+  "repo": "echoe/Felucca_8_patterns",
+  "commit": "603db219059d7c715ce2f9137795ab13ee729a0f",
+  "pin": "tag",
+  "version": "1.8.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 49181,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "pigeon": {
+  "id": "pigeon",
+  "repo": "TheShrimpBlimp/pigeon",
+  "commit": "48f028f2ee7f6a0140dfef9d9426dc3237f2e466",
+  "pin": "provenance",
+  "version": "0.5.0-beta.1",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 57033,
+  "recipe": "web",
+  "build": "clean",
+  "size": 848000,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "cs1": {
+  "id": "cs1",
+  "repo": "twochannels/CS-1",
+  "commit": "5dce8fadd3aa86cf47a3290289ee1c10b7c102e4",
+  "pin": "head",
+  "version": "2026.10.22",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 10150,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "/Users/kevin/code/fmutate-worktrees/native-catalog/tools/native_catalog/adapters/dinghy.c:61:5: error: call to undeclared function 'app_main'; ISO C99 and later"
+ },
+ "hyp1": {
+  "id": "hyp1",
+  "repo": "RustyPawz/fm1-HYP1",
+  "commit": "655ecd1c76f23614cb6cf174ede666d22909eb41",
+  "pin": "head",
+  "version": "1.5.62",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 83842,
+  "recipe": "web",
+  "build": "clean",
+  "size": 398016,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -19.2,
+  "compare": {
+   "level_diff_db": 0.7,
+   "spectrum_corr": 0.959,
+   "screen_diff_boot": 5.2,
+   "screen_diff_chord": 6.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "tonitor": {
+  "id": "tonitor",
+  "repo": "nzimas/tonitor",
+  "commit": "b1ffc1897b3f859fa88bb934435f88d08bc139df",
+  "pin": "head",
+  "version": "2026.11.10",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 27955,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "bocjuhn": {
+  "id": "bocjuhn",
+  "repo": "IanP06/bocjuhn",
+  "commit": "3d63cd273968159ccf0dc19f597959af802aaf6e",
+  "pin": "tag",
+  "version": "1.0.0-rc10",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 26249,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "aisling": {
+  "id": "aisling",
+  "repo": "stephencummins/fm1-aisling",
+  "commit": "55222e1fbade9ffeb669dbcb5b997b70f3b2f2cc",
+  "pin": "tag",
+  "version": "1.4",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 18400,
+  "recipe": "web",
+  "build": "clean",
+  "size": 665200,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -10.7,
+  "compare": {
+   "level_diff_db": -0.1,
+   "spectrum_corr": 0.992,
+   "screen_diff_boot": 2.3,
+   "screen_diff_chord": 1.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "demake": {
+  "id": "demake",
+  "repo": "InigoHernandez/demake-synth",
+  "commit": "0f47f398581d042ee49764e3ed138ffe05f47c9a",
+  "pin": "tag",
+  "version": "0.4.24",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 17325,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "bigorna": {
+  "id": "bigorna",
+  "repo": "nzimas/bigorna",
+  "commit": "d31ea6136f9684a132c410ac33d6ffd3c3535860",
+  "pin": "head",
+  "version": "2026.11.13",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 22197,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "noizdemons": {
+  "id": "noizdemons",
+  "repo": "SPIKE-the-Percussionist/noiz_demons",
+  "commit": "4fe0f1afb4d97f56dfb763c176679fe6e059ecec",
+  "pin": "tag",
+  "version": "666",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 38686,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1078648,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 2.9
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "coralflower": {
+  "id": "coralflower",
+  "repo": "FicusFicusov/CoralFlower",
+  "commit": "46790b943bdb5e4143212d83dc495c832eefdbb8",
+  "pin": "tag",
+  "version": "0.7.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 79184,
+  "recipe": "web",
+  "build": "clean",
+  "size": 896840,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -15.5,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 9.5,
+   "screen_diff_chord": 8.8
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "vector37": {
+  "id": "vector37",
+  "repo": "genkigenki/Vector37",
+  "commit": "08742a4198f99e2db2846b00b70ed6808239c447",
+  "pin": "head",
+  "version": "0.3.2",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 13494,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mc1": {
+  "id": "mc1",
+  "repo": "dspaudio/mc-1",
+  "commit": "10a2240d7f3c63e3ed551774a8e17fb24ed002b8",
+  "pin": "tag",
+  "version": "1.2.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 5609,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "beetle": {
+  "id": "beetle",
+  "repo": "SikkenWorks/BEETLE",
+  "commit": "45ba09a6cd60bd42d5079022c39de0c7f5ff5b01",
+  "pin": "tag",
+  "version": "1.8.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 37573,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "min1": {
+  "id": "min1",
+  "repo": "Reytian/fm1-min1",
+  "commit": "8d6dd77d34cde4f980bd84e726d6a923f951a0dd",
+  "pin": "tag",
+  "version": "0.2.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 9916,
+  "recipe": "web",
+  "build": "clean",
+  "size": 310736,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -13.9,
+  "compare": {
+   "level_diff_db": -0.2,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.6,
+   "screen_diff_chord": 0.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "purplemonkey": {
+  "id": "purplemonkey",
+  "repo": "Quixotic7/PurpleMonkeyFM1",
+  "commit": "8c9bba141fea1a12ab1b65d429a0d226b7e0b451",
+  "pin": "tag",
+  "version": "0.12",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 49564,
+  "recipe": "web",
+  "build": "clean",
+  "size": 570072,
+  "check": "diverges",
+  "why": [
+   "level +4.0 dB"
+  ],
+  "native_chord_db": -24.3,
+  "compare": {
+   "level_diff_db": 4.0,
+   "spectrum_corr": 0.931,
+   "screen_diff_boot": 3.2,
+   "screen_diff_chord": 8.8
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "gammawave": {
+  "id": "gammawave",
+  "repo": "fvalente/GammaWave-FM1",
+  "commit": "8bf1a12cdb7c70e86eba81e63cb374d14f9d43e2",
+  "pin": "tag",
+  "version": "1.2.1-GW",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 46467,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1302808,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -19.7,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.8,
+   "screen_diff_chord": 2.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "tuna": {
+  "id": "tuna",
+  "repo": "delirioux/tuna",
+  "commit": "99d50fb8645243fc88a3fbf50d3eb3a3e2e19a03",
+  "pin": "head",
+  "version": "1.2-99d50fb",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 60637,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1077104,
+  "check": "diverges",
+  "why": [
+   "level -4.8 dB",
+   "spectrum r=0.696",
+   "screen boot 20.6",
+   "screen chord 22.2"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": -4.8,
+   "spectrum_corr": 0.696,
+   "screen_diff_boot": 20.6,
+   "screen_diff_chord": 22.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "frodhes": {
+  "id": "frodhes",
+  "repo": "leonardoMirabal/frodhes",
+  "commit": "279a7aff4e65fa32f188e177393a640d9f635c80",
+  "pin": "tag",
+  "version": "0.9.11",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 43678,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fomajam": {
+  "id": "fomajam",
+  "repo": "konsumer/fomajam",
+  "commit": "bf21d39510f9d38752560c17f2fba93639ccfcc0",
+  "pin": "tag",
+  "version": "0.1.12",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "kawa": {
+  "id": "kawa",
+  "repo": "Guizmoh/Kawa-Tracker-Fm1",
+  "commit": "757b4bdab86816351000dd7184e5d802398707f7",
+  "pin": "provenance",
+  "version": "0.9",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 22916,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "nmsfm": {
+  "id": "nmsfm",
+  "repo": "hericdk/nomanskyFM",
+  "commit": "8ba483368b3b230fb5f097efb8790d3237606ba7",
+  "pin": "head",
+  "version": "0.9",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 37182,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fm1quest": {
+  "id": "fm1quest",
+  "repo": "hericdk/fm1-quest",
+  "commit": "70bc92765fe1559de4a038c983eabf9ed8c7f759",
+  "pin": "tag",
+  "version": "43",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 37514,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "grimm": {
+  "id": "grimm",
+  "repo": "GRiMMBIENT/grimm",
+  "commit": "b519acbee7dbdb3e0fb82b15b86a913898c6f8f5",
+  "pin": "tag",
+  "version": "2.0.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 28907,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "cutador": {
+  "id": "cutador",
+  "repo": "kidbee85-beep/cut-a-dor-release",
+  "commit": "d9799abb84fef0cc59deb05e2f6a4c41032c32f1",
+  "pin": "tag",
+  "version": "1.2.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 6251,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mutable": {
+  "id": "mutable",
+  "repo": "kidbee85-beep/mutable-dreams",
+  "commit": "faf56b957b42998dbf12b4b20c58f5ba93f62d58",
+  "pin": "tag",
+  "version": "2.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1338400,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -30.8,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 1.4,
+   "screen_diff_chord": 1.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "fm1gm": {
+  "id": "fm1gm",
+  "repo": "jartificer/fm1-gm",
+  "commit": "7a40a75adcae898e345c5bb6072fa0f69902e3a2",
+  "pin": "tag",
+  "version": "1.2.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 9931,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "386dx": {
+  "id": "386dx",
+  "repo": "seajaysec/386-DX-FM1-KaraokeBot",
+  "commit": "e0f06f2bc62665fdb10df55febb5f41841872c91",
+  "pin": "tag",
+  "version": "2.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 19741,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "bunker": {
+  "id": "bunker",
+  "repo": "kidbee85-beep/bunker-evolved",
+  "commit": "c9bb0b1ac4a7dbb420a3f452fc75b705981ab0f4",
+  "pin": "srcref",
+  "version": "1.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 40484,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "opn1": {
+  "id": "opn1",
+  "repo": "putchdev/opn-1",
+  "commit": "9651acd3b415ef64dfbf201bd23950c2f4a43393",
+  "pin": "tag",
+  "version": "2.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 9673,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 172592,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -38.8,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "sid1": {
+  "id": "sid1",
+  "repo": "putchdev/sid-1",
+  "commit": "d73d09dce5cb22023ca7618a88d6fd5132ab0eeb",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 9336,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 153936,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -18.4,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "minitone": {
+  "id": "minitone",
+  "repo": "eldontyrellcorp/Mini-Tone",
+  "commit": "6803c6c29e3402fcc0c4af7c2050df987d9b66b5",
+  "pin": "tag",
+  "version": "1.0.5",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 47711,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1162752,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -36.3,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 1.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "morpheus": {
+  "id": "morpheus",
+  "repo": "benbadio/morpheus-fm1",
+  "commit": "945c40c299273903922e5da75f79b559f621d8c4",
+  "pin": "head",
+  "version": "1.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 20142,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "morpheus/tree/firmware/src/gfx.c:20:54: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and sec"
+ },
+ "fmini": {
+  "id": "fmini",
+  "repo": "ruppert/fmini-1",
+  "commit": "be48549213d9177336007d2df477aeb0bbad96f6",
+  "pin": "tag",
+  "version": "2.5.12",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 47772,
+  "recipe": "web",
+  "build": "clean",
+  "size": 756592,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -19.7,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "dub": {
+  "id": "dub",
+  "repo": "sbegueria/fm1-dub",
+  "commit": "e89138a3de7d11f97c941ef467d166eb0763d160",
+  "pin": "tag",
+  "version": "1.4.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 20045,
+  "recipe": "web",
+  "build": "clean",
+  "size": 698400,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -15.5,
+  "compare": {
+   "level_diff_db": -1.2,
+   "spectrum_corr": 0.98,
+   "screen_diff_boot": 6.1,
+   "screen_diff_chord": 6.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "fmel": {
+  "id": "fmel",
+  "repo": "AntonioAltea/fmel-1",
+  "commit": "cb21b680568a1239c0705c5e6b33730241c50d97",
+  "pin": "tag",
+  "version": "1.3",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 32223,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 657328,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -17.1,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 3.4
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "zen": {
+  "id": "zen",
+  "repo": "aceyprime/zen-1",
+  "commit": "ec9295233ea64ddac224b58b4d07216706c1b8ee",
+  "pin": "tag",
+  "version": "1.2",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 32312,
+  "recipe": "web",
+  "build": "clean",
+  "size": 898832,
+  "check": "diverges",
+  "why": [
+   "screen boot 17.0",
+   "screen chord 24.7"
+  ],
+  "native_chord_db": -50.6,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.997,
+   "screen_diff_boot": 17.0,
+   "screen_diff_chord": 24.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "golana": {
+  "id": "golana",
+  "repo": "Gadlele/Golana",
+  "commit": "472914d794fb879eb502f62d3380a3b674ab2547",
+  "pin": "tag",
+  "version": "1.3",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 40031,
+  "recipe": "web",
+  "build": "clean",
+  "size": 686032,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -17.5,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 2.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "golanadz": {
+  "id": "golanadz",
+  "repo": "dzwerg/Golana-DZ",
+  "commit": "858e3f2f9e018f01a1c87451c712193869f0324b",
+  "pin": "tag",
+  "version": "0.1.0-beta",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 40067,
+  "recipe": "web",
+  "build": "clean",
+  "size": 702592,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -17.6,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 4.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "modelar": {
+  "id": "modelar",
+  "repo": "hirakos999/MODELAR",
+  "commit": "89475ca2586d6861cc35cd62ea2e1f23a574d9cc",
+  "pin": "provenance",
+  "version": "0.3",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 344848,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.2
+  },
+  "boot_ms": {
+   "native_first_screen": 200,
+   "emu_first_screen": 100
+  }
+ },
+ "niagara": {
+  "id": "niagara",
+  "repo": "evanyerburgh/niagara-drift",
+  "commit": "1635475af6bf36c7b3657ffe612a966e5bf4aa84",
+  "pin": "provenance",
+  "version": "0.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 18132,
+  "recipe": "web",
+  "build": "clean",
+  "size": 666640,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 28.7,
+   "screen_diff_chord": 7.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 650
+  }
+ },
+ "unholy": {
+  "id": "unholy",
+  "repo": "actuallysparky/FM-1-Unholy-Union-generative-drone-firmware",
+  "commit": "3c0dfd93571774a0a2386bd1d2bc2b80de48fdfb",
+  "pin": "tag",
+  "version": "0.2.3",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 38682,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1078032,
+  "check": "diverges",
+  "why": [
+   "screen boot 40.4",
+   "screen chord 43.1"
+  ],
+  "native_chord_db": -45.4,
+  "compare": {
+   "level_diff_db": -0.1,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 40.4,
+   "screen_diff_chord": 43.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "emb": {
+  "id": "emb",
+  "repo": "MikeTsak/Evanders-Music-Box--FM-1-LARP-firmware",
+  "commit": "53c32342efb4b06c7f40ae4758279c5c361c5535",
+  "pin": "tag",
+  "version": "1.5.2",
+  "lic": null,
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 39174,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "chipbox": {
+  "id": "chipbox",
+  "repo": "pbarilla/chipbox",
+  "commit": "8b3e67e30443b2336c769af2481e1e997f1fa253",
+  "pin": "provenance",
+  "version": "1.6.1-bluetoothbanter",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 28792,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "chipbox/tree/firmware/src/fx.c:24:56: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and secti"
+ },
+ "loom": {
+  "id": "loom",
+  "repo": "charlesvestal/fm1-loom",
+  "commit": "ffc0cd1d8ca7005ef7088257f200e506e4a30a9c",
+  "pin": "provenance",
+  "version": "0.15.1",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1444608,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "monk": {
+  "id": "monk",
+  "repo": "charlesvestal/fm1-monk",
+  "commit": "7f4de9c94ee4cffc5671babd01adefd1c62ed1a2",
+  "pin": "provenance",
+  "version": "0.10",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 9174,
+  "recipe": "web",
+  "build": "clean",
+  "size": 456640,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": -221.5,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 3.1
+  },
+  "boot_ms": {
+   "native_first_screen": 150,
+   "emu_first_screen": 150
+  }
+ },
+ "flyfish": {
+  "id": "flyfish",
+  "repo": "delirioux/flyfish",
+  "commit": "6e2b46f837bdd22bd71441f2b1c8bb8d9d527269",
+  "pin": "head",
+  "version": "1.1.1-fc4974e",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 42808,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1225664,
+  "check": "diverges",
+  "why": [
+   "level +12.8 dB",
+   "spectrum r=0.624",
+   "screen boot 20.8",
+   "screen chord 21.2"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": 12.8,
+   "spectrum_corr": 0.624,
+   "screen_diff_boot": 20.8,
+   "screen_diff_chord": 21.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "bytemania": {
+  "id": "bytemania",
+  "repo": "llozd/bytemania",
+  "commit": "139748d2181216af68afca26d251fb34c055f888",
+  "pin": "provenance",
+  "version": "1.3.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 8546,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 154536,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB",
+   "spectrum r=0.642",
+   "screen chord 14.6"
+  ],
+  "native_chord_db": -8.6,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 0.642,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 14.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "hera": {
+  "id": "hera",
+  "repo": "benbadio/hera-fm1",
+  "commit": "2c99af2141217e1e0083da39049ace432efa1cd1",
+  "pin": "provenance",
+  "version": "1.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 29926,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "frasil": {
+  "id": "frasil",
+  "repo": "styvesgoupil/frasil",
+  "commit": "e7a8fb2f5398a48992d8659cf9361878f8acb839",
+  "pin": "tag",
+  "version": "3.3",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 935424,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -30.1,
+  "compare": {
+   "level_diff_db": 1.6,
+   "spectrum_corr": 0.993,
+   "screen_diff_boot": 0.7,
+   "screen_diff_chord": 1.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "tessera": {
+  "id": "tessera",
+  "repo": "Rastapopolix/tessera",
+  "commit": "3e0e15e35a937519c4e4c6edea1f22d822851957",
+  "pin": "tag",
+  "version": "3.5.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 70150,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "delrio": {
+  "id": "delrio",
+  "repo": "jsopdebeeck/fm1-delrio",
+  "commit": "f452e5dff61e8cb153aaf9d7f2faf96ae121f614",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 675424,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -92.1,
+  "compare": {
+   "level_diff_db": 147.9,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 6.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 300
+  }
+ },
+ "carnac": {
+  "id": "carnac",
+  "repo": "OwenKirby/carnac-os",
+  "commit": "98331670f1e5ea664546746d505b7502332b3e8e",
+  "pin": "head",
+  "version": "0.9.6",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 19538,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1085008,
+  "check": "broken",
+  "why": [
+   "native: engine exited -5 before READY: "
+  ],
+  "native_chord_db": null,
+  "compare": null,
+  "boot_ms": {
+   "native_first_screen": null,
+   "emu_first_screen": 50
+  }
+ },
+ "drift": {
+  "id": "drift",
+  "repo": "FBNFRTG/drift-fm1",
+  "commit": "08b65e1233fea6b542f9f22629ad6c1d761c7667",
+  "pin": "tag",
+  "version": "0.9.6",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 40233,
+  "recipe": "web",
+  "build": "clean",
+  "size": 686112,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -21.6,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "sidou": {
+  "id": "sidou",
+  "repo": "dsablic/sidou",
+  "commit": "63b0bea5890bb1edf20d98ccb91318b79c9953e9",
+  "pin": "tag",
+  "version": "1.9.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mono2k": {
+  "id": "mono2k",
+  "repo": "InigoHernandez/mono2k",
+  "commit": "95d5763495d961f3ed225f5e4201328934ca4247",
+  "pin": "tag",
+  "version": "1.9.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 25679,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "caravel": {
+  "id": "caravel",
+  "repo": "bonszaimusic/caravel",
+  "commit": "d85ecb7e82c3678cea24c4812a8a331f097f3e72",
+  "pin": "tag",
+  "version": "0.13.0",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 48614,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1257520,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.9,
+   "screen_diff_chord": 0.9
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "midimon": {
+  "id": "midimon",
+  "repo": "ignis32/midimonitor_fm1",
+  "commit": "acde38e61c9678dfc7a1c3e73e1427e9874426d4",
+  "pin": "provenance",
+  "version": "0.5",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "midimon/app/app.c:40:31: error: use of undeclared identifier 'NTAPS'"
+ },
+ "makohai": {
+  "id": "makohai",
+  "repo": "delirioux/makohai",
+  "commit": "bf6646ff2dbcb6ac10a726724348d5302b37ab17",
+  "pin": "tag",
+  "version": "1.4",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 13535,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 387072,
+  "check": "diverges",
+  "why": [
+   "level +6.2 dB"
+  ],
+  "native_chord_db": -23.4,
+  "compare": {
+   "level_diff_db": 6.2,
+   "spectrum_corr": 0.998,
+   "screen_diff_boot": 2.6,
+   "screen_diff_chord": 2.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "estampie": {
+  "id": "estampie",
+  "repo": "ocean/estampie",
+  "commit": "57ea691aae13122cfb59b1f5a6518179ff029cd2",
+  "pin": "provenance",
+  "version": "0.3.8",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 42552,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fizz": {
+  "id": "fizz",
+  "repo": "Quixotic7/FIZZ",
+  "commit": "d87e33d7faddadfe73a54e3434195fc4271ccea2",
+  "pin": "provenance",
+  "version": "0.12.0-beta.17",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 25972,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1422560,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.667"
+  ],
+  "native_chord_db": -51.6,
+  "compare": {
+   "level_diff_db": 0.2,
+   "spectrum_corr": 0.667,
+   "screen_diff_boot": 6.8,
+   "screen_diff_chord": 3.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "matryoshka": {
+  "id": "matryoshka",
+  "repo": "glvno/matryoshka",
+  "commit": "76dfc277bf19a7ab1c5c590cf4f4f0780998f221",
+  "pin": "tag",
+  "version": "1.14.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 59325,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "loomfm1": {
+  "id": "loomfm1",
+  "repo": "Co-oscillator/Loom-FM-1",
+  "commit": "ed6f036f9e3187ba22f915c3941d23f477159683",
+  "pin": "tag",
+  "version": "0.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 42847,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1162832,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -27.6,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "tastywaves": {
+  "id": "tastywaves",
+  "repo": "marksweiss/tastywaves",
+  "commit": "15fd6986007ef51965303d7fd6410493e89c9ff4",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 34254,
+  "recipe": "dinghy",
+  "build": "clean",
+  "size": 684824,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -24.2,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "arctic": {
+  "id": "arctic",
+  "repo": "PolarPatch/Arctic-scream-FM-1",
+  "commit": "e7d301f0e0bbe8ecb918e2a6d979ef6cd2932694",
+  "pin": "provenance",
+  "version": "2.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 23435,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "s1vave": {
+  "id": "s1vave",
+  "repo": "AndrewGG88/S1Vave",
+  "commit": "e8370184f85b05f7c50f7e9f65cb3f6b69642d30",
+  "pin": "provenance",
+  "version": "2.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "dinghy",
+  "dual_core": false,
+  "loc": 14887,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 247504,
+  "check": "diverges",
+  "why": [
+   "level +3.6 dB"
+  ],
+  "native_chord_db": -45.8,
+  "compare": {
+   "level_diff_db": 3.6,
+   "spectrum_corr": 0.992,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "gator": {
+  "id": "gator",
+  "repo": "npi3pak/fm1-gator",
+  "commit": "92f923e0b9fe6101d5cd422cffa5946ce20d785a",
+  "pin": "tag",
+  "version": "0.6",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 6730,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "monohull": {
+  "id": "monohull",
+  "repo": "markterm/monohull",
+  "commit": "8590e27dc9d4e080d1d4f585036c97df44940a71",
+  "pin": "tag",
+  "version": "0.2.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 40660,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "perf1": {
+  "id": "perf1",
+  "repo": "deamonSLINKY/PERF-1",
+  "commit": "c5699ba61dc338b0c65bc5f82d04868c3f1cef0a",
+  "pin": "tag",
+  "version": "0.17.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 29941,
+  "recipe": "web",
+  "build": "clean",
+  "size": 890768,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -18.2,
+  "compare": {
+   "level_diff_db": -1.4,
+   "spectrum_corr": 0.918,
+   "screen_diff_boot": 6.3,
+   "screen_diff_chord": 7.9
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "j6": {
+  "id": "j6",
+  "repo": "JackieAlacrity2373/fm1-j6",
+  "commit": "36f033fe8f6fde178be957c073f9b3ad7e4d53ab",
+  "pin": "provenance",
+  "version": "1.4.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "guitchordi": {
+  "id": "guitchordi",
+  "repo": "stoogs/guitchordi",
+  "commit": "09a4f170d76e7e6b1fad6cb3f3609553eabaf498",
+  "pin": "tag",
+  "version": "0.1.0-beta.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 4897,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "ravel": {
+  "id": "ravel",
+  "repo": "De-Pattern/Ravel_FM1",
+  "commit": "1ee0b2ab2535d539e120219e27ecda6cd74887e5",
+  "pin": "tag",
+  "version": "1.41.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 32658,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "berlinan": {
+  "id": "berlinan",
+  "repo": "jiripisa/fm1-berlinan",
+  "commit": "afe2d937442fd248d145a34e8907d1c67ee4c3d6",
+  "pin": "tag",
+  "version": "0.5.1",
+  "lic": "GPL-2.0-or-later",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 436512,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 300
+  }
+ },
+ "mnm1": {
+  "id": "mnm1",
+  "repo": "galfaroth/mnm1",
+  "commit": "2c7aee4c277bb642404c4638dbc77a360d36cf55",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 40862,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mope1": {
+  "id": "mope1",
+  "repo": "slothpallas/mope-1",
+  "commit": "a584c5702de6258892ed05e8ada070fbfaa9f73c",
+  "pin": "tag",
+  "version": "0.4.1",
+  "lic": "GPL-3.0-only",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 14133,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "kitten": {
+  "id": "kitten",
+  "repo": "BlackKittenDevices/Kitten-Synths",
+  "commit": "24be66e59f348a8c3e48989a696f47fa6874bbaa",
+  "pin": "tag",
+  "version": "2.8-kitten.8",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "nauclerus": {
+  "id": "nauclerus",
+  "repo": "Mr-Roboto/nauclerus",
+  "commit": "d2860962f2441bb3b2e2cd457c87bae07995cbac",
+  "pin": "tag",
+  "version": "1.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 31396,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "ptfm": {
+  "id": "ptfm",
+  "repo": "hitosu/ptfm",
+  "commit": "8b53e1d0f68034b0cc5ad610e9f2e76499742fb3",
+  "pin": "head",
+  "version": "0.26",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "spampy": {
+  "id": "spampy",
+  "repo": "Spampy-Droid/SPAMPY-0.0-r949",
+  "commit": "5a391366b3e58abaa004a5124b8c13edef403876",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 35268,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "spellbox": {
+  "id": "spellbox",
+  "repo": "pjac1810/spellbox",
+  "commit": "d1b90ea5d22200d424fbf2ab154bf52923378abe",
+  "pin": "tag",
+  "version": "0.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "dungeontracker": {
+  "id": "dungeontracker",
+  "repo": "BourbonWX/Dungeon-Tracker",
+  "commit": "4e43c2f34899237f685a10999b00213644aef394",
+  "pin": "tag",
+  "version": "1.5",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 51606,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1196008,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.866"
+  ],
+  "native_chord_db": -64.6,
+  "compare": {
+   "level_diff_db": -2.7,
+   "spectrum_corr": 0.866,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "nachtfahrt": {
+  "id": "nachtfahrt",
+  "repo": "FartyPants/fm1-nachtfahrt",
+  "commit": "33257686bfa4db94b31366aa2836f813d140764f",
+  "pin": "tag",
+  "version": "1.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 21735,
+  "recipe": "web",
+  "build": "clean",
+  "size": 724872,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -17.6,
+  "compare": {
+   "level_diff_db": 0.4,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 2.0,
+   "screen_diff_chord": 2.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "daurade": {
+  "id": "daurade",
+  "repo": "delirioux/daurade",
+  "commit": "1e5fc140fef9ac9fc7d0e54b389f18ceb47d6652",
+  "pin": "head",
+  "version": "1.0.1-01d6bd0",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 42979,
+  "recipe": "web",
+  "build": "clean",
+  "size": 671376,
+  "check": "diverges",
+  "why": [
+   "level +6.2 dB",
+   "spectrum r=0.556"
+  ],
+  "native_chord_db": -25.8,
+  "compare": {
+   "level_diff_db": 6.2,
+   "spectrum_corr": 0.556,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "luxr": {
+  "id": "luxr",
+  "repo": "orbitator/LUXR",
+  "commit": "89908da78336856e5c259a5d2f2666ac480dee55",
+  "pin": "head",
+  "version": "2026.11.02",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 17423,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fmdj": {
+  "id": "fmdj",
+  "repo": "DeadActive/FMDj",
+  "commit": "10f98c0cc24677f3bdf0f89570bffdb033d3a68b",
+  "pin": "head",
+  "version": "2026.10.22",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 39304,
+  "recipe": "web",
+  "build": "clean",
+  "size": 853504,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord"
+  ],
+  "native_chord_db": -23.8,
+  "compare": {
+   "level_diff_db": 216.2,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 30.4,
+   "screen_diff_chord": 31.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 350
+  }
+ },
+ "kwasub": {
+  "id": "kwasub",
+  "repo": "Guizmoh/K-WASUB_Firmware_for_FM1",
+  "commit": "69d17131187ea9681ab2e0fb1c96e2c02248dfe7",
+  "pin": "provenance",
+  "version": "1.1.02",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 29164,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sill": {
+  "id": "sill",
+  "repo": "delirioux/sill",
+  "commit": "c5cfe9e844410669e63ed6b2c1656fa1cc9361c8",
+  "pin": "head",
+  "version": "1.0.4-c5cfe9e",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 43385,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1159664,
+  "check": "diverges",
+  "why": [
+   "spectrum r=-0.123",
+   "screen boot 22.9",
+   "screen chord 24.1"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": -1.5,
+   "spectrum_corr": -0.123,
+   "screen_diff_boot": 22.9,
+   "screen_diff_chord": 24.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "smileyface": {
+  "id": "smileyface",
+  "repo": "pbarilla/smileyface",
+  "commit": "8a104f64cc1188aed0a5cd7b37427129f96506d1",
+  "pin": "provenance",
+  "version": "1.2.1-bleglee",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 20228,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "smileyface/tree/firmware/src/bfx.c:29:65: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and s"
+ },
+ "vesper": {
+  "id": "vesper",
+  "repo": "fatcatstudios-hub/vesper-fm1",
+  "commit": "faf036f78a84bdf2822c50893f9d0bce3048dd33",
+  "pin": "tag",
+  "version": "2.0.2",
+  "lic": null,
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 833984,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 550
+  }
+ },
+ "penumbra": {
+  "id": "penumbra",
+  "repo": "MadMooneyham/Penumbra",
+  "commit": "f1ee95d70d9091a720ad266ce889bf7888a0033d",
+  "pin": "tag",
+  "version": "1.4",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 14149,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": "FileNotFoundError: [Errno 2] No such file or directory: 'penumbra/assets/logo.jpg'"
+ },
+ "jam": {
+  "id": "jam",
+  "repo": "BunnyOrchard/jam-playground",
+  "commit": "114fbafeefbb2c808ca92d1f51a4202f2c4e4e85",
+  "pin": "tag",
+  "version": "1.2.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 79471,
+  "recipe": "web",
+  "build": "clean",
+  "size": 808736,
+  "check": "diverges",
+  "why": [
+   "level +15.4 dB",
+   "spectrum r=-0.858",
+   "screen boot 22.6",
+   "screen chord 28.5"
+  ],
+  "native_chord_db": -19.2,
+  "compare": {
+   "level_diff_db": 15.4,
+   "spectrum_corr": -0.858,
+   "screen_diff_boot": 22.6,
+   "screen_diff_chord": 28.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "xmod": {
+  "id": "xmod",
+  "repo": "KotMorderca/XMOD",
+  "commit": "03666a563b49903f2d76fcd83122a082fc160a48",
+  "pin": "provenance",
+  "version": "1.2.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 4767,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sidj": {
+  "id": "sidj",
+  "repo": "thomasj/fm1-sidj",
+  "commit": "c9544f238109617fd22fdea913e48e6aa504c632",
+  "pin": "tag",
+  "version": "1.5.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 11931,
+  "recipe": "web",
+  "build": "clean",
+  "size": 482128,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 30.6,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 450
+  }
+ },
+ "hawkchua": {
+  "id": "hawkchua",
+  "repo": "Plieuw/hawk-chua",
+  "commit": "3e8a9559ffd6cbc38d24126a5042888ce72ba142",
+  "pin": "tag",
+  "version": "2.1.6",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 22366,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "bb1": {
+  "id": "bb1",
+  "repo": "TexasRADIO/bb1-firmware",
+  "commit": "1908bf2345f2d16683853792482ed6ad9ec16d7c",
+  "pin": "tag",
+  "version": "2.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "karma": {
+  "id": "karma",
+  "repo": "eatyourgreensstudio-dotcom/karma-fm1",
+  "commit": "3c2b87765a7e6eb80a3345dde4979dcc3c0f87ad",
+  "pin": "tag",
+  "version": "3.1.1",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 70040,
+  "recipe": "web",
+  "build": "shims",
+  "size": 1063472,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -18.8,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.5,
+   "screen_diff_chord": 0.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "lsdjburrito": {
+  "id": "lsdjburrito",
+  "repo": "dreamsofbacon/lsdj-burrito-src",
+  "commit": "349630195ab1c6201dee0f7d0682e806004c92f5",
+  "pin": "tag",
+  "version": "0.9.97",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 12616,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fm1dock": {
+  "id": "fm1dock",
+  "repo": "joakimeriksson/fm1-dock",
+  "commit": "6199d250c10376fca0270b917da2e79c7c604691",
+  "pin": "provenance",
+  "version": "0.8.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 19058,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "fm1dock/tree/firmware/src/gfx.c:20:54: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and sect"
+ },
+ "scintilla": {
+  "id": "scintilla",
+  "repo": "joakimeriksson/scintilla-fm1",
+  "commit": "c9465b4fa67d65d6d099ae679d6e8430058bd841",
+  "pin": "provenance",
+  "version": "0.3.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 7894,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fm1sid": {
+  "id": "fm1sid",
+  "repo": "joakimeriksson/fm1-sid",
+  "commit": "c2e231f5a1ac2bbe5799d92db0aa08e94dc36d7f",
+  "pin": "tag",
+  "version": "0.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 4909,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "dark1": {
+  "id": "dark1",
+  "repo": "sparky480v/Dark-1",
+  "commit": "3f7cd6323a168c4880a82eacdcf453389a5347d0",
+  "pin": "tag",
+  "version": "1.0.6",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 25184,
+  "recipe": "web",
+  "build": "clean",
+  "size": 786832,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -10.8,
+  "compare": {
+   "level_diff_db": -1.0,
+   "spectrum_corr": 0.986,
+   "screen_diff_boot": 10.4,
+   "screen_diff_chord": 6.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "fm1trax": {
+  "id": "fm1trax",
+  "repo": "jartificer/fm1-trax",
+  "commit": "bb26ad00ccc45f82d62a567aba2b97f8b74e5545",
+  "pin": "tag",
+  "version": "0.9.5",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 13881,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "wanderer": {
+  "id": "wanderer",
+  "repo": "spinnicholas/lvm-wanderer-fm1",
+  "commit": "9042cc3b2b0cbe51073a9858fe6d407b3081c4dd",
+  "pin": "tag",
+  "version": "1.4.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 22027,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 544096,
+  "check": "diverges",
+  "why": [
+   "level +5.3 dB"
+  ],
+  "native_chord_db": -17.7,
+  "compare": {
+   "level_diff_db": 5.3,
+   "spectrum_corr": 0.995,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "rupture": {
+  "id": "rupture",
+  "repo": "SikkenWorks/RUPTURE",
+  "commit": "5be30c97654f0c139474119aa80a070b822465a8",
+  "pin": "tag",
+  "version": "1.89",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 31998,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "pulhra": {
+  "id": "pulhra",
+  "repo": "646timur-cell/pulhra_main",
+  "commit": "a60daac39e691ba39031aff9f5e3b2c5be568f44",
+  "pin": "head",
+  "version": "1.5.1",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": false,
+  "loc": 59983,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1043440,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": 216.1,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 66.7,
+   "screen_diff_chord": 66.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "amenity": {
+  "id": "amenity",
+  "repo": "ejtb76/amenity",
+  "commit": "2c7cdb133e2ded08f5661f4ec1b1a2e491e5d88f",
+  "pin": "provenance",
+  "version": "2.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 300192,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 1.1,
+   "screen_diff_chord": 1.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "arcturus": {
+  "id": "arcturus",
+  "repo": "zeptosecond-dsp/Arcturus-S6",
+  "commit": "7b591b657db87343960a73407b6e1da5f0c09bda",
+  "pin": "tag",
+  "version": "1.7",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 11369,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 290048,
+  "check": "diverges",
+  "why": [
+   "level +8.1 dB",
+   "spectrum r=0.64"
+  ],
+  "native_chord_db": -18.3,
+  "compare": {
+   "level_diff_db": 8.1,
+   "spectrum_corr": 0.64,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "kittenrack": {
+  "id": "kittenrack",
+  "repo": "BlackKittenDevices/kitten-rack",
+  "commit": "6adcd506661a79f73f60b11ed4722cdf7603ea31",
+  "pin": "tag",
+  "version": "1.4.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 41363,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "blop": {
+  "id": "blop",
+  "repo": "OSR-Experiment/OSR-1",
+  "commit": "e6f1a2fd013a66901daf3d79d393702ce183385d",
+  "pin": "tag",
+  "version": "1.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 326064,
+  "check": "diverges",
+  "why": [
+   "screen boot 22.7"
+  ],
+  "native_chord_db": -15.8,
+  "compare": {
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.998,
+   "screen_diff_boot": 22.7,
+   "screen_diff_chord": 2.1
+  },
+  "boot_ms": {
+   "native_first_screen": 200,
+   "emu_first_screen": 100
+  }
+ },
+ "beetleblue": {
+  "id": "beetleblue",
+  "repo": "SikkenWorks/BEETLE-BLUE",
+  "commit": "3a0cf06925556f9053157cc570e6fc0aec1a7524",
+  "pin": "tag",
+  "version": "1.3.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 42015,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "b1": {
+  "id": "b1",
+  "repo": "SikkenWorks/B1-Drawbar-Organ",
+  "commit": "1b1b376bd8680d8bd556c6fb1214e8a19d6c148d",
+  "pin": "tag",
+  "version": "5.6",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 10531,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "clatter": {
+  "id": "clatter",
+  "repo": "clickysteve/clatter-pocket",
+  "commit": "90cce204a99db97af85c21e0c5998df5c1bb7df0",
+  "pin": "tag",
+  "version": "1.0.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 499,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "choppah": {
+  "id": "choppah",
+  "repo": "profikid/fm1-break-choppah",
+  "commit": "bc3bea4388f3f38208830a7dc605a680514d04ab",
+  "pin": "provenance",
+  "version": "1.3.1",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 456464,
+  "check": "diverges",
+  "why": [
+   "level -12.0 dB",
+   "spectrum r=-0.22",
+   "screen chord 12.7"
+  ],
+  "native_chord_db": -32.2,
+  "compare": {
+   "level_diff_db": -12.0,
+   "spectrum_corr": -0.22,
+   "screen_diff_boot": 7.9,
+   "screen_diff_chord": 12.7
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "veffbox": {
+  "id": "veffbox",
+  "repo": "galfaroth/veffbox",
+  "commit": "94b5dc6a310c1444aac00efa613f8de3a8b98d63",
+  "pin": "provenance",
+  "version": "0.11.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "b3organ": {
+  "id": "b3organ",
+  "repo": "R-Jeb/setBfree-fm1",
+  "commit": "5ce0fad673a7fc1403b02446862d3d4595bb6a3a",
+  "pin": "tag",
+  "version": "0.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 8970,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 138240,
+  "check": "diverges",
+  "why": [
+   "level +6.0 dB"
+  ],
+  "native_chord_db": -23.4,
+  "compare": {
+   "level_diff_db": 6.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "elixir": {
+  "id": "elixir",
+  "repo": "dmajka/elixir",
+  "commit": "c072bf2a3e75f73c7e4879776e463a8704251d6a",
+  "pin": "provenance",
+  "version": "1.3.1",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 46481,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1289728,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "dx747": {
+  "id": "dx747",
+  "repo": "esbenvb/fm1-dx747",
+  "commit": "bbae5d4a2222830ac5c9265a41f83dbde6982694",
+  "pin": "provenance",
+  "version": "0.1",
+  "lic": "GPL-3.0 + SDK exception",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "atlatl": {
+  "id": "atlatl",
+  "repo": "LIkst4/skiff-atlatl",
+  "commit": "87f57e9969055c66a56dd0f9536e797ac97962bd",
+  "pin": "tag",
+  "version": "1.1",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 60156,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1419696,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -32.8,
+  "compare": {
+   "level_diff_db": -0.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "coqui": {
+  "id": "coqui",
+  "repo": "saulofilho/coqui-fm1",
+  "commit": "bca6c281099b8d8392b7ba822409e66781ccc170",
+  "pin": "provenance",
+  "version": "1.1.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 29358,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "artihive": {
+  "id": "artihive",
+  "repo": "KHAVld/ARTIHIVE",
+  "commit": "2d075e19153c3f56513b018c07b82e885b660083",
+  "pin": "tag",
+  "version": "2.0.4",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 13533,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 272304,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 6.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "cultbox": {
+  "id": "cultbox",
+  "repo": "beatcult/CULTBOX",
+  "commit": "c35e403955b166b62b3ea09831087ec8595c5795",
+  "pin": "tag",
+  "version": "1.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 15086,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 325408,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -18.7,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "piterfly": {
+  "id": "piterfly",
+  "repo": "piotrwozniak/piterfly",
+  "commit": "77905b4c4f9d209eaac405ceab2dc0cf8def4034",
+  "pin": "tag",
+  "version": "1.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 32529,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sardine": {
+  "id": "sardine",
+  "repo": "delirioux/sardine",
+  "commit": "fd7e9151985efea758e8f20e606fdc7a95838952",
+  "pin": "tag",
+  "version": "1.0.6",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 51927,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1044640,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.71",
+   "screen boot 22.8",
+   "screen chord 23.6"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": -2.0,
+   "spectrum_corr": 0.71,
+   "screen_diff_boot": 22.8,
+   "screen_diff_chord": 23.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "atek303": {
+  "id": "atek303",
+  "repo": "animatek/FM1-Animatek",
+  "commit": "2e7ef220a8902468454abfed6c9d9dbcec308e38",
+  "pin": "tag",
+  "version": "1.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "audiorouter": {
+  "id": "audiorouter",
+  "repo": "maxravedj/fm1-audio-router",
+  "commit": "d029a18dd1da660f2200b21a46711e6fe6f4da85",
+  "pin": "tag",
+  "version": "0.4.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "drumlab": {
+  "id": "drumlab",
+  "repo": "pbarilla/drumlab",
+  "commit": "ea1c27d5a47d25d5330aee8bef7360abf8abfeb9",
+  "pin": "provenance",
+  "version": "0.1.4-insertbluetoothpunhere",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 30843,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "drumlab/tree/firmware/src/fx.c:22:56: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and secti"
+ },
+ "mvance": {
+  "id": "mvance",
+  "repo": "bk40-home/M-vance",
+  "commit": "a460d52f39e8529e769902e2e0328ea0be801116",
+  "pin": "tag",
+  "version": "2.5.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 20515,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 347440,
+  "check": "diverges",
+  "why": [
+   "level +5.2 dB"
+  ],
+  "native_chord_db": -19.2,
+  "compare": {
+   "level_diff_db": 5.2,
+   "spectrum_corr": 0.993,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 2.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "patchwerk": {
+  "id": "patchwerk",
+  "repo": "MattKuebrich/patchwerk",
+  "commit": "6f91629dfae5cf40675f7355cfe46b0d42b8b224",
+  "pin": "tag",
+  "version": "1.0.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1112168,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -16.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "remotefm1": {
+  "id": "remotefm1",
+  "repo": "Quixotic7/RemoteFM1",
+  "commit": "747f57007e12825a3605a0c54406e350e76bb2cb",
+  "pin": "provenance",
+  "version": "0.3.6",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 2197121,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "dx7 rom: NO CARTRIDGES (rom1a.syx not found; DX7_ROM_DIR or --dir): the INIT VOICE only -> remotefm1/firmware/build/gen/dx7_rom.h"
+ },
+ "rhythmer": {
+  "id": "rhythmer",
+  "repo": "JazzyRhythmer/Rhythmer",
+  "commit": "3d130aa1acb2848032fe0ef688723d9ebd270fcf",
+  "pin": "tag",
+  "version": "0.1.1-beta3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 59122,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mikufm": {
+  "id": "mikufm",
+  "repo": "MichaelAPerry/MIKU-FM1",
+  "commit": "2b587869720f45577d1d09f4a4c73b78132c0ba2",
+  "pin": "provenance",
+  "version": "0.8",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 32379,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "echofield": {
+  "id": "echofield",
+  "repo": "Philip-Bos/echofield-fm1",
+  "commit": "4734e972d4b4b7126c30f509f7af3368590e28ac",
+  "pin": "provenance",
+  "version": "0.2.11",
+  "lic": "MIT",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 683240,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.889"
+  ],
+  "native_chord_db": -19.4,
+  "compare": {
+   "level_diff_db": -0.8,
+   "spectrum_corr": 0.889,
+   "screen_diff_boot": 0.5,
+   "screen_diff_chord": 0.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "ombak": {
+  "id": "ombak",
+  "repo": "MadMooneyham/Ombak",
+  "commit": "e054ac3c0a4f4287ef0293639209e3e93a89aeb9",
+  "pin": "tag",
+  "version": "1.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 11166,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": "FileNotFoundError: [Errno 2] No such file or directory: 'ombak/assets/logo.jpg'"
+ },
+ "xenolith": {
+  "id": "xenolith",
+  "repo": "CaptainChronosis/XENOLITH",
+  "commit": "d74efeeebfb6f873da3d5e2b579bfabd0455af02",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "hungrytravis": {
+  "id": "hungrytravis",
+  "repo": "adamcharleswilsonmusic-code/Hungry-Travis",
+  "commit": "d32278e66409b63c6cd9d2b50cb7b1d0042073a8",
+  "pin": "tag",
+  "version": "2026.11.10",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 6307,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fmfam": {
+  "id": "fmfam",
+  "repo": "davidamomusic/fm-fam",
+  "commit": "5737d79b70bdeb1a850d1fae92bfeae89edcd091",
+  "pin": "tag",
+  "version": "0.3.1",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 229312,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord"
+  ],
+  "native_chord_db": -17.2,
+  "compare": {
+   "level_diff_db": 222.8,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 40.2,
+   "screen_diff_chord": 41.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "jamtrack": {
+  "id": "jamtrack",
+  "repo": "Philip-Bos/jamtrack-fm1",
+  "commit": "53e98ae12cbabd9b8d9a2ed804f72167ad5f4911",
+  "pin": "provenance",
+  "version": "0.2.3",
+  "lic": "MIT",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 817056,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -27.3,
+  "compare": {
+   "level_diff_db": 1.4,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "quartet": {
+  "id": "quartet",
+  "repo": "MammothCheese/quartet",
+  "commit": "8074d650886b77d3a9ee5bc4544bf7ab4059d38f",
+  "pin": "tag",
+  "version": "1.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 13538,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 272080,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -40.4,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "keystepone": {
+  "id": "keystepone",
+  "repo": "dzwerg/keySTEP-ONE",
+  "commit": "9438d510ea618cd543aadfeba5a7f3cb5ed97702",
+  "pin": "tag",
+  "version": "0.5.42",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "keystepone/app/ui.c:541:17: error: call to undeclared function 'plat_usb_host_diag'; ISO C99 and later do not support implicit function declarations [-Wimplicit"
+ },
+ "rambeaver": {
+  "id": "rambeaver",
+  "repo": "adamcharleswilsonmusic-code/RAMBEAVER",
+  "commit": "7968694463475be1495727f8acfafa4776518bbd",
+  "pin": "tag",
+  "version": "745-hub",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 11841,
+  "recipe": "web",
+  "build": "clean",
+  "size": 741416,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -21.4,
+  "compare": {
+   "level_diff_db": -1.5,
+   "spectrum_corr": 0.978,
+   "screen_diff_boot": 0.2,
+   "screen_diff_chord": 0.2
+  },
+  "boot_ms": {
+   "native_first_screen": 300,
+   "emu_first_screen": 200
+  }
+ },
+ "mpyre": {
+  "id": "mpyre",
+  "repo": "HistoryOfSky/m-pyre",
+  "commit": "f50926b251c49a67df882cc8d33d1044005cf9d8",
+  "pin": "tag",
+  "version": "1.0.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 33946,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "assid": {
+  "id": "assid",
+  "repo": "altessproduction/ASS-ID_FM1",
+  "commit": "fb2a0aa12e9da8e8565e2824dffc4fc9101ee73c",
+  "pin": "provenance",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "sloopdub": {
+  "id": "sloopdub",
+  "repo": "altessproduction/sloop-dub-fm1",
+  "commit": "41df6ff1e2d9703101e9756af0999421876120fa",
+  "pin": "tag",
+  "version": "1.6",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 32851,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "fm1amy": {
+  "id": "fm1amy",
+  "repo": "dpwe/fm1-amy",
+  "commit": "af93dcaeed0aee0c391371c7a1b1fba3d4e1cf14",
+  "pin": "tag",
+  "version": "0.1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 22106,
+  "recipe": "web",
+  "build": "clean",
+  "size": 753056,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": -214.1,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 120.5,
+   "screen_diff_chord": 120.5
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "satie1": {
+  "id": "satie1",
+  "repo": "OCKM-STUDIO/SATIE-1",
+  "commit": "757c8b2aff939b87cc4765b883782d37859b2262",
+  "pin": "provenance",
+  "version": "0.1.3-beta",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 30482,
+  "recipe": "web",
+  "build": "clean",
+  "size": 855552,
+  "check": "diverges",
+  "why": [
+   "level +12.0 dB",
+   "spectrum r=0.897",
+   "screen boot 31.5",
+   "screen chord 32.6"
+  ],
+  "native_chord_db": -18.2,
+  "compare": {
+   "level_diff_db": 12.0,
+   "spectrum_corr": 0.897,
+   "screen_diff_boot": 31.5,
+   "screen_diff_chord": 32.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "guru600": {
+  "id": "guru600",
+  "repo": "MarcGoudy/guru-600",
+  "commit": "56639d6a36cfbac0b3119c5ada6cd25728322b7c",
+  "pin": "tag",
+  "version": "1.0.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 46555,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "playa": {
+  "id": "playa",
+  "repo": "juan-ms2lab/playa",
+  "commit": "f2e190d93924d7ae01127d8f271618168fbb6b0f",
+  "pin": "tag",
+  "version": "0.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 207917,
+  "recipe": "web",
+  "build": "clean",
+  "size": 212192,
+  "check": "broken",
+  "why": [
+   "native silent in the chord",
+   "native screen dark"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": -214.4,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 128.5,
+   "screen_diff_chord": 128.7
+  },
+  "boot_ms": {
+   "native_first_screen": null,
+   "emu_first_screen": 250
+  }
+ },
+ "trumpagotchi": {
+  "id": "trumpagotchi",
+  "repo": "adamcharleswilsonmusic-code/Trumpagotchi",
+  "commit": "8d1dc5a7293656b8c49ea051367481f11206d378",
+  "pin": "tag",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 17373,
+  "recipe": "web",
+  "build": "clean",
+  "size": 721608,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -19.2,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 2.6,
+   "screen_diff_chord": 0.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 350
+  }
+ },
+ "krisjangle": {
+  "id": "krisjangle",
+  "repo": "doohinkus/kris-jangle",
+  "commit": "13af2682fdc4c6b90540b0fd544dc7b72d6ec67c",
+  "pin": "provenance",
+  "version": "0.12",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 229272,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.555",
+   "screen boot 82.8",
+   "screen chord 83.6"
+  ],
+  "native_chord_db": -17.2,
+  "compare": {
+   "level_diff_db": 1.1,
+   "spectrum_corr": 0.555,
+   "screen_diff_boot": 82.8,
+   "screen_diff_chord": 83.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 250
+  }
+ },
+ "cord": {
+  "id": "cord",
+  "repo": "chasedeanda/cord-fm1",
+  "commit": "812c8eece95ac2533ff6691f72233556aec119de",
+  "pin": "tag",
+  "version": "1.0.3",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 87239,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1105952,
+  "check": "diverges",
+  "why": [
+   "level +5.2 dB",
+   "spectrum r=0.424",
+   "screen chord 17.2"
+  ],
+  "native_chord_db": -10.8,
+  "compare": {
+   "level_diff_db": 5.2,
+   "spectrum_corr": 0.424,
+   "screen_diff_boot": 6.3,
+   "screen_diff_chord": 17.2
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "pocketband": {
+  "id": "pocketband",
+  "repo": "elpabl0/pocketband",
+  "commit": "7c33e36a8a06384bfcf5ef0e60fcef7ca81ffe64",
+  "pin": "tag",
+  "version": "0.4",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 25332,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "mightyarp": {
+  "id": "mightyarp",
+  "repo": "NickCulbertson/FM1-Mighty-Arp",
+  "commit": "959a5349ceadb0f03ca0ea9d3376f32a43ad35b9",
+  "pin": "provenance",
+  "version": "1.4",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 451464,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.658"
+  ],
+  "native_chord_db": -28.4,
+  "compare": {
+   "level_diff_db": -0.6,
+   "spectrum_corr": 0.658,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 1.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "dubbox": {
+  "id": "dubbox",
+  "repo": "altessproduction/DUB-BOX-FM1",
+  "commit": "672bad05a2f65174946c585ec60675cdb30f91b9",
+  "pin": "tag",
+  "version": "1.0.8",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": "build.py: error: the following arguments are required: app"
+ },
+ "deepfield": {
+  "id": "deepfield",
+  "repo": "WisestWizard/deepfield",
+  "commit": "40105af64f29aaca8eb781be6f3e656e6eb05ffb",
+  "pin": "provenance",
+  "version": "1.8",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 559640,
+  "check": "diverges",
+  "why": [
+   "screen boot 24.6"
+  ],
+  "native_chord_db": -18.8,
+  "compare": {
+   "level_diff_db": 1.6,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 24.6,
+   "screen_diff_chord": 1.4
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "splitmilk": {
+  "id": "splitmilk",
+  "repo": "MammothCheese/SPLITMILK",
+  "commit": "3af04684f3b692bec83e1db1fd2ebe890b6bc944",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 15050,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 305464,
+  "check": "diverges",
+  "why": [
+   "level +6.3 dB"
+  ],
+  "native_chord_db": -38.9,
+  "compare": {
+   "level_diff_db": 6.3,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 200
+  }
+ },
+ "argo": {
+  "id": "argo",
+  "repo": "echoe/argo_fm1",
+  "commit": "603db219059d7c715ce2f9137795ab13ee729a0f",
+  "pin": "provenance",
+  "version": "1.8.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 49181,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "kriechstrom": {
+  "id": "kriechstrom",
+  "repo": "Xforsa/kriechstrom",
+  "commit": "369baf6ab458f0378f53482012b4525f2bb2a45a",
+  "pin": "tag",
+  "version": "0.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 45369,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "paperlagoon": {
+  "id": "paperlagoon",
+  "repo": "hacha/paperlagoon",
+  "commit": "67d4ef339590eb33bf8bb34ec6ab8a9f035da0b5",
+  "pin": "provenance",
+  "version": "1.0.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 369352,
+  "check": "diverges",
+  "why": [
+   "screen boot 22.2"
+  ],
+  "native_chord_db": -37.3,
+  "compare": {
+   "level_diff_db": 2.4,
+   "spectrum_corr": 0.981,
+   "screen_diff_boot": 22.2,
+   "screen_diff_chord": 0.8
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 600
+  }
+ },
+ "tack": {
+  "id": "tack",
+  "repo": "oikoaudio/tack",
+  "commit": "f967403ccc4982b13152454b4c22408938728104",
+  "pin": "tag",
+  "version": "0.14.1",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 8428,
+  "recipe": "web",
+  "build": "clean",
+  "size": 683776,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.6
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 50
+  }
+ },
+ "manifold": {
+  "id": "manifold",
+  "repo": "stets43/Manifold",
+  "commit": "8c39871d281bb063543b15a84f2fc80db762da12",
+  "pin": "tag",
+  "version": "1.0.4",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "loafbreaker": {
+  "id": "loafbreaker",
+  "repo": "FLEXOR-R/loaf-breaker",
+  "commit": "574170c0e25fcc518b3e8f593a8a075dd7dc32c6",
+  "pin": "tag",
+  "version": "0.9.31",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 703144,
+  "check": "broken",
+  "why": [
+   "native silent in the chord"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "level_diff_db": 0.0,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 100,
+   "emu_first_screen": 50
+  }
+ },
+ "fm1yoga": {
+  "id": "fm1yoga",
+  "repo": "michamilz/fm1-yoga",
+  "commit": "0186983bf72cba23ad5d96e0bc19d741cd98fd61",
+  "pin": "provenance",
+  "version": "1.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 404800,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -25.3,
+  "compare": {
+   "level_diff_db": 1.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "hadal1": {
+  "id": "hadal1",
+  "repo": "sparky480v/hadal-1",
+  "commit": "de8a52d7e94f5f993dc757b079e475630dad4904",
+  "pin": "provenance",
+  "version": "1.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 0,
+  "recipe": "web",
+  "build": "clean",
+  "size": 519024,
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.889"
+  ],
+  "native_chord_db": -38.8,
+  "compare": {
+   "level_diff_db": -0.4,
+   "spectrum_corr": 0.889,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 350,
+   "emu_first_screen": 50
+  }
+ },
+ "agtdeck": {
+  "id": "agtdeck",
+  "repo": "kevinelliott/fm-1-agent-deck",
+  "commit": "434e5f28f7478b30724d31696cc826427c6b1c60",
+  "pin": "provenance",
+  "version": "0.6.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 9592,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "clavioline": {
+  "id": "clavioline",
+  "repo": "MammothCheese/clavioline",
+  "commit": "470f7022a1d0f4502a38a3b740f8e7d724f8fb05",
+  "pin": "tag",
+  "version": "1.3",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 18320,
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 500200,
+  "check": "diverges",
+  "why": [
+   "level +6.1 dB"
+  ],
+  "native_chord_db": -28.2,
+  "compare": {
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 0.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "rhytmsec1": {
+  "id": "rhytmsec1",
+  "repo": "hamperj/rhytm-sec-1",
+  "commit": "cfc4aefcc62e413cf860d1c89572bb4de4deb383",
+  "pin": "tag",
+  "version": "1.4.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 18901,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "rakt": {
+  "id": "rakt",
+  "repo": "chasedeanda/rakt-fm1",
+  "commit": "eabe2e8a014db314ebb6acfcccf36986d31e2632",
+  "pin": "tag",
+  "version": "0.1.8",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": true,
+  "loc": 95863,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1250656,
+  "check": "diverges",
+  "why": [
+   "level +4.6 dB",
+   "spectrum r=-0.339"
+  ],
+  "native_chord_db": -22.3,
+  "compare": {
+   "level_diff_db": 4.6,
+   "spectrum_corr": -0.339,
+   "screen_diff_boot": 12.0,
+   "screen_diff_chord": 11.0
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
+ },
+ "lrry": {
+  "id": "lrry",
+  "repo": "oscillr/LRRY",
+  "commit": "f83cc01656d8fdc420a8dd571f8f97c1078283c3",
+  "pin": "tag",
+  "version": "0.1.0-beta",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 61818,
+  "recipe": "web",
+  "build": "failed",
+  "stage": "record",
+  "cause": ""
+ },
+ "manta": {
+  "id": "manta",
+  "repo": "delirioux/manta",
+  "commit": "d4f6b81e18ccc83834832c1f4b2852e67d096fdd",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "x0x-web",
+  "dual_core": true,
+  "loc": 44908,
+  "recipe": "web",
+  "build": "clean",
+  "size": 1258912,
+  "check": "diverges",
+  "why": [
+   "level -4.3 dB",
+   "spectrum r=0.589",
+   "screen boot 20.6",
+   "screen chord 22.3"
+  ],
+  "native_chord_db": -23.9,
+  "compare": {
+   "level_diff_db": -4.3,
+   "spectrum_corr": 0.589,
+   "screen_diff_boot": 20.6,
+   "screen_diff_chord": 22.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "adrift": {
+  "id": "adrift",
+  "repo": "romainguy/adrift",
+  "commit": "f216fee40a78b28087fce8e417b0355fbcefcbb2",
+  "pin": "provenance",
+  "version": "0.1.0",
+  "lic": "MPL-2.0",
+  "lineage": "other",
+  "dual_core": false,
+  "loc": 4909,
+  "recipe": null,
+  "build": "failed",
+  "stage": "recipe",
+  "cause": ""
+ },
+ "aislingfx1": {
+  "id": "aislingfx1",
+  "repo": "stephencummins/fx1-aisling",
+  "commit": "f5c7a7d28b0ecaa9c854a3a21911041b35609416",
+  "pin": "tag",
+  "version": "1.0",
+  "lic": "GPL-3.0",
+  "lineage": "felucca",
+  "dual_core": false,
+  "loc": 18874,
+  "recipe": "web",
+  "build": "clean",
+  "size": 665208,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord"
+  ],
+  "native_chord_db": -10.6,
+  "compare": {
+   "level_diff_db": 229.4,
+   "spectrum_corr": NaN,
+   "screen_diff_boot": 52.7,
+   "screen_diff_chord": 19.9
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 100
+  }
+ },
+ "drumtonic": {
+  "id": "drumtonic",
+  "repo": "fc79/drumtonic",
+  "commit": "539aaf204ab45272d6e11d1574a2b6949a5d4be3",
+  "pin": "tag",
+  "version": "0.2.2",
+  "lic": "GPL-3.0",
+  "lineage": "other",
+  "dual_core": true,
+  "loc": 26081,
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "drumtonic/tree/firmware/src/app_fm1.c:662:9: error: call to undeclared function 'platform_poll'; ISO C99 and later do not support implicit function declarations"
+ }
+}
