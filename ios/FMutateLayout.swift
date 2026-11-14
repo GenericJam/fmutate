@@ -320,23 +320,48 @@ struct FMGrid: Equatable {
              h: CGFloat(c.h) * cellH + CGFloat(c.h - 1) * gap)
     }
 
-    // 28 pt side gutters: on Android they keep the back gesture clear; iOS has no side back gesture in a
-    // full-screen app, but they stay so a layout fits the same way on both (docs/decisions/2026-11-13-ios-port.md §4).
-    static let GUTTER: CGFloat = 28
+    // Side gutters: Android keeps 28 dp clear for its back gesture. iOS has no side back gesture in a full-screen
+    // app, so its gutters are 12 pt, or the safe area where that is wider (the sensor housing of a notched iPhone
+    // in landscape); the top and bottom insets also widen to the safe area (the home indicator). The iPhone SE
+    // (667 × 375 pt) needs this: with 28 pt gutters the classic layout's 14 columns would be 36 pt wide
+    // (docs/decisions/2026-11-13-ios-port.md §4).
+    static let GUTTER: CGFloat = 12
     static let INSET: CGFloat = 12
     static let MIN_CELL: CGFloat = 48
     static let GAP: CGFloat = 8
+    /// The gap a squeezed layout may drop to so its cells stay >= FM_SQUEEZE_MIN (fmFit rule 2).
+    static let SQUEEZE_GAP: CGFloat = 4
 
-    /// FMutate.Style.grid_for/2 on the area left after the side gutters and the top/bottom inset.
-    static func forScreen(_ wDp: CGFloat, _ hDp: CGFloat) -> FMGrid {
-        let uw = wDp - 2 * GUTTER
-        let uh = hDp - 2 * INSET
+    /// FMutate.Style.grid_for/2 on the area left after the margins.
+    static func forScreen(_ wDp: CGFloat, _ hDp: CGFloat, _ m: FMMargins) -> FMGrid {
+        let uw = wDp - 2 * m.side
+        let uh = hDp - m.top - m.bottom
         let cols = max(1, Int(((uw + GAP) / (MIN_CELL + GAP)).rounded(.down)))
         let rows = max(1, Int(((uh + GAP) / (MIN_CELL + GAP)).rounded(.down)))
         return FMGrid(cols: cols, rows: rows,
                       cellW: (uw - CGFloat(cols - 1) * GAP) / CGFloat(cols),
                       cellH: (uh - CGFloat(rows - 1) * GAP) / CGFloat(rows),
-                      gap: GAP, left: GUTTER, top: INSET)
+                      gap: GAP, left: m.side, top: m.top)
+    }
+
+    /// A layout's own cols × rows filling the area left after the margins, with this gap.
+    static func sized(_ cols: Int, _ rows: Int, _ wDp: CGFloat, _ hDp: CGFloat, _ m: FMMargins, gap: CGFloat = GAP) -> FMGrid {
+        let uw = wDp - 2 * m.side
+        let uh = hDp - m.top - m.bottom
+        return FMGrid(cols: cols, rows: rows,
+                      cellW: (uw - CGFloat(cols - 1) * gap) / CGFloat(cols),
+                      cellH: (uh - CGFloat(rows - 1) * gap) / CGFloat(rows),
+                      gap: gap, left: m.side, top: m.top)
+    }
+}
+
+/// The room kept clear around the grid, in points: both side gutters, the top and the bottom inset.
+struct FMMargins: Equatable {
+    var side: CGFloat, top: CGFloat, bottom: CGFloat
+
+    /// GUTTER and INSET, widened to the view's safe area (left, top, right, bottom).
+    static func safe(left: CGFloat, top: CGFloat, right: CGFloat, bottom: CGFloat) -> FMMargins {
+        FMMargins(side: max(FMGrid.GUTTER, left, right), top: max(FMGrid.INSET, top), bottom: max(FMGrid.INSET, bottom))
     }
 }
 
@@ -397,7 +422,8 @@ func fmPlace(_ layout: FMLayout, _ page: FMPage, _ grid: FMGrid) -> FMPlacement 
 /// How a layout goes onto this screen (HANDOFF §5; reflow is an open question there, this is the tech decision):
 ///  1. the device grid equals the authoring grid: as authored;
 ///  2. otherwise keep the authoring grid and resize its cells to the screen, if every cell stays >= SQUEEZE_MIN dp
-///     (a 14-column layout on an 800 dp phone gets ~46 dp cells: still playable, nothing moves);
+///     (a 14-column layout on an 800 dp phone gets ~46 dp cells: still playable, nothing moves), narrowing the
+///     gap to SQUEEZE_GAP if that is what it takes (the classic layout on the iPhone SE: 42 pt cells);
 ///  3. otherwise move the cells onto the device grid (place) and report whether it still fits.
 struct FMFitted: Equatable {
     let grid: FMGrid
@@ -406,16 +432,14 @@ struct FMFitted: Equatable {
 
 let FM_SQUEEZE_MIN: CGFloat = 40
 
-func fmFit(_ layout: FMLayout, _ page: FMPage, _ wDp: CGFloat, _ hDp: CGFloat) -> FMFitted {
-    let device = FMGrid.forScreen(wDp, hDp)
+func fmFit(_ layout: FMLayout, _ page: FMPage, _ wDp: CGFloat, _ hDp: CGFloat, _ m: FMMargins) -> FMFitted {
+    let device = FMGrid.forScreen(wDp, hDp, m)
     if device.cols != layout.gridCols || device.rows != layout.gridRows {
-        let uw = wDp - 2 * FMGrid.GUTTER
-        let uh = hDp - 2 * FMGrid.INSET
-        let cw = (uw - CGFloat(layout.gridCols - 1) * FMGrid.GAP) / CGFloat(layout.gridCols)
-        let ch = (uh - CGFloat(layout.gridRows - 1) * FMGrid.GAP) / CGFloat(layout.gridRows)
-        if cw >= FM_SQUEEZE_MIN && ch >= FM_SQUEEZE_MIN {
-            let squeezed = FMGrid(cols: layout.gridCols, rows: layout.gridRows, cellW: cw, cellH: ch, gap: FMGrid.GAP, left: FMGrid.GUTTER, top: FMGrid.INSET)
-            return FMFitted(grid: squeezed, placement: fmPlace(layout, page, squeezed))
+        for gap in [FMGrid.GAP, FMGrid.SQUEEZE_GAP] {
+            let squeezed = FMGrid.sized(layout.gridCols, layout.gridRows, wDp, hDp, m, gap: gap)
+            if squeezed.cellW >= FM_SQUEEZE_MIN && squeezed.cellH >= FM_SQUEEZE_MIN {
+                return FMFitted(grid: squeezed, placement: fmPlace(layout, page, squeezed))
+            }
         }
     }
     return FMFitted(grid: device, placement: fmPlace(layout, page, device))

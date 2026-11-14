@@ -41,17 +41,17 @@ private enum FME {
 private let SLOP_DP: CGFloat = 8
 private let HANDLE_DP: CGFloat = 22
 let FM_EDGE_HOLD_MS: Int64 = 500
+/// The side edges a dragged control is held at to move it to another page (Android's gutter width).
+let FM_EDGE_DP: CGFloat = 28
 
 /// Grid maths for edit mode (EditGrid; EditGridTest.kt pins it). Pure.
 enum FMEditGrid {
-    /// Edit mode always shows the layout's own grid, its cells sized to fill this screen.
-    static func authoring(_ layout: FMLayout, _ wDp: CGFloat, _ hDp: CGFloat) -> FMGrid {
-        let uw = wDp - 2 * FMGrid.GUTTER
-        let uh = hDp - 2 * FMGrid.INSET
-        let cw = (uw - CGFloat(layout.gridCols - 1) * FMGrid.GAP) / CGFloat(layout.gridCols)
-        let ch = (uh - CGFloat(layout.gridRows - 1) * FMGrid.GAP) / CGFloat(layout.gridRows)
-        return FMGrid(cols: layout.gridCols, rows: layout.gridRows, cellW: cw, cellH: ch, gap: FMGrid.GAP,
-                      left: FMGrid.GUTTER, top: FMGrid.INSET)
+    /// Edit mode always shows the layout's own grid, its cells sized to fill this screen, with the gap fmFit's
+    /// squeeze would use (so a squeezed layout doesn't shift when edit mode opens).
+    static func authoring(_ layout: FMLayout, _ wDp: CGFloat, _ hDp: CGFloat, _ m: FMMargins) -> FMGrid {
+        let g = FMGrid.sized(layout.gridCols, layout.gridRows, wDp, hDp, m)
+        if g.cellW >= FM_SQUEEZE_MIN && g.cellH >= FM_SQUEEZE_MIN { return g }
+        return FMGrid.sized(layout.gridCols, layout.gridRows, wDp, hDp, m, gap: FMGrid.SQUEEZE_GAP)
     }
 
     /// The cell under a point, or nil outside the grid (gaps count as the cell before them).
@@ -103,10 +103,10 @@ enum FMEditGrid {
 }
 
 /// How a layout goes onto the screen in edit mode: its own grid, positions as authored.
-func fmEditFit(_ layout: FMLayout, _ page: FMPage, _ wDp: CGFloat, _ hDp: CGFloat) -> FMFitted {
+func fmEditFit(_ layout: FMLayout, _ page: FMPage, _ wDp: CGFloat, _ hDp: CGFloat, _ m: FMMargins) -> FMFitted {
     var cells: [String: FMCell] = [:]
     for c in layout.dock + page.controls { cells[c.id] = c.at }   // Kotlin's associate: the last one wins
-    return FMFitted(grid: FMEditGrid.authoring(layout, wDp, hDp), placement: FMPlacement(cells: cells, fits: true))
+    return FMFitted(grid: FMEditGrid.authoring(layout, wDp, hDp, m), placement: FMPlacement(cells: cells, fits: true))
 }
 
 /// "Add here" (Edit-Add.dc.html), as FMutate.Editor sends it: the tapped cell, its free run, what fits.
@@ -305,7 +305,7 @@ final class FMEditMode {
         d.ok = FMEditGrid.free(t, FMEditGrid.others(ctx.layout, ctx.page, d.control.id, cellOf), ctx.grid.cols, ctx.grid.rows)
         // the side edges: hold there to move the control to the previous / next page (dock controls stay)
         let inDock = ctx.layout.dock.contains { $0.id == d.control.id }
-        let dir = inDock ? 0 : (p.x < FMGrid.GUTTER ? -1 : (p.x > ctx.wDp - FMGrid.GUTTER ? 1 : 0))
+        let dir = inDock ? 0 : (p.x < FM_EDGE_DP ? -1 : (p.x > ctx.wDp - FM_EDGE_DP ? 1 : 0))
         if dir != d.edgeDir {
             d.edgeDir = dir
             d.edgeSince = now

@@ -500,6 +500,7 @@ final class FMInstrumentSurface: UIView {
     private(set) var controls: [FMControl] = []
     private(set) var fitted: FMFitted?
     private var sizeDp = CGSize.zero
+    private var margins = FMMargins.safe(left: 0, top: 0, right: 0, bottom: 0)
     private var restKeyLeds = false
     private var hasVelocityStrip = false
     private var fnButtons: [String] = []
@@ -730,10 +731,17 @@ final class FMInstrumentSurface: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         for v in [controlsView, keysView, screenPixelsView, screenMsgView, overlayView, editUnderView, editOverView] { v.frame = bounds }
-        if bounds.size != sizeDp {
+        let m = FMMargins.safe(left: safeAreaInsets.left, top: safeAreaInsets.top, right: safeAreaInsets.right, bottom: safeAreaInsets.bottom)
+        if bounds.size != sizeDp || m != margins {
             sizeDp = bounds.size
+            margins = m
             structureChanged()
         }
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
     }
 
     override func didMoveToWindow() {
@@ -754,7 +762,7 @@ final class FMInstrumentSurface: UIView {
         controls = layout.dock + p.controls
         if window != nil && !disposed { FMOrientation.hold(layout.landscape, window) }
         let w = sizeDp.width, h = sizeDp.height
-        fitted = w <= 0 ? nil : (editing ? fmEditFit(layout, p, w, h) : fmFit(layout, p, w, h))
+        fitted = w <= 0 ? nil : (editing ? fmEditFit(layout, p, w, h, margins) : fmFit(layout, p, w, h, margins))
         // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
         restKeyLeds = controls.contains { c in !PLAYING_TYPES.contains(c.type) && c.bindings.contains { $0.to.isKey } }
         // velocity strips on this layout (they play MIDI notes, so the firmware's OCT doesn't reach them: they keep
