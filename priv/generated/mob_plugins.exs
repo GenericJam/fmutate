@@ -6,10 +6,19 @@
   composites: [],
   default_font: nil,
   default_style: nil,
-  lifecycle: [],
-  nifs: [:mob_midi_nif, :mob_background_nif, :mob_sensors_nif],
+  lifecycle: [
+    %{
+      on_background: {MobDeliver, :on_background, []},
+      on_resume: {MobDeliver, :on_resume, []},
+      on_start: {MobDeliver, :on_start, []},
+      plugin: :mob_deliver
+    }
+  ],
+  nifs: [:mob_midi_nif, :mob_background_nif, :mob_sensors_nif,
+   :mob_app_update_nif],
   notification_handlers: [],
-  plugins: [:mob_midi, :mob_background, :mob_sensors],
+  plugins: [:mob_midi, :mob_background, :mob_sensors, :mob_deliver,
+   :mob_app_update],
   screens: [
     %{
       default_route: "/midi_keyboard",

@@ -18,6 +18,7 @@ android/*.keystore
 
 # Native build caches / outputs
 android/app/src/main/assets/otp.zip
+android/app/src/release/assets/otp.zip
 android/local.properties
 android/.gradle/
 android/app/build/
@@ -44,4 +45,6 @@ xcuserdata/
 # FMutate native builds (native/build_android.sh, native/build_host.sh) and dev screenshots
 /native/build/
 /tmp_shots/
+# ExUnit @tag :tmp_dir
+/tmp/
 /android/build/

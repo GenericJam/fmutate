@@ -30,10 +30,10 @@ config :fmutate_app, :updates,
   launch_check_after: :timer.hours(12)
 
 # The code (Elixir): signed BEAMs from GitHub Pages (the gh-pages branch's ota/ directory, written by
-# tools/ota_publish.exs). The channel is per versionCode, so delivered code only ever runs on the build it was
+# tools/release.exs ota). The channel is per versionCode, so delivered code only ever runs on the build it was
 # compiled against.
 config :mob_deliver,
-  # the public half of FMutate's OTA signing key (tools/ota_publish.exs; the private key never enters the repo)
+  # the public half of FMutate's OTA signing key (tools/release.exs ota; the private key never enters the repo)
   trusted_publish_key: "ed25519:XnmNVb6k58WZsSlFDsmTvWahbFDyKqosMv0Cyp4QE+I=",
   app: "com.genericjam.fmutate",
   channel: "#{track}-#{version["versionCode"]}",
