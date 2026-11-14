@@ -193,6 +193,19 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Released in mob 0.9.28; FMutate uses `~> 0.9.29` |
 | Classic rearranged, screen filled and sharp-scaled (310 px, ×2 prescale per frame) | 2.5 % / 0 % / 0 % janky, p90 10–11 ms, p99 13–19 ms |
 
+### Measured (iPhone SE 3rd generation, A15, iOS 27.0.1; engines in-process, `docs/decisions/2026-11-13-ios-port.md`)
+
+Over `tools/rpc.exs <udid>` (see its header), native OberVave, the built-in speaker, development build.
+
+| What | Value |
+|---|---|
+| Output (RemoteIO) | 48 kHz, 240-frame callbacks; IO buffer 5.0 ms + output latency 11.5 ms (`latency_ms` 16.5) |
+| Engine ring fill (Auto) | 550–1010 frames at 44.1 kHz (12–23 ms) while playing |
+| Input → sound in the mixer (`Instance.input` key down until `Audio.stats().peak` > 30–1000, polled every ~3 ms, 12 notes) | 59–75 ms, median ~61 ms; the first note after a pause 97–120 ms. Of that, the firmware's own key-to-sound is 12–14 ms (OberVave, Shine On, measured in firmware time on the Mac) and the ring 12–23 ms: ~20–25 ms is unexplained (BEAM → engine wake-ups on the phone are the suspect). Tap to sound ≈ that + 16.5 ms output + the touch panel |
+| 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns |
+| App CPU (Instruments Activity Monitor, % of one core) | idle with OberVave loaded 10.6–11.2 %; playing those chords 24.6–28.0 %; footprint 76–82 MiB |
+| Emulator, interpreted, `EngineNif.bench` | per package in the decision doc: 0.38–0.76x real time at 240 MHz (FMini 1.42x), 0.66–1.40x at 120 |
+
 ### Emulated CPU clock (emulator engine)
 
 | Where | What |
