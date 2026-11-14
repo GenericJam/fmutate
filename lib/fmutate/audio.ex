@@ -42,12 +42,17 @@ defmodule FMutate.Audio do
   @doc """
   How far ahead (44.1 kHz frames) an engine should keep its ring: two of the device's callbacks plus a
   margin, at least 1024. The device takes audio in bursts; a ring shallower than two of them underruns
-  (a Moto G Power 2021 in shared mode did, at 1024).
+  (a Moto G Power 2021 in shared mode did, at 1024). iOS (engines in-process, RemoteIO's steady 5 ms
+  callbacks) takes a 256-frame margin and no 1024 floor: about 700 frames, 16 ms (an iPhone SE played a
+  minute of chords at 704 with no underrun, and input reached the mixer ~9 ms sooner than at 1024); Auto
+  still climbs if one comes.
   """
   def engine_fill do
+    {margin, floor} = if FMutate.Paths.inproc?(), do: {256, 512}, else: {512, 1024}
+
     case stats() do
       %{burst: burst, rate: rate} when burst > 0 and rate > 0 ->
-        (2 * burst * 44_100 / rate + 512) |> round() |> max(1024) |> min(3072)
+        (2 * burst * 44_100 / rate + margin) |> round() |> max(floor) |> min(3072)
 
       _ ->
         1024
