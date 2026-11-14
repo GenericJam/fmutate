@@ -11,9 +11,13 @@ defmodule FMutate.PairScreen do
   `FMutate.Dist`): it connects and shows up in I/O, where Disconnect unpairs it.
 
   Copy code and Copy link (the link to 127.0.0.1, for an app on this phone) put the secret on the clipboard,
-  which other apps can read (on Android 9 any app in the background). The screen takes it off again
-  (clipboard emptied, unless the player copied something else since) once the secret is used, expired, dead
-  or replaced, and when the screen closes.
+  which other apps can read. On Android 9 and older any app in the background can watch the clipboard, so
+  there is no Copy at all (`FMutate.Pairing.copy_safe?/0`): the player types the code in the other app. The
+  screen takes a copied secret off again (clipboard emptied, unless the player copied something else since)
+  once the secret is used, expired, dead or replaced, and when the screen closes.
+
+  A new Wi-Fi address restarts pairing with a new secret (`{:pairing, :restarted}`): a request on the sheet
+  is gone with the old one, so the sheet closes.
 
   Pairing runs only while this screen is open (`FMutate.Pairing.open/1`, closed when the screen goes).
   """
@@ -102,11 +106,9 @@ defmodule FMutate.PairScreen do
   end
 
   defp body(%{info: %{status: :open} = info, qr: qr}) do
-    copy_code = {self(), :copy_code}
-    copy_link = {self(), :copy_link}
     renew = {self(), :renew}
 
-    card([
+    [
       ~MOB"""
       <Column gap={12}>
         <Row>
@@ -131,30 +133,7 @@ defmodule FMutate.PairScreen do
         />
       </Column>
       """,
-      ~MOB"""
-      <Row gap={8}>
-        <Button
-          text="Copy code"
-          on_tap={copy_code}
-          background={0xFF2A2636}
-          text_color={0xFFF3EFF8}
-          text_size={13}
-          corner_radius={10}
-          padding={8}
-          weight={1}
-        />
-        <Button
-          text="Copy link"
-          on_tap={copy_link}
-          background={0xFF2A2636}
-          text_color={0xFFF3EFF8}
-          text_size={13}
-          corner_radius={10}
-          padding={8}
-          weight={1}
-        />
-      </Row>
-      """,
+      copy_buttons(info),
       ~MOB"""
       <Button
         text="New code"
@@ -166,7 +145,9 @@ defmodule FMutate.PairScreen do
         padding={8}
       />
       """
-    ])
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> card()
   end
 
   # expired, used or dead: no QR, only New code
@@ -187,6 +168,39 @@ defmodule FMutate.PairScreen do
   corner_radius={10}
 />)
     ])
+  end
+
+  # not where other apps can watch the clipboard (Android 9): the code is typed instead
+  defp copy_buttons(%{copy_safe: false}), do: nil
+
+  defp copy_buttons(_info) do
+    copy_code = {self(), :copy_code}
+    copy_link = {self(), :copy_link}
+
+    ~MOB"""
+    <Row gap={8}>
+      <Button
+        text="Copy code"
+        on_tap={copy_code}
+        background={0xFF2A2636}
+        text_color={0xFFF3EFF8}
+        text_size={13}
+        corner_radius={10}
+        padding={8}
+        weight={1}
+      />
+      <Button
+        text="Copy link"
+        on_tap={copy_link}
+        background={0xFF2A2636}
+        text_color={0xFFF3EFF8}
+        text_size={13}
+        corner_radius={10}
+        padding={8}
+        weight={1}
+      />
+    </Row>
+    """
   end
 
   defp card(children) do
@@ -220,13 +234,17 @@ defmodule FMutate.PairScreen do
         do: "Apps on this phone, or on another phone on this Wi-Fi (#{info.host}).",
         else: "No Wi-Fi: only apps on this phone can pair."
 
+    same_phone =
+      if info.copy_safe,
+        do: "On this phone, Copy link and paste it there.",
+        else: "On this phone, type the code in the other app."
+
+    steps =
+      "In the other app (Humdinger, Magpie): Pair with FMutate, then scan this code or type it. #{same_phone}"
+
     ~MOB"""
     <Column gap={4}>
-      <Text
-        text="In the other app (Humdinger, Magpie): Pair with FMutate, then scan this code or type it. On this phone, Copy link and paste it there."
-        text_size={12}
-        text_color={0xFFA9A3B8}
-      />
+      <Text text={steps} text_size={12} text_color={0xFFA9A3B8} />
       <Text text={reach} text_size={12} text_color={0xFFA9A3B8} />
       <Text
         text="An app you allow gets full control of FMutate (Erlang distribution: it could run code here). Disconnect it in I/O."
@@ -315,16 +333,15 @@ defmodule FMutate.PairScreen do
     {:noreply, socket |> Mob.Socket.assign(:note, nil) |> refresh()}
   end
 
-  def handle_info({:tap, :copy_code}, %{assigns: %{info: %{code: code}}} = socket),
-    do: {:noreply, socket |> copy(code) |> Mob.Socket.assign(:note, {:ok, "Code copied."})}
+  # (no Copy where it isn't safe: a stale tap copies nothing)
+  def handle_info({:tap, :copy_code}, %{assigns: %{info: %{copy_safe: true} = info}} = socket),
+    do: {:noreply, socket |> copy(info.code) |> Mob.Socket.assign(:note, {:ok, "Code copied."})}
 
   # the link to 127.0.0.1: the app it is pasted in runs on this phone
-  def handle_info({:tap, :copy_link}, %{assigns: %{info: %{local_link: link}}} = socket),
-    do:
-      {:noreply,
-       socket
-       |> copy(link)
-       |> Mob.Socket.assign(:note, {:ok, "Link copied: paste it in the other app."})}
+  def handle_info({:tap, :copy_link}, %{assigns: %{info: %{copy_safe: true} = info}} = socket) do
+    note = {:ok, "Link copied: paste it in the other app."}
+    {:noreply, socket |> copy(info.local_link) |> Mob.Socket.assign(:note, note)}
+  end
 
   def handle_info({:tap, {:decide, decision}}, %{assigns: %{request: {ref, request}}} = socket) do
     _ = Pairing.decide(ref, decision)
@@ -363,6 +380,14 @@ defmodule FMutate.PairScreen do
        )}
 
   def handle_info({:pairing, {:secret, _status}}, socket), do: {:noreply, refresh(socket)}
+
+  # a new address, a new endpoint: the request on the sheet went with the old one
+  def handle_info({:pairing, :restarted}, %{assigns: %{request: {_ref, request}}} = socket) do
+    note = {:warn, "#{request.app_name} stopped asking."}
+    {:noreply, socket |> Mob.Socket.assign(request: nil, note: note) |> refresh()}
+  end
+
+  def handle_info({:pairing, :restarted}, socket), do: {:noreply, refresh(socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

@@ -55,7 +55,8 @@ defmodule FMutate.Pairing do
   Starts the pairing service. Options: `:instance` (default `"a"`), `:dir` (where the certificate lives,
   default `Paths.dist_dir()`), `:addresses` (a 0-arity function returning `:inet.getifaddrs/0`'s result,
   for tests), `:tls_port`, `:node` (FMutate's node name, default `FMutate.Dist.node_name/1`),
-  `:dist_port` (default `FMutate.Dist.port/1`), `:advertise` (mDNS, default true), `:host_opts` (more
+  `:dist_port` (default `FMutate.Dist.port/1`), `:advertise` (mDNS, default true), `:copy_safe` (whether
+  the screen may put the secret on the clipboard, default `copy_safe?/0`), `:host_opts` (more
   `MobPair.Host` options, e.g. `ttl:` in tests), `:name`.
   """
   def start_link(opts \\ []),
@@ -69,14 +70,16 @@ defmodule FMutate.Pairing do
   (`{:certificate, reason}` when FMutate's certificate can't be read). An owner that opens again gets the
   same secret; another owner takes it over. `owner` gets `{:pairing, event}`: `{:request, ref, request}`
   (the Allow sheet; `request` is `MobPair.Host`'s), `{:withdrawn, ref}`, `{:secret, status}` (a failed
-  attempt, used, too many attempts) and `{:paired, pairing}` (without its cookie) after an Allow.
+  attempt, used, too many attempts), `{:paired, pairing}` (without its cookie) after an Allow, and
+  `:restarted` (a new Wi-Fi address: a new endpoint and secret; a request being asked about is gone).
   """
   def open(owner \\ self(), server \\ __MODULE__), do: GenServer.call(server, {:open, owner})
 
   @doc """
   What the screen shows: `%{code, link, local_link, status, attempts_left, expires_in, advertising, host,
-  wifi}` (`host` the address in the link, `local_link` the same link to 127.0.0.1 for an app on this phone;
-  `wifi` false when only apps on this phone can pair), or nil when closed.
+  wifi, copy_safe}` (`host` the address in the link, `local_link` the same link to 127.0.0.1 for an app on
+  this phone; `wifi` false when only apps on this phone can pair; `copy_safe` false where the clipboard
+  isn't private enough to offer Copy, see `copy_safe?/0`), or nil when closed.
   """
   def info(server \\ __MODULE__), do: GenServer.call(server, :info)
 
@@ -149,6 +152,7 @@ defmodule FMutate.Pairing do
        dist_port: Keyword.get(opts, :dist_port, Dist.port(instance)),
        advertise: Keyword.get(opts, :advertise, true),
        host_opts: Keyword.get(opts, :host_opts, []),
+       copy_safe: Keyword.get_lazy(opts, :copy_safe, &copy_safe?/0),
        owner: nil,
        owner_ref: nil,
        host: nil,
@@ -263,14 +267,15 @@ defmodule FMutate.Pairing do
   end
 
   # The Wi-Fi address changed while the screen is open: pair on the new one (a new secret; the screen
-  # redraws the QR code on its next refresh)
+  # redraws the QR code on its next refresh). A request the old endpoint was asking about is gone with it:
+  # the owner hears `:restarted`.
   defp check_host(%{host: nil} = state), do: state
 
   defp check_host(state) do
     if (wifi_address(state.addresses.()) || "127.0.0.1") == state.host_address do
       state
     else
-      restart_host(stop_host(state))
+      state |> stop_host() |> restart_host() |> tell(:restarted)
     end
   end
 
@@ -299,7 +304,11 @@ defmodule FMutate.Pairing do
   defp host_info(state) do
     state.host
     |> MobPair.Host.info()
-    |> Map.merge(%{host: state.host_address, wifi: state.host_address != "127.0.0.1"})
+    |> Map.merge(%{
+      host: state.host_address,
+      wifi: state.host_address != "127.0.0.1",
+      copy_safe: state.copy_safe
+    })
   end
 
   defp own(state, owner), do: %{state | owner: owner, owner_ref: Process.monitor(owner)}
@@ -426,6 +435,21 @@ defmodule FMutate.Pairing do
       model
     else
       _ -> hostname()
+    end
+  end
+
+  @doc """
+  Whether putting the secret on the clipboard is safe enough to offer Copy code / Copy link: false on
+  Android 9 and older (API < 29), where any app in the background can listen for clipboard changes and
+  read the secret the moment it is copied; true on Android 10+, and off Android (no `getprop`).
+  """
+  def copy_safe? do
+    with true <- File.exists?(@getprop),
+         {sdk, 0} <- System.cmd(@getprop, ["ro.build.version.sdk"]),
+         {level, ""} <- sdk |> String.trim() |> Integer.parse() do
+      level >= 29
+    else
+      _ -> true
     end
   end
 

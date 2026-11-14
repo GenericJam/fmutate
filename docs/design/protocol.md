@@ -136,12 +136,16 @@ byte for byte; the link adds `app=fmutate`.
   too-many-attempts states offer New code. Pairing runs only while it is open (`FMutate.Pairing` starts a
   `MobPair.Host` on 127.0.0.1 and the Wi-Fi address, never mobile data, port chosen by the system; mDNS
   `_fmutate._tcp` where the BEAM can bind 5353, see "Not yet"). When the Wi-Fi address changes (checked every
-  30 s) the Host starts again on the new one, with a new secret.
+  30 s) the Host starts again on the new one, with a new secret; a request on the Allow sheet is gone with
+  the old Host, so the sheet closes ("… stopped asking").
 - **Secret.** One per screen: code (40 bits) and token (128 bits), single use, 5 minutes, 5 failed attempts
   kill both. A typed code is proven with SRP-6a bound to FMutate's certificate and the TLS session. Copy code
-  and Copy link put the secret on the clipboard, which other apps can read (on Android 9, any background
-  app): the screen empties the clipboard, if it still holds what it copied, once the secret is used, expired,
-  dead or replaced, and when the screen closes.
+  and Copy link put the secret on the clipboard, which other apps can read. On Android 9 (API 28, below 29)
+  any background app can listen for clipboard changes and use the secret before the player reaches the real
+  app, so there the screen has no Copy buttons and tells the player to type the code in the other app
+  (`FMutate.Pairing.copy_safe?/0`, from `ro.build.version.sdk`). On Android 10+ (where only the keyboard and
+  clipboard tools can read it) the screen empties the clipboard, if it still holds what it copied, once the
+  secret is used, expired, dead or replaced, and when the screen closes.
 - **Allow.** A sibling that proves the secret gets a sheet. The name is the requester's claim, wherever it
   connects from: "An app on this phone says it is Humdinger · this phone · on moto e" (loopback) or "An app on
   another phone says it is Humdinger · Wi-Fi 192.168.1.40 · on Pixel 7"; "Replaces …" when an app is already
@@ -162,7 +166,10 @@ byte for byte; the link adds `app=fmutate`.
   fingerprints, names): `pairings.json`; both 0600 in app-private storage, like `sibling_cookie`, written
   through a synced temporary file. Reinstalling FMutate makes a new certificate: paired apps must pair again.
   So does a certificate file that doesn't decode (replaced by a new one); one that can't be read leaves
-  FMutate running with pairing off (the Pair screen says the certificate can't be read).
+  FMutate running with pairing off (the Pair screen says the certificate can't be read). The whole `files/dist`
+  directory (these files and the sibling cookie) is kept out of Android 12+ cloud backup and device-to-device
+  transfer (`res/xml/data_extraction_rules.xml`, `android:dataExtractionRules`; `allowBackup="false"` covers
+  older Android): a new phone gets a new certificate and new cookies, and siblings pair again.
 - **Disconnect / unpair.** I/O lists paired apps with their name and "paired · this phone" or "paired · Wi-Fi ·
   <device>"; Disconnect revokes the pairing (connection cut, cookie replaced, certificate unpinned): the app
   must pair again. A sibling forgetting FMutate calls `{:unpair, its_own_node}` on `:fmutate_instance` → `:ok`,

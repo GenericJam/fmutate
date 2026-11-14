@@ -25,7 +25,8 @@ defmodule FMutate.PairScreenTest do
 
   # Tags: `host_opts` (more MobPair.Host options), `wifi` (the Wi-Fi address FMutate.Pairing sees at first),
   # `cert` (pair_cert.json before FMutate.Pairing starts: its contents, or :unreadable), `allowed` (node
-  # names FMutate.Dist allowed with the sibling cookie in an earlier run: starts FMutate.Dist)
+  # names FMutate.Dist allowed with the sibling cookie in an earlier run: starts FMutate.Dist), `copy_safe`
+  # (FMutate.Pairing's option; without it, this machine's answer: no getprop, so true)
   setup context do
     dir = Path.join(System.tmp_dir!(), "fmutate_pair_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
@@ -38,14 +39,18 @@ defmodule FMutate.PairScreenTest do
     wifi = if ip = context[:wifi], do: [{~c"wlan0", [flags: [:up, :running], addr: ip]}], else: []
     addresses = start_supervised!({Agent, fn -> wifi end})
 
+    copy_safe = if Map.has_key?(context, :copy_safe), do: [copy_safe: context.copy_safe], else: []
+
     start_supervised!(
       {Pairing,
-       dir: dir,
-       addresses: fn -> Agent.get(addresses, & &1) end,
-       advertise: false,
-       node: :"fmutate_a@127.0.0.1",
-       dist_port: 9150,
-       host_opts: Map.get(context, :host_opts, [])}
+       [
+         dir: dir,
+         addresses: fn -> Agent.get(addresses, & &1) end,
+         advertise: false,
+         node: :"fmutate_a@127.0.0.1",
+         dist_port: 9150,
+         host_opts: Map.get(context, :host_opts, [])
+       ] ++ copy_safe}
     )
 
     %{dir: dir, addresses: addresses}
@@ -118,7 +123,28 @@ defmodule FMutate.PairScreenTest do
     assert text(view) =~ info.code
     assert text(view) =~ ~r/expires in [45]:\d\d/
     assert text(view) =~ "No Wi-Fi: only apps on this phone can pair."
+    # off Android (and on Android 10+) the secret may go on the clipboard
+    assert info.copy_safe
+    assert find(view, :button, text: "Copy code")
+    assert find(view, :button, text: "Copy link")
+    assert text(view) =~ "On this phone, Copy link and paste it there."
     assert_renderable(view)
+  end
+
+  @tag copy_safe: false
+  test "where other apps can watch the clipboard (Android 9) there is no Copy: the code is typed" do
+    view = mount()
+    refute find(view, :button, text: "Copy code")
+    refute find(view, :button, text: "Copy link")
+    assert text(view) =~ "On this phone, type the code in the other app."
+    refute text(view) =~ "Copy link"
+    assert find(view, :canvas, id: "pair_qr")
+    assert_renderable(view)
+
+    # a stale tap copies nothing
+    view = view |> render_info({:tap, :copy_code}) |> render_info({:tap, :copy_link})
+    assert clipboard() == nil
+    assert assigns(view).copied == nil
   end
 
   test "Allow pairs the app on this phone: plain distribution to FMutate's loopback node, its own cookie" do
@@ -313,6 +339,33 @@ defmodule FMutate.PairScreenTest do
     assert clipboard() == ""
     {task, _view} = ask(view)
     Task.shutdown(task, :brutal_kill)
+  end
+
+  @tag host_opts: [ip: {127, 0, 0, 1}]
+  test "a new Wi-Fi address while the sheet shows: the sheet closes and the new code can be asked about",
+       context do
+    view = mount()
+    {task, view} = ask(view)
+    assert find(view, :sheet, id: "pair_request")
+
+    Agent.update(context.addresses, fn _ -> [{~c"wlan0", [flags: [:up], addr: {10, 9, 8, 7}]}] end)
+
+    send(Pairing, :check_front)
+    assert_receive {:pairing, :restarted} = msg, 1_000
+    view = render_info(view, msg)
+
+    refute find(view, :sheet, id: "pair_request")
+    assert text(view) =~ "Humdinger stopped asking."
+    assert assigns(view).info.host == "10.9.8.7"
+    Task.shutdown(task, :brutal_kill)
+
+    # the new secret's request gets the sheet, not an automatic refusal
+    {magpie, view} = ask(view, "Magpie")
+    assert text(view) =~ "says it is Magpie"
+    view = render_info(view, {:tap, {:decide, :allow}})
+    assert {:ok, _record} = Task.await(magpie)
+    assert [%{app_name: "Magpie"}] = Pairings.list()
+    assert text(view) =~ "Magpie is paired"
   end
 
   @tag cert: ~s({"cert": "MIIB)
