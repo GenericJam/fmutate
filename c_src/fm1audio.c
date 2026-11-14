@@ -175,22 +175,31 @@ static void stream_info_locked(struct out_info *o);
 static const char *result_text(int res);
 static int load_backend(void);
 
+/* Close the stream and, for a reopen, open it again if wanted, 100 ms later on a helper thread. Only the latest
+ * request acts (an interruption's close must not land after its end's reopen). arg: generation * 2 + reopen. */
+static _Atomic intptr_t helper_gen;
+
 static void *reopen_thread(void *arg)
 {
-    (void)arg;
+    intptr_t a = (intptr_t)arg;
     usleep(100000);
     pthread_mutex_lock(&lock);
-    close_stream_locked();
-    if (atomic_load(&want_running)) open_stream_locked();
+    if (a / 2 == atomic_load(&helper_gen)) {
+        close_stream_locked();
+        if ((a & 1) && atomic_load(&want_running)) open_stream_locked();
+    }
     pthread_mutex_unlock(&lock);
     return NULL;
 }
 
-static void reopen_later(void)
+static void on_helper_thread(int reopen)
 {
     pthread_t t;
-    if (pthread_create(&t, NULL, reopen_thread, NULL) == 0) pthread_detach(t);
+    intptr_t gen = atomic_fetch_add(&helper_gen, 1) + 1;
+    if (pthread_create(&t, NULL, reopen_thread, (void *)(gen * 2 + (reopen ? 1 : 0))) == 0) pthread_detach(t);
 }
+
+static void reopen_later(void) { on_helper_thread(1); }
 
 #ifdef __APPLE__
 /* ---- iOS: RemoteIO, the session in ios/FMutateAudioSession.swift */
@@ -209,8 +218,10 @@ static double last_sample_time = -1, last_frames;
 
 static void on_session_event(int32_t kind)
 {
-    if (kind != 1) reopen_later();            /* (an interruption stops the unit; its end, a new rate, a reset
-                                                 reopen it) */
+    /* An interruption stops the unit: close it, so that a later start (FMutate.Background when the app comes back,
+     * since iOS doesn't always report an interruption's end) opens it again. Its end, a new rate, a reset reopen
+     * it. want_running stays as it is. */
+    on_helper_thread(kind != 1);
 }
 
 static OSStatus on_render(void *ref, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus,

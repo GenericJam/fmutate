@@ -4,7 +4,7 @@ defmodule FMutate.CrashMarker do
   process to lose instead (docs/decisions/2026-11-13-ios-port.md §1). On a fatal signal in a firmware's threads,
   `c_src/fm1host.c` writes that cartridge's id to a marker file; `arm/0`, once per launch before any engine starts,
   takes what the previous launch left there and arms the marker for this one. The instances count what it took
-  (`crashed/0`) as failures of those firmwares (`FMutate.Instance`).
+  (`claim/1`, once per instance per launch) as failures of those firmwares (`FMutate.Instance`).
 
   Elsewhere (Android, the host) an engine is an OS process whose crash the app survives, and nothing is armed.
   """
@@ -27,8 +27,21 @@ defmodule FMutate.CrashMarker do
     :ok
   end
 
-  @doc "The firmwares (cartridge ids) that ended the previous launch of the app, as `arm/0` found them."
-  def crashed, do: :persistent_term.get(@key, [])
+  @doc """
+  The firmwares (cartridge ids) that ended the previous launch of the app, as `arm/0` found them, for an instance
+  to count: the first call per instance in a launch gets them, later ones (the instance restarted under its
+  supervisor) get `[]`, so one crash is counted once.
+  """
+  def claim(instance) do
+    key = {__MODULE__, :claimed, instance}
+
+    if :persistent_term.get(key, false) do
+      []
+    else
+      :persistent_term.put(key, true)
+      :persistent_term.get(@key, [])
+    end
+  end
 
   @doc false
   # the ids in a marker file, removed (one line each; a crash writes one)

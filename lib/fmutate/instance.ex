@@ -179,7 +179,7 @@ defmodule FMutate.Instance do
       app_crashes: saved[:app_crashes] || %{}
     }
 
-    {:ok, app_crashed(state, Keyword.get_lazy(opts, :crashed, &FMutate.CrashMarker.crashed/0)),
+    {:ok, app_crashed(state, Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)),
      {:continue, :boot}}
   end
 

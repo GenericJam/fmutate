@@ -160,12 +160,21 @@ final class FMOplingView: UIView {
         isUserInteractionEnabled = false
         contentMode = .redraw
         clearsContextBeforeDrawing = true
+        // the app stays running in the background while audio plays: the clock and the tilt stop there
+        inBackground = UIApplication.shared.applicationState == .background
+        let nc = NotificationCenter.default
+        nc.addObserver(self, selector: #selector(enteredBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        nc.addObserver(self, selector: #selector(enteringForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
 
     // Kotlin's composable lives while the menu shows: here the clock and the tilt run while the view is on screen
     override var isHidden: Bool { didSet { updateActive() } }
+    private var inBackground = false
+
+    @objc private func enteredBackground() { inBackground = true; updateActive() }
+    @objc private func enteringForeground() { inBackground = false; updateActive() }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -196,7 +205,7 @@ final class FMOplingView: UIView {
     // MARK: clock
 
     private func updateActive() {
-        let on = window != nil && !isHidden
+        let on = window != nil && !isHidden && !inBackground
         if on == active { return }
         active = on
         if on {

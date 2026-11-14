@@ -85,6 +85,7 @@ typedef struct {
     int in_r, in_w;                           /* the port's pipe; in_w -1 once closed */
     volatile int abandoned;                   /* read by the engine (fm1engine_io.abandoned) */
     int done;                                 /* its thread has ended */
+    int released;                             /* its cartridge is no longer its own: a kill mustn't stop() it */
     struct fm1engine_io io;
 } engine;
 
@@ -198,6 +199,9 @@ static void *engine_main(void *arg)
         code = fm1engine_run(c->api, e->prefix, e->flash, e->fill, &e->io);
         __atomic_store_n(&c->on_thread, 0, __ATOMIC_RELEASE);
         quit = c->api->quit(QUIT_MS);         /* (the firmware's loop thread: parked, or a debug hang let go) */
+        pthread_mutex_lock(&e->lock);         /* (before another engine can take the cartridge: nif_kill) */
+        e->released = 1;
+        pthread_mutex_unlock(&e->lock);
         pthread_mutex_lock(&carts_lock);
         if (quit) c->hung = 1;
         else c->busy = 0;
@@ -407,7 +411,7 @@ static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     pthread_mutex_lock(&e->lock);
     if (!e->done && !e->abandoned) {
         __atomic_store_n(&e->abandoned, 1, __ATOMIC_RELEASE);
-        if (e->kind == NATIVE) e->cart->api->stop();
+        if (e->kind == NATIVE && !e->released) e->cart->api->stop();
         send_exit(env, e, FM1ENGINE_EXIT_KILLED);
     }
     pthread_mutex_unlock(&e->lock);
