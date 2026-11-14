@@ -21,7 +21,9 @@
  * value web_master takes for the knob all the way up: 4096 in X0X's lineage, 1023 in Felucca's ADC one), WEB_FB_SWAP
  * (1: the screen is high byte first), WEB_BTN_MAP / WEB_ENC_MAP (the page's bit for each wire button, its index for
  * each wire encoder, where the page has its own tables: Melodee's are the matrix order), WEB_BOOT_MASTER (web_boot
- * takes the MASTER knob), WEB_MIDI_IN_3 (web_midi_in takes status, data1, data2). */
+ * takes the MASTER knob), WEB_MIDI_IN_3 (web_midi_in takes status, data1, data2), WEB_KEY_ARGS (no web_keys: a
+ * web_key per key, (k, down) or MONK's (k, velocity, pressure)), WEB_GAIN (the device's level over the page's:
+ * ChoralRoot's line gives the page its Q15 mix, the codec 6 dB under it). */
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,6 +37,9 @@
 #endif
 #ifndef WEB_FS
 #define WEB_FS 44100u
+#endif
+#ifndef WEB_GAIN
+#define WEB_GAIN 1.0f
 #endif
 
 #define EXPORT __attribute__((used, visibility("default")))
@@ -58,6 +63,13 @@ void web_buttons(uint32_t m);
 void web_keys(uint32_t m);
 #else
 #define web_keys ((void (*)(uint32_t m))0)
+#if WEB_HAS_web_key && WEB_KEY_ARGS == 3
+void web_key(uint32_t k, uint32_t vel, uint32_t press);  /* (MONK's: a key at a velocity and a pressure, no mask) */
+#define WEB_KEY1(k, down) web_key(k, (down) ? 100u : 0u, 0u)   /* (its page's default velocity) */
+#elif WEB_HAS_web_key && WEB_KEY_ARGS == 2
+void web_key(uint32_t k, uint32_t down);
+#define WEB_KEY1(k, down) web_key(k, down)
+#endif
 #endif
 #if WEB_HAS_web_enc
 void web_enc(int role, int32_t n);
@@ -122,11 +134,20 @@ uint8_t * web_nor(void);
 #endif
 #if WEB_HAS_web_nor_size
 uint32_t web_nor_size(void);
+#elif WEB_HAS_web_nor_len
+uint32_t web_nor_len(void);                     /* (CARNAC's names: the part of the NOR the page keeps) */
+#define web_nor_size web_nor_len
 #else
 #define web_nor_size ((uint32_t (*)(void))0)
 #endif
+#if WEB_HAS_web_nor && !(WEB_HAS_web_nor_size || WEB_HAS_web_nor_len)
+#define web_nor ((uint8_t * (*)(void))0)        /* (a NOR of no known size is not kept) */
+#endif
 #if WEB_HAS_web_flash_writes_count
 uint32_t web_flash_writes_count(void);
+#elif WEB_HAS_web_nor_writes
+uint32_t web_nor_writes(void);
+#define web_flash_writes_count web_nor_writes
 #else
 #define web_flash_writes_count ((uint32_t (*)(void))0)
 #endif
@@ -214,6 +235,9 @@ static void edge_apply(uint32_t i, uint32_t down)
         uint32_t bit = 1u << (i - EDGE_KEY0);
         key_mask = down ? key_mask | bit : key_mask & ~bit;
         if (web_keys) web_keys(key_mask);
+#ifdef WEB_KEY1
+        WEB_KEY1(i - EDGE_KEY0, down);
+#endif
     } else {
         uint32_t bit = 1u << BTN_LABEL[i];
         btn_mask = down ? btn_mask | bit : btn_mask & ~bit;
@@ -358,7 +382,7 @@ EXPORT void fm1c_render(int16_t *out, uint32_t n)
         l = web_out_l();
         r = web_out_r();
         for (i = 0; i < k; i++) {
-            float a = l[i] * 32767.0f, b = r[i] * 32767.0f;
+            float a = l[i] * (32767.0f * WEB_GAIN), b = r[i] * (32767.0f * WEB_GAIN);
             out[2u * i] = (int16_t)(a > 32767.0f ? 32767 : a < -32767.0f ? -32767 : (int32_t)a);
             out[2u * i + 1u] = (int16_t)(b > 32767.0f ? 32767 : b < -32767.0f ? -32767 : (int32_t)b);
         }

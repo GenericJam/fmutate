@@ -229,6 +229,15 @@ EXPORT void fm1c_render(int16_t *out, uint32_t n)
         if (dh_blk_pos >= HALF_FRAMES) {
             memset(dh_blk, 0, sizeof dh_blk);
             app_audio(dh_blk, HALF_FRAMES);
+#if DH_OUT_USB16
+            {                                   /* (the app's 24-bit words, as platform.c sends USB audio: 16 bit) */
+                int32_t u[2u * HALF_FRAMES];
+                for (j = 0; j < 2u * HALF_FRAMES; j++)
+                    dh_blk[j] = dh_blk[j] > OUT_FS ? OUT_FS : dh_blk[j] < -OUT_FS ? -OUT_FS : dh_blk[j];
+                for (j = 0; j < 2u * HALF_FRAMES; j += 64u) out_usb16(dh_blk + j, u + j, 64u);
+                memcpy(dh_blk, u, sizeof dh_blk);
+            }
+#endif
             for (j = 0; j < 2u * HALF_FRAMES; j++) {
                 int32_t v = (dh_blk[j] * dh_master_q12) >> 12;
                 dh_blk[j] = v > 32767 ? 32767 : v < -32767 ? -32767 : v;

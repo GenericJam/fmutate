@@ -1,0 +1,1 @@
+no host build of the whole app: the host side is a Rust cargo workspace testing the C core (host/crates) and the browser demo runs the package in fm1-emu; a cartridge needs a host implementation of platform/fm1 (audio.c, input.c, lcd.c, main.c, midi.c, store_fm1.c) for app/ and core/, C11 with no Rust

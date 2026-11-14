@@ -4,5 +4,23 @@
   "sha256": "a952ed33d3abf49d2cfe354f9f75390a8cd014fc29285668d8f756efd7f3fff6",
   "at": 831488,
   "why": "the Hub package has no factory sounds (res.c at 0xCB000); Melodee's installer writes them"
+ },
+ "krisjangle": {
+  "url": "https://github.com/doohinkus/kris-jangle/releases/download/v0.12/kris-jangle-0.12-res.bin",
+  "sha256": "9ccad350a6e920e118e0571bc784614351877b788bd8e62d8cf7d94e51923208",
+  "at": 622592,
+  "why": "the Hub package has no resource region (Santa's voice clips; fm1-base device/res.c at 0x98000); the release's kris-jangle-0.12-res.bin is what the installer writes"
+ },
+ "loom": {
+  "url": "https://github.com/charlesvestal/fm1-loom/releases/download/v0.15.1/loom-0.15.1-res.bin",
+  "sha256": "fc536ab774ee68cc22975d56d04f272d27f0e328962d1a904d5ffbacc65d8879",
+  "at": 700416,
+  "why": "the Hub package has no resource region (the 909 samples; fm1-base device/res.c at 0xab000); the release's loom-0.15.1-res.bin is what the installer writes"
+ },
+ "polly": {
+  "url": "https://github.com/charlesvestal/fm1-polly/releases/download/v0.6.4/polly-0.6.4-res.bin",
+  "sha256": "441c5eb52f625f1850efe80e26bb9777e50d9c0a45035661992d80b93ee41d3f",
+  "at": 700416,
+  "why": "the Hub package has no resource region (its samples; fm1-base device/res.c at 0xab000); the release's polly-0.6.4-res.bin is what the installer writes"
  }
 }

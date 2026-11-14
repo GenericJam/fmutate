@@ -1,0 +1,1 @@
+Its browser build (web/emu/build_amy.sh) needs an AMY checkout (github.com/shorepine/amy #1250 or later, AMY_DIR) that the repository neither contains nor pins; web/emu/build.sh beside it builds X0X's groovebox, which fm1-amy replaces. Needs AMY vendored at the release's commit (the fetch would have to add it) and then the web recipe builds it as is.

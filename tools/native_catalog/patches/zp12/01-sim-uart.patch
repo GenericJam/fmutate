@@ -1,0 +1,23 @@
+diff -r a/firmware/src/midi_uart.c b/firmware/src/midi_uart.c
+--- a/firmware/src/midi_uart.c	2026-11-14 00:55:05.354007000 -0600
++++ b/firmware/src/midi_uart.c	2026-11-14 00:55:05.354670764 -0600
+@@ -14,7 +14,7 @@
+  * ends only with the next byte (a note-off held until the next note). Following
+  * the content cannot drift. (Fix from Felucca [Salt] 0.9-salt14 by ChanceTheMaker,
+  * found by keremimo on an FM-1 with an Akai MPC Sample; GPL-3.0.) */
+-#include "../hal/fm1_uart.h"   /* registers; relative, so the host tests find it too */
++#include "fm1_uart.h"          /* registers (firmware/hal; the simulator: sim/hal) */
+ 
+ #define UM_RING 128u
+ #define UM_EMPTY 0xFDu         /* undefined MIDI realtime byte: never sent, marks unwritten slots */
+diff -r a/sim/hal/fm1_uart.h b/sim/hal/fm1_uart.h
+--- a/sim/hal/fm1_uart.h	1969-12-31 17:00:00.000000000 -0700
++++ b/sim/hal/fm1_uart.h	2026-11-14 00:55:05.354930637 -0600
+@@ -0,0 +1,7 @@
++/* SPDX-License-Identifier: GPL-3.0-only */
++/* The fake FM-1's UART1 (firmware/hal/fm1_uart.h on the device): no TRS MIDI IN cable, nothing received */
++#pragma once
++#include <stdint.h>
++#include "fm1_cc.h"
++FM1_INLINE void fm1_uart1_midi_init(volatile uint8_t *ring, uint32_t len) { (void)ring; (void)len; }
++FM1_INLINE uint32_t fm1_uart1_rx_take(void) { return 0; }

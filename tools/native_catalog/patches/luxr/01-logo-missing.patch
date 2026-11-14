@@ -1,0 +1,13 @@
+diff -r a/tools/gen_logo.py b/tools/gen_logo.py
+--- a/tools/gen_logo.py	2026-11-14 00:57:59.906089000 -0600
++++ b/tools/gen_logo.py	2026-11-14 00:57:59.951367896 -0600
+@@ -18,6 +18,9 @@
+ 
+ 
+ def maps(width):
++    if not SRC.exists():                                              # (not in the repository: a blank logo)
++        blank = Image.new("L", (width, width // 4))
++        return blank, blank, width, width // 4
+     im = Image.open(SRC).convert("RGB")
+     w0, h0 = im.size
+     light, orange = Image.new("L", im.size), Image.new("L", im.size)

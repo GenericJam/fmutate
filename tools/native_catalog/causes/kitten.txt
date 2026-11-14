@@ -1,0 +1,1 @@
+no firmware source of its own: Kitten Synths is SLOOP (isod89/sloop-fm1 at ec9e53721cc5, per .github/workflows/build.yml) with muug.patch + fix-01..20.patch applied; needs that SLOOP commit fetched as a pinned dependency and the patches applied in order (git apply), then whatever builds the SLOOP line (sloop itself has no recipe yet).

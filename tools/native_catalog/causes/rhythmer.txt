@@ -1,0 +1,1 @@
+the browser build was dropped from this repository (tests/run_tests.sh still calls web/emu/build.sh, web/emu/native_check.c; www/ ships fm1-emu instead); restoring JIANT's X0X-lineage web/emu/*_web.c as a patch would let the web recipe build it (build.py must then apply patches before detection)

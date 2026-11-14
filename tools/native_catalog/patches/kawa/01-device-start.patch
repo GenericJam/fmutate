@@ -1,0 +1,11 @@
+--- a/source/firmware/src/kawa_ui.c
++++ b/source/firmware/src/kawa_ui.c
+@@ -3366,7 +3366,7 @@
+     }
+     usr_boot();                                 /* the user's samples (kawa_sysex.c) */
+     if (prj_load(0)) {
+-#if defined(KAWA_WASM)
++#if defined(KAWA_WASM) && defined(__wasm__)    /* (natively: the FM-1's start) */
+         prj_demo();                             /* the browser starts with the demo; the FM-1 still starts empty */
+         sq_req = 1u;                            /* POWER ON is a browser gesture, so audio is enabled */
+ #else

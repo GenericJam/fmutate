@@ -4,14 +4,16 @@ defmodule FMutate.Firmware do
 
   Two backends run a firmware in an engine process (docs/engine_protocol.md):
 
-    * `:native` — the firmware built from its source as a cartridge (`libcart_<id>.so`, shipped in the
-      APK, run by `libfm1engine.so`). Fast and sample-exact; only for firmwares with source.
+    * `:native` — the firmware built from its source as a cartridge (`libcart_<id>.so` shipped in the
+      APK, or for a Hub firmware one downloaded from the signed cartridge index, `FMutate.Cartridges`; run by
+      `libfm1engine.so`). Fast and sample-exact; only for firmwares with source.
     * `:emu` — the firmware's own package (`.fwsc`) run in the fm1-emu emulator (`libfm1emu.so`, same
       engine protocol and arguments, with the package where the cartridge goes). Any firmware,
       including binary-only ones; slower.
 
-  This module knows the bundled native cartridges; `FMutate.Library` extends the list with downloaded and
-  imported packages (emulator backend) and is what the rest of the app should ask (`get/1` and `all/0`
+  This module knows the bundled native cartridges; `FMutate.Library` extends the list with the Hub's
+  firmwares (natively where the cartridge index has a build for this phone), downloaded and imported packages
+  (emulator backend) and is what the rest of the app should ask (`get/1` and `all/0`
   delegate to it when it runs).
   """
 
@@ -33,7 +35,13 @@ defmodule FMutate.Firmware do
     url: nil,
     size: nil,
     sha256: nil,
-    repo: nil
+    repo: nil,
+    # a Hub firmware with a native build (`FMutate.Cartridges`): the index's entry for this platform, its
+    # cartridge (downloaded or of the build; nil until downloaded), and whether the build is new since the
+    # player last looked
+    native: nil,
+    cart: nil,
+    new: false
   ]
 
   @type t :: %__MODULE__{}
@@ -86,13 +94,13 @@ defmodule FMutate.Firmware do
   @doc """
   How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu}` for
   `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it can't run
-  here (no cartridge in this build, no package on the phone, or no emulator engine).
+  here (no cartridge in this build or downloaded, no package on the phone, or no emulator engine).
   """
   @spec runnable(String.t()) :: %{engine: String.t(), file: String.t(), backend: :native | :emu} | nil
   def runnable(id) do
     case get(id) do
-      %{backend: :native} ->
-        with cart when cart != nil <- FMutate.Paths.bundled_cart(id),
+      %{backend: :native} = fw ->
+        with cart when cart != nil <- FMutate.Paths.bundled_cart(id) || downloaded_cart(fw),
              do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native}
 
       %{backend: :emu, package: pkg} when is_binary(pkg) ->
@@ -103,4 +111,7 @@ defmodule FMutate.Firmware do
         nil
     end
   end
+
+  defp downloaded_cart(%{cart: cart}) when is_binary(cart), do: if(File.exists?(cart), do: cart)
+  defp downloaded_cart(_fw), do: nil
 end

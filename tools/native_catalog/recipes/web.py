@@ -34,9 +34,17 @@ def fm1base_app(d, entry):
     base = d / entry.parents[2]                         # <base>/web/emu/emu_web.c
     if not (base / "tools/build.py").exists() or not (base / "host/plat_host.c").exists():
         return None
-    # the app: an fm1.toml outside the base, else one the base keeps among its own apps (DUB-BOX's src/apps/...),
-    # not its tests' and template's
-    tomls = [p for p in d.rglob("fm1.toml") if not set(p.relative_to(d).parts) & (SKIP | {"tests", "template"})]
+    # the app: an fm1.toml outside the base, else one the base keeps among its own apps (DUB-BOX's src/apps/...,
+    # Kris Jangle's kris-jangle/ in a repository that is the base); never its tests', template's and examples'. A
+    # base kept in a subdirectory with no app of the repository's own (Playa's fm1base/) is not this firmware.
+    tomls = []
+    for p in d.rglob("fm1.toml"):
+        parts = set(p.relative_to(d).parts)
+        if parts & (SKIP | {"tests", "template", "examples"}):
+            continue
+        if base != d and base in p.parents and "apps" not in p.relative_to(base).parts:
+            continue
+        tomls.append(p)
     if not tomls:
         return None
     tomls.sort(key=lambda p: (base in p.parents, len(p.relative_to(d).parts)))
@@ -44,7 +52,7 @@ def fm1base_app(d, entry):
             "app": str(tomls[0].parent.relative_to(d))}
 
 
-def web_script(d, entry):
+def web_script(d, entry, fid=""):
     name = entry.name
     cands = []
     for p in d.rglob("*"):
@@ -58,7 +66,10 @@ def web_script(d, entry):
             if name in t and "emcc" in t:
                 cands.append(p.relative_to(d))
     cands.sort(key=lambda r: (0 if r.suffix == ".sh" else 1, len(r.parts)))
-    return [str(c) for c in cands]
+    # a variant named for this firmware (fm1-amy's web/emu/build_amy.sh beside X0X's build.sh): that one alone,
+    # the other builds the firmware it was forked from
+    own = [c for c in cands if re.fullmatch(r"build_(\w{3,})", c.stem) and c.stem[6:] in fid.replace("-", "_")]
+    return [str(c) for c in own or cands]
 
 
 
@@ -117,6 +128,8 @@ def record(fid, r, log):
         rec.unlink()
     env = gen_env(rec)
     env["HOSTCC_FORCE"] = "1"                           # (ChoralRoot's line keeps outputs its stamp says are current)
+    if r.get("define"):
+        env[r["define"]] = "1"                          # (the switch as tools/build.py takes it: its generators too)
     roots = tree_roots(d, Path(r["entry"]))
     # a clean tree: browser builds keep objects and libraries they built before, which the record has to see made
     for b in [*(x / "build" for x in roots), d / r.get("app", "-") / "build"]:
@@ -188,7 +201,8 @@ def replay(fid, r, cmds, target, shims, log):
     final = None
     any_cpp = False
     shimflags = ["-I", str(SHIM_INC), "-include", str(SHIM_INC / "fm1_native_shims.h")] if shims else []
-    base = ["-fPIC", "-w", "-O2", "-ffp-contract=off", "-fno-strict-aliasing", *cflags_t, *shimflags]
+    base = ["-fPIC", "-w", "-O2", "-ffp-contract=off", "-fno-strict-aliasing", *cflags_t, *shimflags,
+            *([f"-D{r['define']}=1"] if r.get("define") else [])]
     n = 0
     for c in cmds:
         cwd = Path(c["cwd"])
@@ -288,11 +302,22 @@ def dialect(d, entry):
         defs.append("-DWEB_BOOT_MASTER=1")              # (Melodee's: the MASTER knob at power on)
     if n_params(t, "web_midi_in") == 3:
         defs.append("-DWEB_MIDI_IN_3=1")                # (status, data1, data2 rather than port, USB packet)
+    if n_params(t, "web_key") in (2, 3):
+        defs.append(f"-DWEB_KEY_ARGS={n_params(t, 'web_key')}")    # (a key at a time, where there is no web_keys)
     btn, enc = page_tables(d, entry)
     if btn:
         defs.append("-DWEB_BTN_MAP=" + ",".join(map(str, btn)))
     if enc:
         defs.append("-DWEB_ENC_MAP=" + ",".join(map(str, enc)))
+    if "emu_fw_audio(" in t:
+        # ChoralRoot's line hands the page the mix's Q15 as it is; the codec gets it shifted OUT_SHIFT into its
+        # 24-bit word (audio.c: 7, -6 dBFS): the device's level is 2^(OUT_SHIFT - 8) of the page's
+        for root in tree_roots(d, Path(entry)):
+            a = root / "firmware/src/audio.c"
+            m = re.search(r"#define\s+OUT_SHIFT\s+(\d+)", a.read_text(errors="replace")) if a.exists() else None
+            if m:
+                defs.append(f"-DWEB_GAIN={2.0 ** (int(m.group(1)) - 8)}f")
+                break
     return defs
 
 
@@ -309,16 +334,50 @@ def link_web(fid, r, final, target, shims, log):
     return link(fid, target, [str(adapter), *final["objs"]], final["cpp"], log)
 
 
+VENDORED = {"upstream", "ext", "third_party", "external", "deps", "submodules"}
+
+
+def variant_flag(d, entry, fid):
+    """the build switch that makes this firmware of its base (Flyfish: Felucca with FELUCCA_FLYFISH=1 in the
+    environment of tools/build.py, Satie-1: AMB with EN_SATIE1), or None"""
+    name = re.sub(r"\W", "", fid).upper()
+    for root in tree_roots(d, entry):
+        b = root / "tools/build.py"
+        t = b.read_text(errors="replace") if b.exists() else ""
+        m = re.search(r"""os\.environ\.get\(["']((?:\w+_)?%s)["']\)\s*==\s*["']1""" % name, t)
+        if m:
+            return m.group(1)
+    return None
+
 
 def detect(d, fid):
-    for e in web_entries(d):
+    entries = web_entries(d)
+    # a firmware made of its base by a build switch: the browser entry that sets it (Flyfish's web/emu/ff_web.c
+    # beside Felucca's felucca_web.c), never one without it (the base's own)
+    flags = {e: variant_flag(d, e, fid) for e in entries}
+    sets = {e: bool(flags[e]) and flags[e] in (d / e).read_text(errors="replace") for e in entries}
+    entries.sort(key=lambda e: not sets[e])
+    for e in entries:
         if e.name == "emu_web.c":
             r = fm1base_app(d, e)
             if r:
                 return r
-        scripts = web_script(d, e)
+            base = d / e.parents[2]
+            if (base / "tools/build.py").exists() and (base / "host/plat_host.c").exists():
+                continue                                # (fm1-base with no app of this firmware: its scripts build
+                                                        #  the base's own tests and template)
+        if {p.lower() for p in e.parts[:-1]} & VENDORED:
+            continue                                    # (the browser build of a firmware it builds on, not its own)
+        if flags[e] and not sets[e]:
+            continue                                    # (the base's browser build, without this firmware)
+        scripts = web_script(d, e, fid)
         if scripts:
-            return {"recipe": "web", "kind": "script", "entry": str(e), "scripts": scripts}
+            r = {"recipe": "web", "kind": "script", "entry": str(e), "scripts": scripts}
+            t = (d / e).read_text(errors="replace") + "".join((d / s).read_text(errors="replace") for s in scripts)
+            if flags[e] and not re.search(r"(#define\s+|-D)%s\b" % flags[e], t):
+                r["define"] = flags[e]                  # (Satie-1's amb_web.c tests EN_SATIE1, nothing sets it:
+                                                        #  as tools/build.py, -DEN_SATIE1=1)
+            return r
     return None
 
 

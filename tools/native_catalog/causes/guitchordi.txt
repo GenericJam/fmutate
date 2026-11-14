@@ -1,0 +1,1 @@
+builds with recipe guitchordi and verifies as a match (dL -0.2 dB, spec 0.999, screens 0.6/0.7/0.7) once docs/tuning-presets.json is there, but fetch.sh deletes the top-level docs/ and the simulator build's generator (scripts/generate-firmware-bank.py) reads that file: fetch.sh must keep docs/*.json (or not delete docs/ that a build script names).

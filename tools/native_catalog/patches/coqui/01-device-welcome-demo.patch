@@ -1,0 +1,20 @@
+--- a/firmware/src/store.c	2026-11-14 00:59:02.216530000 -0600
++++ b/firmware/src/store.c	2026-11-14 00:59:02.218139585 -0600
+@@ -863,7 +863,7 @@
+         obj_gen[OBJ_WORK] = st_rd32(w + 4);
+         obj_crc[OBJ_WORK] = vs[0] == OBJ_VER ? st_crc(w + OBJ_HDR, WORK_PK) : 0;   /* (0: saved again) */
+     } else {
+-#if !defined DINGHY_HOST && !defined GRIMM_WEB
++#if !defined GRIMM_WEB
+         project_demo();                         /* (COQUÍ) a fresh FM-1: the welcome orquesta, not GR!MM's blank VA saw.
+                                                  * Device only: the host tests and the web emulator keep the clean default
+                                                  * (120 BPM, empty) — the DEMO action loads it there on demand instead. */
+@@ -953,7 +953,7 @@
+             nq_put(NQ_RESTART, t, 0);
+         }
+     }
+-#if !defined DINGHY_HOST && !defined GRIMM_WEB
++#if !defined GRIMM_WEB
+     {                                           /* (COQUÍ) on a device, a NEW track plays a COQUÍ sound, not GR!MM's raw
+                                                  * saw: pressing keys sounds like the firmware at once. The host tests and
+                                                  * the web emulator keep the bright-saw default (fx_test uses it as the

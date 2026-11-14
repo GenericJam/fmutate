@@ -56,7 +56,8 @@ def build(fid, target):
         return res, log
     patches = sorted((HERE / "patches" / fid).glob("*.patch")) if (HERE / "patches" / fid).is_dir() else []
     for p in patches:
-        if sh(["patch", "-p1", "-N", "-s", "-i", str(p)], d, log=log):
+        applied = sh(["patch", "-p1", "-R", "-s", "-f", "--dry-run", "-i", str(p)], d) == 0   # (from an earlier build)
+        if not applied and sh(["patch", "-p1", "-N", "-s", "-i", str(p)], d, log=log):
             res["stage"] = "patch"
             return res, log
     res["patches"] = [p.name for p in patches]

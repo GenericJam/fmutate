@@ -8,12 +8,19 @@ defmodule FMutate.Library.HTTP do
   @android_certs "/system/etc/security/cacerts"
   @timeout 30_000
 
-  @doc "GET `url` into memory."
-  @spec get(String.t()) :: {:ok, binary} | {:error, term}
-  def get(url) do
+  @doc """
+  GET `url` into memory, with `extra` request headers (e.g. `[{"if-none-match", etag}]`): the body and the
+  response headers (lower-case names), or `:not_modified` on a 304.
+  """
+  @spec get(String.t(), [{String.t(), String.t()}]) ::
+          {:ok, binary, %{String.t() => String.t()}} | :not_modified | {:error, term}
+  def get(url, extra \\ []) do
+    req = headers() ++ for({k, v} <- extra, do: {to_charlist(k), to_charlist(v)})
+
     with :ok <- start() do
-      case :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), body_format: :binary) do
-        {:ok, {{_, 200, _}, _headers, body}} -> {:ok, body}
+      case :httpc.request(:get, {to_charlist(url), req}, http_opts(url), body_format: :binary) do
+        {:ok, {{_, 200, _}, resp, body}} -> {:ok, body, Map.new(resp, fn {k, v} -> {String.downcase(to_string(k)), to_string(v)} end)}
+        {:ok, {{_, 304, _}, _, _}} -> :not_modified
         {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
         {:error, reason} -> {:error, reason}
       end

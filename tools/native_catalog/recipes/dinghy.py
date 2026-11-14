@@ -89,6 +89,8 @@ def detect(top, fid):
     """the tree at the top, else the first subdirectory holding a Dinghy-platform firmware (agtdeck's
     firmware-build/, scintilla's firmware/, rhytmsec1's fm1-dock/)"""
     for d in [top] + sorted(p for p in top.iterdir() if p.is_dir() and p.name not in SKIP):
+        if (d / "web/wasm_host.c").exists():           # (KAWA's line: its own fake, built by recipes/wasm.py)
+            continue
         r = _detect(d, fid)
         if r:
             r["root"] = str(d.relative_to(top)) if d != top else ""
@@ -147,8 +149,8 @@ def _block(t, i):
 
 def _body(t, name):
     """a function's signature and body"""
-    m = re.search(r"^[^\n;{}]*\b%s\s*\([^)]*\)\s*\{" % name, t, re.M)
-    return t[m.start():t.index("{", m.start())] + _block(t, m.start()) if m else None
+    m = re.search(r"^[^\n;{}]*\b%s\s*\([^)]*\)\s*(?://[^\n]*\n\s*|/\*.*?\*/\s*)*\{" % name, t, re.M | re.S)
+    return t[m.start():m.end() - 1] + _block(t, m.end() - 1) if m else None
 
 
 def _decl(t, name):
@@ -257,7 +259,9 @@ def build_dinghy(fid, r, target, shims, log):
     defs = [f"-D{r['macro']}=1"] + (["-DOBV_WASM=1"] if obv else []) + fake_names(fake)
     if mains and not obv:
         defs.append("-DDH_HOST_MAIN=1")
-    # the fork's host build: its -I and -D, the units beside the app
+    if re.search(r"\bout_usb16\s*\(", _body(host, "host_script_poll") or ""):
+        defs.append("-DDH_OUT_USB16=1")             # (GR!MM V2: the app's words are 24-bit, USB their 16-bit copy)
+    # the fork's host build: its -I, the units beside the app
     app_name = r["app"].rsplit("/", 1)[1]
     ccs = _cc_lines(d, r["macro"])
     line = next((l for _, l in ccs if app_name in l), ccs[0][1] if ccs else "")
@@ -278,13 +282,11 @@ def build_dinghy(fid, r, target, shims, log):
             t.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(p, t)
         return t
-    incs, own, units = [], [], []
+    incs, units = [], []                        # (its -D are the host tests' tunings, e.g. artihive's BOOT_HOLD_MS=1)
     for i, a in enumerate(argv):
         v = a[2:] or (argv[i + 1] if i + 1 < len(argv) else "")
         if a.startswith("-I") and v and not v.startswith("/"):
             incs += ["-I", str(at(v))]
-        elif a.startswith("-D") and v and not re.match(r"(%s|APP_VER|__attribute__)\b" % r["macro"], v):
-            own.append("-D" + v)
         elif a.endswith(".c") and not a.startswith("-") and argv[i - 1] != "-o":
             units.append(a)
     apps, included = _apps(d / "firmware/src")
@@ -299,7 +301,7 @@ def build_dinghy(fid, r, target, shims, log):
     fallback = [f for p in sorted((tree / "firmware").iterdir()) if p.is_dir() for f in ("-idirafter", str(p))]
     version = PINS[fid]["version"]
     shimflags = ["-I", str(SHIM_INC), "-include", str(SHIM_INC / "fm1_native_shims.h")] if shims else []
-    common = [*cc, "-fPIC", "-O2", "-w", "-ffp-contract=off", *cflags_t, *shimflags, *defs, *own,
+    common = [*cc, "-fPIC", "-O2", "-w", "-ffp-contract=off", *cflags_t, *shimflags, *defs,
               f'-DAPP_VER="{version}"', *incs, "-I", str(tree / "firmware/src"), "-I", str(tree / "firmware/hal"),
               "-I", str(tree / "firmware/gen"), "-I", str(tree / "build/gen"), *fallback]
     o = work / "cart.o"

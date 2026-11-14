@@ -1,0 +1,1 @@
+an fm1-base app without its base: the tree has app.c + fm1.toml only; its host simulator needs fm1-base at 2d8ed74 (bsp 773b0b9) with patches/fm1-base.patch and felucca-bsp.patch applied, then tools/build.py ../Manifold --host (a fetch-and-patch step like recipes/dinghy_fetch.py, then the fm1base recipe)

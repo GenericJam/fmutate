@@ -1,0 +1,1 @@
+the fm1-dock (Dinghy fork) host build of dock.c with the RHYTM-SEC-1 module does not compile under DINGHY_HOST (dock.c:255 str_cpy undeclared: fm1-dock's tests/host.c lacks the device libc.c helpers dock.c uses); needs a per-firmware patch giving dock.c those helpers on the host, plus the module built in as build.sh --modules rhytmsec1 does (recipes/dinghy.py, DinghyLine)

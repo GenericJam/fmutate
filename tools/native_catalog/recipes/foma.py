@@ -4,13 +4,12 @@ own tools/build.py runs with a recording stand-in as clang on PATH (tools/native
 the samples, ROMs and tables are generated as for the emulator); the recorded compile is replayed natively, its
 freestanding libc (platform/src/libc.c: memset, memcpy, memcmp) renamed out of the C library's way, and
 adapters/foma.c links in front: the fm1c_* calls."""
-import json
 import shutil
 import sys
 from pathlib import Path
 
-from common import CAT, EMCC_DIR, HERE, ROOT, SHIM_INC, SRC, link, sh, target_cc
-from recipes import web
+from common import CAT, HERE, SHIM_INC, link, sh, target_cc
+from recipes import _entry, web
 
 ORDER = 30
 
@@ -28,27 +27,15 @@ def detect(d, fid):
 
 
 def record(fid, log):
-    d = SRC / fid
-    rec = CAT / "rec" / f"{fid}.jsonl"
-    rec.parent.mkdir(parents=True, exist_ok=True)
-    rec.unlink(missing_ok=True)
-    env = web.gen_env(rec)
-    stand = CAT / "bin-clang"                           # clang -> the recording stand-in
-    stand.mkdir(parents=True, exist_ok=True)
-    (stand / "clang").unlink(missing_ok=True)
-    (stand / "clang").symlink_to(EMCC_DIR / "emcc")
-    env["PATH"] = f"{stand}:{env['PATH']}"
     # tools/build.py stops before anything without a JieLi toolchain; one that fails lets it build the emulator
     # (recorded) and then stop at the FM-1 build
     fake = CAT / "fake-jieli/pi32v2/bin/clang"
     fake.parent.mkdir(parents=True, exist_ok=True)
     fake.write_text("#!/bin/sh\necho 'native_catalog: no JieLi toolchain' >&2\nexit 1\n")
     fake.chmod(0o755)
-    env["JIELI_TOOLCHAIN"] = str(CAT / "fake-jieli")
-    shutil.rmtree(d / "build", ignore_errors=True)
-    sh([sys.executable, "tools/build.py"], d, env, log)
-    cmds = [json.loads(l) for l in rec.read_text().splitlines()] if rec.exists() else []
-    return [c for c in cmds if c["tool"] == "clang" and any(a.startswith("--target=wasm32") for a in c["args"])]
+    cmds = _entry.record(fid, [sys.executable, "tools/build.py"], stand_ins=("clang",), clean=["build"],
+                         env_extra={"JIELI_TOOLCHAIN": str(CAT / "fake-jieli")}, log=log)
+    return [c for c in cmds if any(a.startswith("--target=wasm32") for a in c["args"])]
 
 
 def build_once(fid, cmd, target, shims, log):

@@ -4,13 +4,12 @@ vendored fm1-base, the Audio Router's fork. The firmware's own `tools/build.py A
 tools/native_catalog/emcc/emcc as $CC (it records each compile, generating the fonts and words as for the
 simulator); the calls are replayed natively, plat_host.c's own replaced by adapters/fm1base.c (which includes it with
 PLAT_WEB and exports the web_* calls), and adapters/web.c maps those to the fm1c_* calls."""
-import json
 import shutil
 import sys
 from pathlib import Path
 
-from common import CAT, EMCC_DIR, HERE, ROOT, SHIM_INC, SKIP, SRC, link, sh, target_cc
-from recipes import web
+from common import CAT, HERE, ROOT, SHIM_INC, SKIP, SRC, link, sh, target_cc
+from recipes import _entry, web
 
 ORDER = 30
 
@@ -19,7 +18,7 @@ def detect(d, fid):
     for host in sorted(d.glob("**/host/plat_host.c"), key=lambda p: len(p.parts)):
         base = host.parents[1]
         rel = base.relative_to(d)
-        if set(rel.parts) & SKIP or (base / "web/emu/emu_web.c").exists():
+        if set(rel.parts) & (SKIP - {"vendor"}) or (base / "web/emu/emu_web.c").exists():   # (vendor/fm1-base: Xenolith)
             continue
         bp = base / "tools/build.py"
         if not bp.exists() or "def build_host" not in bp.read_text(errors="replace") \
@@ -36,14 +35,8 @@ def detect(d, fid):
 
 def record(fid, r, log):
     d = SRC / fid
-    rec = CAT / "rec" / f"{fid}.jsonl"
-    rec.parent.mkdir(parents=True, exist_ok=True)
-    rec.unlink(missing_ok=True)
-    env = web.gen_env(rec)
-    env["CC"] = str(EMCC_DIR / "emcc")                  # (tools/build.py --host compiles with $CC)
-    shutil.rmtree(d / r["app"] / "build", ignore_errors=True)
-    sh([sys.executable, str(d / r["base"] / "tools/build.py"), r["app"], "--host"], d, env, log)
-    return [json.loads(l) for l in rec.read_text().splitlines()] if rec.exists() else []
+    return _entry.record(fid, [sys.executable, str(d / r["base"] / "tools/build.py"), r["app"], "--host"], cc_env=True,
+                         clean=[f"{r['app']}/build"], log=log)
 
 
 def build_once(fid, r, cmds, target, shims, log):
@@ -57,8 +50,6 @@ def build_once(fid, r, cmds, target, shims, log):
     base = ["-fPIC", "-w", "-O2", "-ffp-contract=off", "-fno-strict-aliasing", *cflags_t, *shimflags]
     objs, entry = [], False
     for n, c in enumerate(cmds):
-        if c["tool"] != "emcc" or set(c["args"]) & {"-M", "-MM", "-E"}:
-            continue
         flags, srcs, _, _, _ = web.split_cmd(c)
         cwd = Path(c["cwd"])
         for i, s in enumerate(srcs):

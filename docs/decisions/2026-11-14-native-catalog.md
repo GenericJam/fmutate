@@ -1,7 +1,6 @@
 # Native cartridges for the Hub catalogue (draft, phase A in progress)
 
-Status: proposed. Numbers below are from the Mac host build of 2026-11-14 and still moving (five build streams
-were open when this was written; `python3 tools/native_catalog/report.py` gives the current ones).
+Status: proposed. Numbers from the Mac host build of 2026-11-14 (`python3 tools/native_catalog/report.py`).
 
 ## Why
 
@@ -46,11 +45,17 @@ real time (Melodee 71x, Skiff 660x, `cartbench`), and sample-exact against the e
 
 | clean | generic shims | per-firmware patch | failed |
 |---|---|---|---|
-| 95 | 27 | 0 | 91 (no recipe yet 76, compile 10, record 4, link 1) |
+| 108 | 33 | 5 (1–19 lines each) | 67 (no recipe 56, compile 7, record 4) |
 
-Checks of the 122 built: match 62, silent 6, diverges 33, no-ref 5, broken 3, not yet checked 13. Must-haves:
-Melodee **match** (with its factory sounds seeded into the emulator), Skiff **match**, OberVave **match**,
-Clipper and Sloop not built yet (Felucca forks without a browser build: their recipe is in progress).
+Checks of the 146 built: match 93, silent 10 (neither sounds from a chord or PLAY; screens equal), diverges 31,
+no-ref 11 (emulator silent/missing package), broken 1. Divergences explained so far: the firmware's own randomness
+(arcturus), the chord's three keys arriving in one pass vs the emulator's matrix scan (bytemania, drumtonic), Hub
+packages missing what their installers write (carnac waves, choralroot presets). Must-haves: Melodee, Skiff,
+OberVave, Dinghy, GR!MM, Frasil **match**; **Clipper and Sloop not built** (Felucca forks without a browser build:
+need a host model of the Felucca HAL, designed in agent://NativeCatalog.FeluccaHarness, not written); JIANT diverges.
+Can't build without more work: no source (mycelium, bb1), unpinned dependencies fetched at build time (atek303,
+assid, kitten, manifold, fm1sid), firmwares on the bare HAL with no host layer (b1, beetle, beetleblue, etch, Felucca
+forks), others in tools/native_catalog/causes/.
 
 ## The index (schema 1)
 

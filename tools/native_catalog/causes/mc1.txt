@@ -1,0 +1,1 @@
+no host build of the firmware: the portable core (src/) has a host CLI (tools/host.c) and a simplified panel bridge (host/bridge.c, no LEDs, MASTER or the device's input path); a cartridge needs an adapter re-doing firmware/app.c's 549-line main loop (buttons[] map, mc_ui_button_state, encoders, strips, MASTER curve) over src/
