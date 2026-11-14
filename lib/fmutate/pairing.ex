@@ -232,6 +232,15 @@ defmodule FMutate.Pairing do
 
   def handle_info(_message, state), do: {:noreply, state}
 
+  # FMutate's private key stays out of crash reports and :sys.get_status/1
+  @impl true
+  def format_status(status) do
+    Map.update(status, :state, nil, fn
+      %{cert: %{key: _} = cert} = state -> %{state | cert: %{cert | key: :redacted}}
+      other -> other
+    end)
+  end
+
   ## The pairing endpoint
 
   # Listens on loopback and the Wi-Fi address (MobPair.Host's default for `host`), never on mobile data
@@ -381,18 +390,13 @@ defmodule FMutate.Pairing do
 
   ## Identity
 
-  # FMutate's certificate and key, made once (JSON: base64url DER, the file 0600). A file that doesn't decode
-  # (cut short by a power loss) is replaced: paired apps must pair again.
+  # FMutate's certificate and key, made once (JSON: base64url DER, the file 0600). A file that doesn't decode,
+  # or whose key isn't the certificate's (cut short by a power loss, bits flipped), is replaced: every pairing
+  # was made with the old certificate, so they are revoked and paired apps pair again.
   defp load_cert(path) do
     case File.read(path) do
       {:ok, json} ->
-        with :error <- decode_cert(json) do
-          Logger.warning(
-            "pairing: #{path} is corrupt, making a new certificate (paired apps pair again)"
-          )
-
-          new_cert(path)
-        end
+        with :error <- decode_cert(json), do: replace_cert(path)
 
       {:error, :enoent} ->
         new_cert(path)
@@ -402,15 +406,40 @@ defmodule FMutate.Pairing do
     end
   end
 
+  defp replace_cert(path) do
+    Logger.warning(
+      "pairing: #{path} is corrupt, making a new certificate (paired apps pair again)"
+    )
+
+    if Process.whereis(MobPair.Pairings),
+      do: for(pairing <- MobPair.Pairings.list(), do: MobPair.Pairings.revoke(pairing.node))
+
+    new_cert(path)
+  end
+
   defp decode_cert(json) do
     with {:ok, %{"cert" => cert, "key" => key}} when is_binary(cert) and is_binary(key) <-
            JSON.decode(json),
          {:ok, cert} <- Base.url_decode64(cert, padding: false),
-         {:ok, key} <- Base.url_decode64(key, padding: false) do
+         {:ok, key} <- Base.url_decode64(key, padding: false),
+         true <- key_of_cert?(cert, key) do
       {:ok, %{cert: cert, key: key, fp: MobPair.Cert.fingerprint(cert)}}
     else
       _ -> :error
     end
+  end
+
+  # the DER certificate and EC private key decode, and the key's public point is the certificate's
+  defp key_of_cert?(cert, key) do
+    {:ECPrivateKey, _version, _private, _params, public, _attributes} =
+      :public_key.der_decode(:ECPrivateKey, key)
+
+    # OTPCertificate → OTPTBSCertificate → subjectPublicKeyInfo (the 7th field)
+    tbs = cert |> :public_key.pkix_decode_cert(:otp) |> elem(1)
+    {:OTPSubjectPublicKeyInfo, _algorithm, {:ECPoint, point}} = elem(tbs, 7)
+    point == public
+  rescue
+    _undecodable in [MatchError, ErlangError, ArgumentError] -> false
   end
 
   defp new_cert(path) do

@@ -58,7 +58,7 @@ defmodule FMutate.PairingTest do
       store = {MobPair.Pairings.FileStore, path: Path.join(data, "pairings.json")}
 
       children = [
-        {MobPair.Pairings, default_cookie: :keep, allow_list: false, store: store},
+        {MobPair.Pairings, default_cookie: :keep, allow_list: :auto, store: store},
         {FMutate.Dist, instance: inst, delay: 0},
         {FMutate.Pairing, instance: inst, advertise: false, addresses: fn -> addresses end}
       ]
@@ -219,6 +219,131 @@ defmodule FMutate.PairingTest do
     fmutate = start_fmutate(nil, fmutate.data)
     wait(fn -> match?({:ok, _}, Transport.connect(record, self())) end)
     assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
+  end
+
+  # The distribution flags OTP 26+ requires of a connecting hidden node (as in mob_pair's dist_test).
+  @dist_flags Enum.reduce(
+                [0x04, 0x10, 0x80, 0x100, 0x200, 0x400, 0x800, 0x10000, 0x20000, 0x40000],
+                0x1000000 + 0x2000000 + 0x04 * 0x100000000,
+                &(&1 + &2)
+              )
+
+  # The first message of a distribution handshake under `name`, and FMutate's answer.
+  defp handshake(name) do
+    {:ok, socket} =
+      :gen_tcp.connect(~c"127.0.0.1", FMutate.Dist.port(@inst), [
+        :binary,
+        active: false,
+        packet: 2
+      ])
+
+    :ok = :gen_tcp.send(socket, <<?N, @dist_flags::64, 1::32, byte_size(name)::16, name::binary>>)
+    answer = :gen_tcp.recv(socket, 0, 5_000)
+    :gen_tcp.close(socket)
+    answer
+  end
+
+  defp atom_on?(peer, name) do
+    _ = :peer.call(peer, :erlang, :binary_to_existing_atom, [name])
+    true
+  rescue
+    _ -> false
+  end
+
+  # Any app on the phone can reach 127.0.0.1:9150; OTP's handshake would make an atom of every name it declares.
+  test "a flood of unknown node names makes no atoms in FMutate, which stays up" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    atoms = fn -> :peer.call(fmutate.peer, :erlang, :system_info, [:atom_count]) end
+    prefix = "intruder#{System.unique_integer([:positive])}x"
+
+    # the first refusals load the code that reports them
+    for i <- 1..20, do: assert({:ok, "snot_allowed"} = handshake("#{prefix}#{i}@127.0.0.1"))
+    before = atoms.()
+    for i <- 21..1_020, do: assert({:ok, "snot_allowed"} = handshake("#{prefix}#{i}@127.0.0.1"))
+
+    # (1000 names: a VM making their atoms grows by 1000; FMutate's own work meanwhile adds a few dozen)
+    assert atoms.() - before < 200
+    refute Enum.any?(1..1_020, &atom_on?(fmutate.peer, "#{prefix}#{&1}@127.0.0.1"))
+    assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running
+  end
+
+  # what FMutateSiblingProvider does for `call(…, "register", name)` from an app signed with FMutate's key
+  defp register(fmutate, name) do
+    dir = Path.join([fmutate.data, "dist", "requests"])
+    File.mkdir_p!(dir)
+    File.touch!(Path.join(dir, name))
+  end
+
+  defp sibling_connect(fmutate, name) do
+    cookie = File.read!(Path.join([fmutate.data, "dist", "sibling_cookie"]))
+    :ok = Transport.start_node(name)
+    :ok = Epmd.put_route(fmutate.node, {{127, 0, 0, 1}, FMutate.Dist.port(@inst)})
+    Node.set_cookie(fmutate.node, String.to_atom(cookie))
+    :net_kernel.hidden_connect_node(fmutate.node)
+  end
+
+  test "a signed sibling registers its name, the player allows it, it connects; Disconnect cuts it" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    name = "voice_#{System.unique_integer([:positive])}@127.0.0.1"
+
+    # the sibling cookie alone doesn't get a name in that nobody registered, nor lists it
+    refute sibling_connect(fmutate, name)
+    refute atom_on?(fmutate.peer, name)
+    assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).apps == []
+
+    register(fmutate, name)
+    node = String.to_atom(name)
+    wait(fn -> match?(%{state: :pending}, app(fmutate, node)) end)
+    refute :net_kernel.hidden_connect_node(fmutate.node)
+
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [node])
+    assert :net_kernel.hidden_connect_node(fmutate.node)
+    assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
+    wait(fn -> app(fmutate, node).state == :connected end)
+
+    Node.monitor(fmutate.node, true)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :disconnect, [node])
+    assert_receive {:nodedown, _}, 5_000
+    refute :net_kernel.hidden_connect_node(fmutate.node)
+  end
+
+  test "a Disconnect that can't be saved says so, holds, and is saved once the disk allows it" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    name = "voice_#{System.unique_integer([:positive])}@127.0.0.1"
+    node = String.to_atom(name)
+    register(fmutate, name)
+    wait(fn -> app(fmutate, node) != nil end)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [node])
+
+    dist_dir = Path.join(fmutate.data, "dist")
+    File.chmod!(dist_dir, 0o500)
+    on_exit(fn -> File.chmod(dist_dir, 0o700) end)
+
+    assert :peer.call(fmutate.peer, FMutate.Dist, :disconnect, [node]) == {:error, :not_saved}
+    refute :peer.call(fmutate.peer, FMutate.Dist, :permitted?, [node])
+    assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).unsaved
+    refute sibling_connect(fmutate, name)
+
+    File.chmod!(dist_dir, 0o700)
+
+    wait(
+      fn ->
+        {:ok, bin} = File.read(Path.join(dist_dir, "allowed.term"))
+        :erlang.binary_to_term(bin) == []
+      end,
+      200
+    )
+
+    refute :peer.call(fmutate.peer, FMutate.Dist, :info, []).unsaved
+
+    # a new BEAM: the app is still out
+    :peer.stop(fmutate.peer)
+    fmutate = start_fmutate(nil, fmutate.data)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    refute :peer.call(fmutate.peer, FMutate.Dist, :permitted?, [node])
   end
 
   @tag :lan

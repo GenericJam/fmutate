@@ -19,10 +19,12 @@ defmodule FMutate.Supervisor do
         # after the first instance)
         FMutate.IO,
         # apps paired on the Pair screen: their cookies and pinned certificates (mob_pair; FMutate.Dist follows
-        # it). FMutate.Dist owns the default cookie and admits nodes itself, so neither is touched here.
+        # it). FMutate.Dist owns the default cookie. Release builds keep an allow list (paired names added as
+        # they pair; FMutate.Dist adds sibling-cookie names), so no other name gets past OTP's handshake to
+        # make an atom; development builds (mob_dev's cookie) leave it open for their tools.
         {MobPair.Pairings,
          default_cookie: :keep,
-         allow_list: false,
+         allow_list: if(FMutate.Dist.dev_build?(), do: false, else: :auto),
          store:
            {MobPair.Pairings.FileStore,
             path: Path.join(FMutate.Paths.dist_dir(), "pairings.json")}},

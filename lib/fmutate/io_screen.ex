@@ -636,9 +636,23 @@ defmodule FMutate.IOScreen do
         nil -> "distribution not available"
       end
 
+    unsaved =
+      if d[:unsaved],
+        do: [
+          ~MOB"""
+          <Text
+            text="A change to these apps couldn't be saved yet (retrying). It holds now; if FMutate restarts first, apps need Allow or pairing again."
+            text_size={11}
+            text_color={hex(:warn)}
+          />
+          """
+        ],
+        else: []
+
     card(
       [section_label("APPS · ERLANG DISTRIBUTION")] ++
         rows ++
+        unsaved ++
         [
           ~MOB"""
           <Text

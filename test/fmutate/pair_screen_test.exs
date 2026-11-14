@@ -24,9 +24,10 @@ defmodule FMutate.PairScreenTest do
   end
 
   # Tags: `host_opts` (more MobPair.Host options), `wifi` (the Wi-Fi address FMutate.Pairing sees at first),
-  # `cert` (pair_cert.json before FMutate.Pairing starts: its contents, or :unreadable), `allowed` (node
-  # names FMutate.Dist allowed with the sibling cookie in an earlier run: starts FMutate.Dist), `copy_safe`
-  # (FMutate.Pairing's option; without it, this machine's answer: no getprop, so true)
+  # `cert` (pair_cert.json before FMutate.Pairing starts: its contents, :unreadable or :mismatched),
+  # `paired` (an app paired before FMutate.Pairing starts), `allowed` (node names FMutate.Dist allowed with
+  # the sibling cookie in an earlier run: starts FMutate.Dist), `copy_safe` (FMutate.Pairing's option;
+  # without it, this machine's answer: no getprop, so true)
   setup context do
     dir = Path.join(System.tmp_dir!(), "fmutate_pair_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
@@ -34,6 +35,7 @@ defmodule FMutate.PairScreenTest do
     write_cert(dir, context[:cert])
 
     start_supervised!({Pairings, default_cookie: :keep, allow_list: false})
+    if context[:paired], do: {:ok, _} = Pairings.add(pairing("humdinger_old@127.0.0.1"))
     if allowed = context[:allowed], do: start_dist(allowed)
 
     wifi = if ip = context[:wifi], do: [{~c"wlan0", [flags: [:up, :running], addr: ip]}], else: []
@@ -64,15 +66,48 @@ defmodule FMutate.PairScreenTest do
     File.chmod!(path, 0o000)
   end
 
+  # a certificate and the key of another one: both decode (a copy in mismatched.json, for the test)
+  defp write_cert(dir, :mismatched) do
+    {cert, other} = {Cert.self_signed("FMutate"), Cert.self_signed("FMutate")}
+    encode = &Base.url_encode64(&1, padding: false)
+    json = JSON.encode!(%{"cert" => encode.(cert.cert), "key" => encode.(other.key)})
+    File.write!(Path.join(dir, "pair_cert.json"), json)
+    File.write!(Path.join(dir, "mismatched.json"), json)
+  end
+
   defp write_cert(dir, contents), do: File.write!(Path.join(dir, "pair_cert.json"), contents)
+
+  # what the Host gives MobPair.Pairings.add/1 on Allow
+  defp pairing(node) do
+    %{
+      node: node,
+      app_id: "com.genericjam.humdinger",
+      app_name: "Humdinger",
+      device_name: "moto e",
+      client_fp: :crypto.strong_rand_bytes(32),
+      dist_proto: :inet_tcp
+    }
+  end
 
   # FMutate.Dist without distribution; its files are in the data directory Mob.ScreenCase sets up
   defp start_dist(allowed) do
     dir = FMutate.Paths.dist_dir()
-    files = for name <- ["allowed.term", "sibling", "sibling_cookie"], do: Path.join(dir, name)
-    on_exit(fn -> Enum.each(files, &File.rm/1) end)
+
+    files =
+      for name <- ["allowed.term", "sibling", "sibling_cookie", "requests"],
+          do: Path.join(dir, name)
+
+    on_exit(fn -> Enum.each(files, &File.rm_rf/1) end)
     File.write!(Path.join(dir, "allowed.term"), :erlang.term_to_binary(allowed))
     start_supervised!({Dist, start: false})
+  end
+
+  # what the content provider does for a sibling that registers its name, and FMutate.Dist's next look
+  defp register(node) do
+    dir = Path.join(FMutate.Paths.dist_dir(), "requests")
+    File.mkdir_p!(dir)
+    File.touch!(Path.join(dir, Atom.to_string(node)))
+    send(Dist, :requests)
   end
 
   defp mount, do: mount_screen(PairScreen, %{}, %{clipboard: FakeClipboard})
@@ -388,14 +423,55 @@ defmodule FMutate.PairScreenTest do
     assert text(view) =~ "Magpie is paired"
   end
 
-  @tag cert: ~s({"cert": "MIIB)
-  test "a certificate file cut short is replaced by a new certificate", %{dir: dir} do
+  @tag cert: ~s({"cert": "MIIB), paired: true
+  test "a certificate file cut short is replaced by a new certificate; the old pairings are revoked",
+       %{dir: dir} do
     view = mount_screen(PairScreen)
     assert find(view, :canvas, id: "pair_qr")
 
     path = Path.join(dir, "pair_cert.json")
     assert {:ok, %{"cert" => _, "key" => _}} = path |> File.read!() |> JSON.decode()
     assert File.stat!(path).mode |> Bitwise.band(0o777) == 0o600
+    # they were paired with the old certificate
+    assert Pairings.list() == []
+  end
+
+  @tag cert: :mismatched
+  test "a certificate whose key isn't its own is replaced", %{dir: dir} do
+    path = Path.join(dir, "pair_cert.json")
+    {:ok, %{"cert" => old}} = Path.join(dir, "mismatched.json") |> File.read!() |> JSON.decode()
+    view = mount_screen(PairScreen)
+    assert find(view, :canvas, id: "pair_qr")
+
+    {:ok, %{"cert" => new}} = path |> File.read!() |> JSON.decode()
+    assert new != old
+    {:ok, link} = Link.parse(assigns(view).info.link)
+    assert link.fp == new |> Base.url_decode64!(padding: false) |> Cert.fingerprint()
+  end
+
+  @tag allowed: []
+  test "the certificate's key and the cookies stay out of :sys.get_status" do
+    %{cert: %{key: key}} = :sys.get_state(Pairing)
+    status = :sys.get_status(Pairing) |> inspect(limit: :infinity, printable_limit: :infinity)
+    refute status =~ inspect(key, limit: :infinity)
+
+    cookie = File.read!(Path.join(FMutate.Paths.dist_dir(), "sibling_cookie"))
+    assert byte_size(cookie) == 64
+    refute :sys.get_status(Dist) |> inspect(limit: :infinity) =~ cookie
+  end
+
+  @tag allowed: []
+  test "I/O's Allow asks MobPair.Pairings: a name paired a moment ago doesn't get the sibling cookie" do
+    # FMutate.Dist hasn't heard of the pairing yet: it follows the registry that was running at its start
+    stop_supervised!(Pairings)
+    start_supervised!({Pairings, default_cookie: :keep, allow_list: false})
+    node = :"humdinger_race@127.0.0.1"
+    register(node)
+    assert %{apps: [%{node: ^node, state: :pending}]} = Dist.info()
+
+    {:ok, _} = Pairings.add(pairing(Atom.to_string(node)))
+    assert Dist.allow(node) == {:error, :paired}
+    assert %{apps: [%{node: ^node, state: :pending}]} = Dist.info()
   end
 
   @tag cert: :unreadable
@@ -413,10 +489,10 @@ defmodule FMutate.PairScreenTest do
     assert Client.pair(target(view), token(view), voice) == {:error, :bad_node}
     refute_received {:pairing, {:request, _, _}}
 
-    # a knock (no cookie needed) makes a name pending, not claimed
+    # a registered name (no cookie needed) is pending, not claimed
     view = render_info(view, {:tap, :renew})
     me = identity()
-    send(Dist, {:knock, String.to_atom(me.node)})
+    register(String.to_atom(me.node))
     task = Task.async(fn -> Client.pair(target(view), token(view), me) end)
     assert_receive {:pairing, {:request, _ref, %{app_name: "Humdinger"}}}, 5_000
     Task.shutdown(task, :brutal_kill)

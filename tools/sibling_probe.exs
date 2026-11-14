@@ -3,13 +3,16 @@
 #   mise exec -- elixir tools/sibling_probe.exs <adb serial> <sibling cookie> [seconds to hold the key]
 #
 # Get the cookie the way a sibling does, from FMutate's signature-protected provider (the probe app in
-# tools/android_probe, signed with the same key):
+# tools/android_probe, signed with the same key), and register the probe's node name there first (FMutate
+# refuses a name nobody registered before it reads it, protocol.md §7):
 #
 #   adb -s <serial> shell am start -n com.genericjam.fmutate.probe/.ProbeActivity --es do cookie
+#   adb -s <serial> shell am start -n com.genericjam.fmutate.probe/.ProbeActivity --es do register \
+#     --es node fmutate_probe@127.0.0.1
 #   adb -s <serial> logcat -d -s FMutateProbe
 #
 # It uses nothing from this project, only OTP, configured as protocol.md says (no EPMD, fixed port, a
-# hidden node that only connects out). It knocks until the player taps Allow on FMutate's I/O screen,
+# hidden node that only connects out). It retries until the player taps Allow on FMutate's I/O screen,
 # subscribes to status and LEDs, holds key 7 down and lets go, prints what comes back, then waits for the
 # player's Disconnect and checks that it can't get back in.
 [serial, cookie | rest] = System.argv()

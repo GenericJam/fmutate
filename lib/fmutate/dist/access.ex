@@ -7,13 +7,13 @@ defmodule FMutate.Dist.Access do
                             ▲                  │ └──────nodeup──────▶ │
                             └──────knock─── disconnected ◀─disconnect─┘ (also from allowed/pending)
 
-    * **knock** — a node tried to connect and was refused at the handshake (it isn't allowed, so its cookie
-      didn't match). It is listed as pending, waiting for the player's Allow.
+    * **knock** — a sibling registered its node name through the content provider (`FMutate.Dist.Requests`):
+      it asks to connect. It is listed as pending, waiting for the player's Allow.
     * **allow** — the player tapped Allow: the node may connect (and reconnect, across restarts) until
       disconnected.
     * **nodeup / nodedown** — an allowed node's connection came up or went away.
     * **disconnect** — the player tapped Disconnect: the connection is cut and the node is refused again
-      until it knocks and is allowed anew.
+      until it registers and is allowed anew.
     * **pair** — the player allowed the app on the Pair screen (`FMutate.Pairing`, protocol §1): the node is
       allowed straight away, with its own cookie from the pairing.
     * **forget** — a pairing was revoked (Disconnect, or the app unpaired itself): the node is dropped from the
@@ -42,7 +42,7 @@ defmodule FMutate.Dist.Access do
     %__MODULE__{apps: apps, dev: Keyword.get(opts, :dev, false)}
   end
 
-  @doc "A refused connection attempt. `:ignored` for allowed or connected nodes (nothing to ask)."
+  @doc "A registered sibling asks to connect. `:ignored` for allowed or connected nodes (nothing to ask)."
   @spec knock(t(), node(), integer()) :: {:pending | :ignored, t()}
   def knock(%__MODULE__{} = access, node, now) do
     case state(access, node) do
@@ -125,7 +125,7 @@ defmodule FMutate.Dist.Access do
 
   defp put(access, node, state, now), do: put_in(access.apps[node], %{state: state, since: now})
 
-  # anyone on the phone can knock (no cookie needed to be refused): keep only the latest few
+  # any signed sibling can register any number of names: keep only the latest few
   defp trim(access) do
     pending = for {n, %{state: :pending, since: t}} <- access.apps, do: {t, n}
 
