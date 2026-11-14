@@ -33,6 +33,9 @@ early: Android only, installed from source.
   and CCs, portrait or landscape. Saved per firmware.
 - **I/O**: low-latency audio (AAudio), a virtual MIDI port `FMutate A`, USB and Bluetooth MIDI devices, MIDI clock
   in and out.
+- **MIDI controllers**: an MPK mini's knobs and pads drive the FM-1's knobs and buttons out of the box (automap;
+  other controllers by the order you touch them), and any hardware knob, fader, pad or key can be learned onto a
+  control in the layout editor.
 - **Sibling apps** (planned separately: a pattern sequencer, voice control, …) drive FMutate over Erlang
   distribution, after you allow them ([docs/design/protocol.md](docs/design/protocol.md)).
 

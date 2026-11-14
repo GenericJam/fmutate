@@ -28,6 +28,18 @@ defmodule FMutate.Bindings do
   def pickup, do: @pickup
 
   @doc """
+  `target` is at `value` (0..1) with no owner yet (the master pot as the instance has it): every control,
+  including a learned hardware knob, has to pick it up; touch, which moves from the current value, does at
+  once. A target some control has moved is left alone.
+  """
+  @spec seed(t, target, number) :: t
+  def seed(%__MODULE__{} = state, target, value) do
+    if Map.has_key?(state.targets, target),
+      do: state,
+      else: %{state | targets: Map.put(state.targets, target, %{value: value * 1.0, owner: nil, last: %{}})}
+  end
+
+  @doc """
   `control` moved absolute `target` to `value` (0..1): `{:send, value, state}` when it may set it (it owns
   the target, picked it up, or nobody has set it yet), `{:ignore, state}` while it still has to pick up.
   """
@@ -70,6 +82,7 @@ defmodule FMutate.Bindings do
   @doc "Whether `control` is stale on `target` (another control moved it last)."
   def stale?(%__MODULE__{} = state, target, control) do
     case state.targets[target] do
+      %{owner: nil} -> false
       %{owner: owner} -> owner != control
       nil -> false
     end

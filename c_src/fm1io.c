@@ -1,12 +1,13 @@
 /*
- * c_src/fm1io.c — the bridge between the BEAM and FMutate's Kotlin audio-output list (fmutate/FMutateIO.kt).
- * MIDI is the mob_midi plugin's.
+ * c_src/fm1io.c — the bridge between the BEAM and FMutate's Kotlin side (fmutate/FMutateIO.kt): the audio-output
+ * list, and what learned MIDI controls show on the instrument surface. MIDI itself is the mob_midi plugin's.
  *
  * Statically linked into the app binary as the NIF `fm1io` (mob.exs :static_nifs, Android only); Elixir side:
- * FMutate.IONif, owned by FMutate.IO.
+ * FMutate.IONif, owned by FMutate.IO (audio outputs) and FMutate.MIDI (surface).
  *
  * Kotlin → BEAM: the audio outputs as a JSON document to the event pid: {fm1io, event, Json}.
- * BEAM → Kotlin (dirty IO NIF): call/1 (JSON command → JSON reply).
+ * BEAM → Kotlin (dirty IO NIFs): call/1 (JSON command → JSON reply); surface/1 (text lines for the instrument
+ * surface, FMutateIO.surface: queued there and applied once per display frame).
  */
 #include <erl_nif.h>
 
@@ -22,6 +23,7 @@ static ErlNifPid events_pid;
 
 static jclass io_class;            /* FMutateIO, a global ref taken in nativeInit (app class loader) */
 static jmethodID m_call;
+static jmethodID m_surface;
 
 static ERL_NIF_TERM atom(ErlNifEnv *env, const char *name)
 {
@@ -97,6 +99,30 @@ static ERL_NIF_TERM nif_call(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return enif_make_tuple2(env, atom(env, "ok"), enif_make_binary(env, &out));
 }
 
+/* surface(Text :: binary()) -> ok | {error, not_ready | exception} */
+static ERL_NIF_TERM nif_surface(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    ErlNifBinary in;
+    JNIEnv *j;
+    char *text;
+    (void)argc;
+    if (!enif_inspect_iolist_as_binary(env, argv[0], &in)) return enif_make_badarg(env);
+    if (!io_class || !m_surface || !(j = jni())) return error(env, "not_ready");
+    text = enif_alloc(in.size + 1);
+    memcpy(text, in.data, in.size);
+    text[in.size] = 0;
+    jstring jtext = (*j)->NewStringUTF(j, text);
+    enif_free(text);
+    (*j)->CallStaticVoidMethod(j, io_class, m_surface, jtext);
+    (*j)->DeleteLocalRef(j, jtext);
+    if ((*j)->ExceptionCheck(j)) {
+        (*j)->ExceptionDescribe(j);
+        (*j)->ExceptionClear(j);
+        return error(env, "exception");
+    }
+    return atom(env, "ok");
+}
+
 /* ---- JNI, from FMutateIO.kt */
 
 JNIEXPORT void JNICALL
@@ -106,6 +132,7 @@ Java_com_example_fmutate_1app_fmutate_FMutateIO_nativeInit(JNIEnv *env, jclass c
     if (!io_class) {
         io_class = (jclass)(*env)->NewGlobalRef(env, cls);
         m_call = (*env)->GetStaticMethodID(env, cls, "call", "(Ljava/lang/String;)Ljava/lang/String;");
+        m_surface = (*env)->GetStaticMethodID(env, cls, "surface", "(Ljava/lang/String;)V");
     }
     pthread_mutex_unlock(&lock);
 }
@@ -136,6 +163,7 @@ static ErlNifFunc nif_funcs[] = {
     {"loaded", 0, nif_loaded, 0},
     {"subscribe_events", 1, nif_subscribe_events, 0},
     {"call", 1, nif_call, ERL_NIF_DIRTY_JOB_IO_BOUND},
+    {"surface", 1, nif_surface, ERL_NIF_DIRTY_JOB_IO_BOUND},
 };
 
 ERL_NIF_INIT(Elixir.FMutate.IONif, nif_funcs, NULL, NULL, NULL, NULL)

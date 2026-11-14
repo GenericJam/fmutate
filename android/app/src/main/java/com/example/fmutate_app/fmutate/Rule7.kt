@@ -32,6 +32,12 @@ class Rule7 {
         return ok
     }
 
+    /** A learned MIDI control moved `key` for `control` (FMutate.MIDI arbitrated it): that control owns it now. */
+    fun take(key: String, control: String, v: Float) {
+        if (owner[key] != control) owner[key] = control
+        last["$key|$control"] = v
+    }
+
     /** Whether another control moved one of this control's absolute targets last. */
     fun stale(c: Control): Boolean = c.bindings.any { b ->
         val k = b.to.absoluteKey

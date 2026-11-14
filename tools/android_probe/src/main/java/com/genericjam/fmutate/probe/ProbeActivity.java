@@ -31,6 +31,9 @@ import java.util.concurrent.atomic.AtomicReference;
  *       what comes out of "FMutate A" (the clock FMutate sends), with tick intervals
  *   am start -n ... --es do emit [--ei note 60] [--ei hold 1500]
  *       a note out of this app's own "FMutate Probe" port (once FMutate has opened it)
+ *   am start -n ... --es do emit --es hex "b0 46 40,99 24 64,89 24 00" [--ei gap 20]
+ *       those messages (comma-separated, hex bytes) out of "FMutate Probe", gap ms apart: a controller's knobs,
+ *       pads on channel 10, anything
  */
 public class ProbeActivity extends Activity {
     private static final String TAG = "FMutateProbe";
@@ -159,6 +162,19 @@ public class ProbeActivity extends Activity {
         MidiReceiver out = s != null ? s.out() : null;
         if (out == null) {
             Log.w(TAG, "emit: FMutate Probe isn't open (open it in FMutate's I/O screen first)");
+            return;
+        }
+        String hex = x.getString("hex");
+        if (hex != null) {
+            int gap = x.getInt("gap", 20);
+            for (String m : hex.split(",")) {
+                String[] parts = m.trim().split("\\s+");
+                byte[] b = new byte[parts.length];
+                for (int i = 0; i < parts.length; i++) b[i] = (byte) Integer.parseInt(parts[i], 16);
+                out.send(b, 0, b.length, System.nanoTime());
+                Thread.sleep(gap);
+            }
+            Log.i(TAG, "emit: " + hex.split(",").length + " messages");
             return;
         }
         int note = x.getInt("note", 60), hold = x.getInt("hold", 1500);
