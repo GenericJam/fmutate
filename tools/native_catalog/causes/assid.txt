@@ -1,1 +1,0 @@
-fm1-base app (ATEK303 + drums) whose build.sh clones fm1-base unpinned into terceros/fm1-base (base/ is a symlink to it); with charlesvestal/fm1-base c8e05997 there it builds unchanged with recipe web (kind fm1-base) and verifies as a match (dL 0.0 dB, spec 0.999, screens 0/0.1/0.8): needs fetch.sh to fetch that dependency (a pinned 'deps' entry in pins.json).

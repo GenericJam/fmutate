@@ -1,1 +1,0 @@
-bare-metal on Felucca's HAL (firmware/fm1-native: audio_target.c, bringup-style main against fm1_*.h registers); its host builds are audio-core tests only (tests/, 'not a complete FM-1 hardware emulator'), simulator.html is a JavaScript re-implementation, not the firmware. Needs a host Felucca-HAL layer (~400 lines, shared with b1/beetleblue/etch) plus a driver for its main loop.

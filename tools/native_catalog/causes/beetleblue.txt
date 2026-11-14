@@ -1,1 +1,0 @@
-same platform as BEETLE (SikkenWorks firmware/fm1-native on Felucca's HAL registers, audio-core host tests only, JavaScript web simulator); needs the same host Felucca-HAL layer (~400 lines, shared with b1/beetle/etch) and a main-loop driver.

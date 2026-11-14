@@ -1,6 +1,6 @@
 # Native cartridges for the Hub catalogue (draft, phase A in progress)
 
-Status: proposed. Numbers from the Mac host build of 2026-11-14 (`python3 tools/native_catalog/report.py`).
+Status: proposed. Numbers from the Mac host build of 2026-11-14 (`python3 pipeline/report.py` in [fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges)).
 
 ## Why
 
@@ -11,7 +11,7 @@ real time (Melodee 71x, Skiff 660x, `cartbench`), and sample-exact against the e
 
 ## The pipeline
 
-`tools/native_catalog/` (moves to GenericJam/fmutate-cartridges; FMutate keeps the engine and the loader):
+[GenericJam/fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges) `pipeline/` (moved there from FMutate's tools/native_catalog at 277ad0c, history kept; FMutate keeps the engine and the loader):
 
 1. **Pins** (`pins.py` → `pins.json`): a commit per Hub entry: the Hub's verified build provenance (55), its source
    ref (1), the release tag (136), else the default branch's HEAD on the day (21, flagged `head`). A pin moves only
@@ -55,7 +55,7 @@ OberVave, Dinghy, GR!MM, Frasil **match**; **Clipper and Sloop not built** (Felu
 need a host model of the Felucca HAL, designed in agent://NativeCatalog.FeluccaHarness, not written); JIANT diverges.
 Can't build without more work: no source (mycelium, bb1), unpinned dependencies fetched at build time (atek303,
 assid, kitten, manifold, fm1sid), firmwares on the bare HAL with no host layer (b1, beetle, beetleblue, etch, Felucca
-forks), others in tools/native_catalog/causes/.
+forks), others in fmutate-cartridges pipeline/causes/.
 
 ## The index (schema 1)
 

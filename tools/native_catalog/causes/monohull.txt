@@ -1,1 +1,0 @@
-No browser build: the host build is a Rust crate (host/Cargo.toml, build.rs compiling dsp/ and firmware/plat), and the Felucca browser build under ext/Felucca is the base it borrows from, not this firmware. Needs a recipe that compiles dsp/ + firmware/main.c against a host platform layer (or the Rust host's C part) with an adapter.

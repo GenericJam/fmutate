@@ -1,1 +1,0 @@
-no host build of the firmware: the RUPTURE/ETCH native firmware (vendor/etch-v1.88-source/firmware/fm1-native) has only an audio-core test runner (host/etch_host.c, 'not a complete FM-1 hardware emulator') and the browser emulator is fm1-emu (Rust) running the package; a cartridge needs a host platform for fm1-native's main/UI/LCD/input

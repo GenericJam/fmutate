@@ -1,1 +1,0 @@
-the app needs Little Sound Dj, a Game Boy ROM not in the repository (the user adds lsdj.gb on install); with no host build of the Game Boy core and FM-1 glue (only per-feature tests/*.c), a cartridge would need a host platform for src/gb_port.c plus a user-supplied ROM at run time
