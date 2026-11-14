@@ -33,6 +33,7 @@ The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`
 | Engine + cartridges for the phone (all ABIs into `jniLibs`) | `sh native/build_android.sh` |
 | The same for this computer (the tests run them) | `sh native/build_host.sh` |
 | The emulator engine (`libfm1emu.so`; host, arm64-v8a, x86_64; also fetches test packages) | `mise exec -- sh native/build_emu.sh` |
+| iOS (in progress, `docs/decisions/2026-11-13-ios-port.md`): engines, cartridges and emulator as one archive per target, linked into the app | `mise exec -- sh native/build_ios.sh` (`TARGETS="sim device host"`; `host` = macOS, for `test/fmutate/inproc_engine_test.exs`) |
 | Tests | `mise exec -- mix test` |
 | Compile check | `mise exec -- mix compile --warnings-as-errors` |
 | Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |
@@ -62,6 +63,9 @@ JNI symbols in Mob's generated code follow it.)
   `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`, `FMutate.Instance.journal("a", 50)` (the last inputs),
   `FMutate.Instance.held("a")`. The app is the node `fmutate_a@127.0.0.1` on the device's port 9150 (no EPMD).
   Calls time out after 30 s: for longer sampling, spawn a sampler on the device and read it with a second call.
+  A physical iPhone: pass its UDID instead of a serial (through `iproxy`, to Mob's development node); launch the
+  app with `MOB_NODE_HOST=127.0.0.1` first (the command is in `tools/rpc.exs`'s header). Files into the app:
+  `xcrun devicectl device copy to --domain-type appDataContainer --domain-identifier com.genericjam.fmutate`.
 - **Performance**: `adb shell dumpsys gfxinfo com.genericjam.fmutate reset`, play, then `dumpsys gfxinfo …`; the
   procedure and past numbers are in docs/architecture.md "Measured".
 - **A package on a device** (emulator backend): push it to `/data/local/tmp/`, `run-as com.genericjam.fmutate cp`

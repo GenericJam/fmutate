@@ -19,13 +19,8 @@ defmodule FMutate.Layouts do
 
   @type layout :: map()
 
-  @doc "Directory of the preset layouts (on a device Mob pushes priv/ next to the BEAMs)."
-  def presets_dir do
-    case System.get_env("MOB_BEAMS_DIR") do
-      nil -> Path.join(:code.priv_dir(:fmutate_app) |> to_string(), "layouts")
-      dir -> Path.join([dir, "priv", "layouts"])
-    end
-  end
+  @doc "Directory of the preset layouts."
+  def presets_dir, do: Paths.priv("layouts")
 
   @doc "Every preset as `%{id, name, firmware, frame, data}` (`data` is the decoded layout)."
   def presets do

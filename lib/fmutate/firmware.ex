@@ -96,8 +96,8 @@ defmodule FMutate.Firmware do
              do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native}
 
       %{backend: :emu, package: pkg} when is_binary(pkg) ->
-        emu = FMutate.Paths.emu_bin()
-        if File.exists?(emu) and File.exists?(pkg), do: %{engine: emu, file: pkg, backend: :emu}
+        if FMutate.Paths.emu?() and File.exists?(pkg),
+          do: %{engine: FMutate.Paths.emu_bin(), file: pkg, backend: :emu}
 
       _ ->
         nil

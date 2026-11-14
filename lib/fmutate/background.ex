@@ -12,6 +12,13 @@ defmodule FMutate.Background do
   (`{:error, :start_not_allowed}`: the instance came back from safe mode while the app was away) is tried
   again when the app returns to the foreground. The first start asks for the notification permission
   (Android 13+), without which the notification shows only in the system's running-apps list.
+
+  iOS keeps an app running in the background while its audio session plays (`UIBackgroundModes` `audio`), so
+  there the keep-alive is FMutate's own output (mob_background's iOS keep-alive, a silent audio engine, would be
+  a second one): this process starts from whether the output runs (it starts with the app, and a restarted
+  Background finds it as it was left), and when nothing plays it stops it, releasing the audio session (other
+  apps' audio is no longer mixed with a silent FMutate, and iOS may suspend the app in the background);
+  something playing again starts it.
   """
 
   use GenServer
@@ -24,12 +31,23 @@ defmodule FMutate.Background do
 
   defmodule Native do
     @moduledoc false
-    # The device side: mob_background's keep-alive and Mob's permission request.
-    def keep_alive,
-      do: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+    # The device side: mob_background's keep-alive and Mob's permission request (Android); the audio output (iOS).
+    def keep_alive do
+      if ios?(),
+        do: FMutate.AudioNif.start(),
+        else: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+    end
 
-    def stop, do: MobBackground.stop()
-    def request_notifications, do: :mob_nif.request_permission(:notifications)
+    def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: MobBackground.stop())
+    # whether the keep-alive is already held when this process starts: on iOS (in-process engines) the output's
+    # own state; elsewhere not
+    def on?, do: FMutate.Paths.inproc?() and FMutate.AudioNif.stats().running
+    # back in the foreground with the keep-alive held: on iOS reopen the output if an interruption closed it and
+    # never reported its end (AudioNif.start leaves a running output alone); elsewhere nothing
+    def resume, do: if(ios?(), do: FMutate.AudioNif.start(), else: :ok)
+    def request_notifications, do: unless(ios?(), do: :mob_nif.request_permission(:notifications))
+
+    defp ios?, do: :mob_nif.platform() == :ios
   end
 
   def start_link(opts),
@@ -43,10 +61,12 @@ defmodule FMutate.Background do
     instances = Keyword.fetch!(opts, :instances)
     if Process.whereis(Mob.Device), do: Mob.Device.subscribe(:app)
 
+    backend = Keyword.get(opts, :backend, Native)
+
     state = %{
-      backend: Keyword.get(opts, :backend, Native),
+      backend: backend,
       phases: Map.new(instances, &{&1, nil}),
-      on: false,
+      on: backend.on?(),
       asked: false,
       last_error: nil
     }
@@ -83,7 +103,14 @@ defmodule FMutate.Background do
     end
   end
 
-  def handle_info({:mob_device, :did_become_active}, state), do: {:noreply, apply_want(state)}
+  def handle_info({:mob_device, :did_become_active}, state) do
+    if state.on and want?(state) do
+      with {:error, reason} <- state.backend.resume(),
+           do: Logger.warning("background: output didn't resume: #{inspect(reason)}")
+    end
+
+    {:noreply, apply_want(state)}
+  end
 
   def handle_info({:permission, :notifications, result}, state) do
     Logger.info("background: notification permission #{result}")

@@ -39,7 +39,9 @@ defmodule FMutate.IOScreen do
        dist: subscribed(:dist, Dist, &Dist.subscribe/0),
        midi: MIDI.settings(@instance),
        latency: nil,
-       sheet: nil
+       sheet: nil,
+       # iOS chooses the output itself: its route picker instead of the output list
+       route_picker: FMutate.Paths.inproc?()
      )}
   end
 
@@ -162,6 +164,7 @@ defmodule FMutate.IOScreen do
 
   defp phase_label(:safe_mode), do: "safe mode"
   defp phase_label(:not_installed), do: "can't run here"
+  defp phase_label(:hung), do: "stuck: restart the app"
   defp phase_label(phase), do: to_string(phase)
 
   # the instance's speed (FMutate.Instance.Health): one source for this card, the instrument and sibling apps;
@@ -222,9 +225,20 @@ defmodule FMutate.IOScreen do
     db = db(a.peak)
     {total, detail} = latency(a)
 
-    seg =
-      for {label, type} <- [{"Speaker", :speaker}, {"Headphones", :headphones}, {"USB", :usb}],
-          do: segment(label, type, route, assigns.io)
+    outputs =
+      if assigns.route_picker do
+        Mob.UI.native_view(FMutate.RoutePicker, id: :route_picker)
+      else
+        seg =
+          for {label, type} <- [{"Speaker", :speaker}, {"Headphones", :headphones}, {"USB", :usb}],
+              do: segment(label, type, route, assigns.io)
+
+        ~MOB"""
+        <Row background={0xFF14121A} corner_radius={12} padding={3} gap={3}>
+          {seg}
+        </Row>
+        """
+      end
 
     other = route_note(route)
     buffer = if a.buffer > 0, do: " · buffer #{a.buffer}", else: ""
@@ -233,11 +247,7 @@ defmodule FMutate.IOScreen do
 
     card([
       section_label("AUDIO OUT"),
-      ~MOB"""
-      <Row background={0xFF14121A} corner_radius={12} padding={3} gap={3}>
-        {seg}
-      </Row>
-      """,
+      outputs,
       other,
       ~MOB"""
       <Row gap={10} align={:center}>

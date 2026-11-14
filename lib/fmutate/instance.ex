@@ -9,7 +9,10 @@ defmodule FMutate.Instance do
   `FMutate.Audio` slot. Switching firmware starts the new engine in a second slot, crossfades when it is
   READY, then stops the old one. If the running engine dies (crash, hang, killed), it is restarted in the
   same slot with the same flash file. A firmware that dies twice within a minute is **quarantined**: it
-  isn't restarted or autostarted until the player chooses "Run anyway" (`run_anyway/1`).
+  isn't restarted or autostarted until the player chooses "Run anyway" (`run_anyway/1`). In-process (iOS) a
+  native firmware's crash ends the app; `FMutate.CrashMarker` tells the next launch, which counts it the same
+  way (twice with less than a minute of clean running between). A firmware loop that hangs in-process holds
+  its cartridge until the app restarts: phase `:hung`.
 
   ## Inputs
 
@@ -72,6 +75,8 @@ defmodule FMutate.Instance do
             buffer: :auto,
             # per firmware (emulator engine): the CPU clock kept by FMutate.Instance.Health.memory/1
             cpu: %{},
+            # per firmware (in-process engines): times it ended the app with no clean minute since (CrashMarker)
+            app_crashes: %{},
             health: nil
 
   ## API
@@ -100,10 +105,15 @@ defmodule FMutate.Instance do
   `status: true` also `{:instance, id, {:status, status}}` on every engine STATUS (ten a second): only for
   processes that use it (FMutate.Remote), since a screen re-renders on every message it gets.
   """
-  def subscribe(id, opts \\ []), do: GenServer.call(via(id), {:subscribe, self(), Keyword.get(opts, :status, false)})
+  def subscribe(id, opts \\ []),
+    do: GenServer.call(via(id), {:subscribe, self(), Keyword.get(opts, :status, false)})
 
-  @doc "Debug: crash, hang or kill -9 the running engine."
-  def debug(id, what) when what in [:crash, :hang, :kill9], do: GenServer.cast(via(id), {:debug, what})
+  @doc """
+  Debug: crash, hang or kill -9 the running engine. Native cartridges also take `:segv` (a real fault: in-process
+  it ends the app, the crash marker's test) and `:stall` (4 s of firmware code that no stop reaches).
+  """
+  def debug(id, what) when what in [:crash, :hang, :kill9, :segv, :stall],
+    do: GenServer.cast(via(id), {:debug, what})
 
   @doc """
   Diagnostics: the last `n` inputs (and surface reports) as `{ms, kind, event, outcome}`, newest first. `ms` is
@@ -165,10 +175,38 @@ defmodule FMutate.Instance do
       master: saved[:master] || 1.0,
       quarantined: MapSet.new(saved[:quarantined] || []),
       buffer: saved[:buffer] || :auto,
-      cpu: saved[:cpu] || %{}
+      cpu: saved[:cpu] || %{},
+      app_crashes: saved[:app_crashes] || %{}
     }
 
-    {:ok, state, {:continue, :boot}}
+    {:ok, app_crashed(state, Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)),
+     {:continue, :boot}}
+  end
+
+  # In-process engines (iOS): the firmware this instance ran ended the app (FMutate.CrashMarker). Twice with less
+  # than a minute of clean running in between quarantines it, as two crashes within a minute do on Android.
+  defp app_crashed(state, crashed) do
+    fw = state.firmware
+
+    if fw in crashed do
+      n = Map.get(state.app_crashes, fw, 0) + 1
+
+      Logger.warning(
+        "instance #{state.id}: #{fw} ended the app (#{n} time(s) without a clean minute since)"
+      )
+
+      state = %{state | app_crashes: Map.put(state.app_crashes, fw, n), last_exit: :app_crash}
+
+      state =
+        if n >= @quarantine_after,
+          do: %{state | quarantined: MapSet.put(state.quarantined, fw)},
+          else: %{state | restarts: n}
+
+      save_state(state)
+      state
+    else
+      state
+    end
   end
 
   @impl true
@@ -190,10 +228,21 @@ defmodule FMutate.Instance do
       fw == state.firmware and state.phase in [:booting, :running] ->
         {:reply, :ok, state}
 
+      state.live != nil and fw == state.live.firmware ->
+        # back to the firmware still playing before the switch away from it finished: keep it (in-process a
+        # cartridge can't run twice) and drop the one booting
+        state = if state.next, do: drop_engine(state, :next), else: state
+        state = %{state | firmware: fw, restarts: 0, failures: []}
+        save_state(state)
+        {:reply, :ok, publish(state)}
+
       true ->
         state = if state.next, do: drop_engine(state, :next), else: state
         state = %{state | firmware: fw, restarts: 0, failures: []}
-        state = if state.live, do: start_engine(state, :next, fw), else: start_engine(state, :live, fw)
+
+        state =
+          if state.live, do: start_engine(state, :next, fw), else: start_engine(state, :live, fw)
+
         save_state(state)
         {:reply, :ok, publish(state)}
     end
@@ -245,7 +294,8 @@ defmodule FMutate.Instance do
   end
 
   # library hooks
-  def handle_call(:quarantined, _from, state), do: {:reply, MapSet.to_list(state.quarantined), state}
+  def handle_call(:quarantined, _from, state),
+    do: {:reply, MapSet.to_list(state.quarantined), state}
 
   def handle_call({:unquarantine, fw}, _from, state) do
     state = %{state | quarantined: MapSet.delete(state.quarantined, fw), failures: []}
@@ -255,13 +305,16 @@ defmodule FMutate.Instance do
 
   def handle_call({:subscribe, pid, status?}, _from, state) do
     ref = Process.monitor(pid)
-    {:reply, view_of(state), %{state | subscribers: Map.put(state.subscribers, pid, {ref, status?})}}
+
+    {:reply, view_of(state),
+     %{state | subscribers: Map.put(state.subscribers, pid, {ref, status?})}}
   end
 
   def handle_call({:journal, n}, _from, state), do: {:reply, Enum.take(state.journal, n), state}
 
   def handle_call(:held, _from, state),
-    do: {:reply, %{keys: Enum.sort(state.held_keys), buttons: Enum.sort(state.held_buttons)}, state}
+    do:
+      {:reply, %{keys: Enum.sort(state.held_keys), buttons: Enum.sort(state.held_buttons)}, state}
 
   @impl true
   def handle_cast({:input, event}, state), do: {:noreply, apply_input(state, event)}
@@ -273,7 +326,8 @@ defmodule FMutate.Instance do
 
   def handle_cast(:release_all, state) do
     ups =
-      Enum.map(state.held_keys, &{:key, &1, :up}) ++ Enum.map(state.held_buttons, &{:button, &1, :up}) ++
+      Enum.map(state.held_keys, &{:key, &1, :up}) ++
+        Enum.map(state.held_buttons, &{:button, &1, :up}) ++
         [{:midi, <<0xB0, 123, 0, 0xB0, 7, 127, 0xE0, 0, 64>>}]
 
     state = journal(state, :surface, :release_all, :noted)
@@ -302,6 +356,12 @@ defmodule FMutate.Instance do
 
   def handle_info({:finish_switch, pid}, state) do
     Engine.stop(pid)
+    {:noreply, state}
+  end
+
+  def handle_info({:ran_clean, pid}, %{live: %{pid: pid, firmware: fw}} = state) do
+    state = %{state | app_crashes: Map.delete(state.app_crashes, fw)}
+    save_state(state)
     {:noreply, state}
   end
 
@@ -339,6 +399,7 @@ defmodule FMutate.Instance do
           tag: {state.id, fw, slot},
           bin: bin,
           cart: cart,
+          backend: backend,
           prefix: prefix,
           flash: Paths.flash(state.id, fw, backend),
           fill: fill,
@@ -346,12 +407,24 @@ defmodule FMutate.Instance do
           env: if(backend == :emu, do: Application.get_env(:fmutate_app, :emu_env, []), else: [])
         )
 
-      eng = %{pid: pid, firmware: fw, slot: slot, prefix: prefix, ready: false, fill: fill, backend: backend}
+      eng = %{
+        pid: pid,
+        firmware: fw,
+        slot: slot,
+        prefix: prefix,
+        ready: false,
+        fill: fill,
+        backend: backend
+      }
+
       phase = if role == :live, do: :booting, else: state.phase
       Map.put(%{state | phase: phase}, role, eng)
     else
       nil ->
-        Logger.error("instance #{state.id}: #{fw} can't run here (no cartridge, package or emulator)")
+        Logger.error(
+          "instance #{state.id}: #{fw} can't run here (no cartridge, package or emulator)"
+        )
+
         %{state | phase: :not_installed}
 
       {:error, reason} ->
@@ -392,6 +465,9 @@ defmodule FMutate.Instance do
     :ok = Audio.attach(eng.slot, Paths.ring(eng.prefix))
     eng = %{eng | ready: true}
     Engine.commands(eng.pid, [{:master, round(state.master * 1024)}])
+    # (a firmware that ended the app before is forgiven after a minute of running)
+    if Map.has_key?(state.app_crashes, eng.firmware),
+      do: Process.send_after(self(), {:ran_clean, eng.pid}, @restart_window_ms)
 
     # the emulator engine's CPU clock: where it was last kept for this firmware
     cpu = if eng.backend == :emu, do: Map.get(state.cpu, eng.firmware, %{})
@@ -417,7 +493,9 @@ defmodule FMutate.Instance do
   # (published only when the health shows something new: the view also carries `master`, which pot moves
   # change without a publish, and a publish re-renders the instrument)
   defp engine_event(state, :live, {:status, status}) do
-    for {pid, {_, true}} <- state.subscribers, do: send(pid, {:instance, state.id, {:status, status}})
+    for {pid, {_, true}} <- state.subscribers,
+        do: send(pid, {:instance, state.id, {:status, status}})
+
     new = health(%{state | status: status}, status)
     if health_view(new) != health_view(state), do: publish(new), else: new
   end
@@ -427,6 +505,27 @@ defmodule FMutate.Instance do
   defp engine_event(state, _role, {:flash_saved, _bytes}), do: state
   defp engine_event(state, _role, {:spawned, _os_pid}), do: state
 
+  # in-process (iOS): a hung firmware loop holds the cartridge until the app restarts; restarting can't help
+  defp engine_event(state, :live, {:exit, {:start_failed, :hung} = reason}) do
+    eng = state.live
+    Audio.release(eng.slot)
+
+    Logger.warning(
+      "instance #{state.id}: #{eng.firmware} is hung; it runs again after the app restarts"
+    )
+
+    state = %{
+      state
+      | live: nil,
+        phase: :hung,
+        last_exit: reason,
+        held_keys: MapSet.new(),
+        held_buttons: MapSet.new()
+    }
+
+    publish(journal(state, :engine, {:exit, :live, reason}, :noted))
+  end
+
   defp engine_event(state, role, {:exit, reason}) do
     eng = Map.fetch!(state, role)
     Audio.release(eng.slot)
@@ -434,7 +533,15 @@ defmodule FMutate.Instance do
     state = Map.put(state, role, nil)
     now = System.monotonic_time(:millisecond)
     failures = [now | Enum.filter(state.failures, &(now - &1 < @restart_window_ms))]
-    state = %{state | failures: failures, last_exit: reason, held_keys: MapSet.new(), held_buttons: MapSet.new()}
+
+    state = %{
+      state
+      | failures: failures,
+        last_exit: reason,
+        held_keys: MapSet.new(),
+        held_buttons: MapSet.new()
+    }
+
     state = journal(state, :engine, {:exit, role, reason}, :noted)
 
     cond do
@@ -443,7 +550,12 @@ defmodule FMutate.Instance do
         publish(quarantine_if(state, eng.firmware))
 
       length(failures) >= @quarantine_after ->
-        state = %{state | quarantined: MapSet.put(state.quarantined, eng.firmware), phase: :safe_mode}
+        state = %{
+          state
+          | quarantined: MapSet.put(state.quarantined, eng.firmware),
+            phase: :safe_mode
+        }
+
         save_state(state)
         publish(state)
 
@@ -468,12 +580,17 @@ defmodule FMutate.Instance do
             {h, fill} = Health.underruns(h, now, Enum.at(underruns, eng.slot, 0))
 
             if fill do
-              Logger.info("instance #{state.id}: engine fill #{fill} frames (underruns #{h.underruns})")
+              Logger.info(
+                "instance #{state.id}: engine fill #{fill} frames (underruns #{h.underruns})"
+              )
+
               Engine.commands(eng.pid, [{:fill, fill}])
             end
 
             {h, mhz} =
-              if status[:cpu_mhz], do: Health.cpu(h, now, status.stale, status.cpu_ms), else: {h, nil}
+              if status[:cpu_mhz],
+                do: Health.cpu(h, now, status.stale, status.cpu_ms),
+                else: {h, nil}
 
             if mhz do
               Logger.info("instance #{state.id}: emulated CPU #{mhz} MHz (speed #{h.pct} %)")
@@ -508,7 +625,9 @@ defmodule FMutate.Instance do
     journal(state, :in, event, :sent)
   end
 
-  defp apply_input(state, {:pot, :master, v} = event), do: journal(%{state | master: clamp01(v)}, :in, event, :dropped)
+  defp apply_input(state, {:pot, :master, v} = event),
+    do: journal(%{state | master: clamp01(v)}, :in, event, :dropped)
+
   defp apply_input(state, event), do: journal(state, :in, event, :dropped)
 
   @journal_keep 300
@@ -518,7 +637,11 @@ defmodule FMutate.Instance do
     entry = {System.monotonic_time(:millisecond), kind, event, outcome}
 
     if state.journal_n >= 2 * @journal_keep,
-      do: %{state | journal: [entry | Enum.take(state.journal, @journal_keep)], journal_n: @journal_keep + 1},
+      do: %{
+        state
+        | journal: [entry | Enum.take(state.journal, @journal_keep)],
+          journal_n: @journal_keep + 1
+      },
       else: %{state | journal: [entry | state.journal], journal_n: state.journal_n + 1}
   end
 
@@ -529,7 +652,11 @@ defmodule FMutate.Instance do
     do: {[{:key, n, false}], %{state | held_keys: MapSet.delete(state.held_keys, n)}}
 
   defp to_commands({:button, id, dir}, state) when dir in [:down, :up] do
-    held = if dir == :down, do: MapSet.put(state.held_buttons, id), else: MapSet.delete(state.held_buttons, id)
+    held =
+      if dir == :down,
+        do: MapSet.put(state.held_buttons, id),
+        else: MapSet.delete(state.held_buttons, id)
+
     {[{:button, Inputs.button(id), dir == :down}], %{state | held_buttons: held}}
   end
 
@@ -541,7 +668,8 @@ defmodule FMutate.Instance do
     {[{:master, round(v * 1024)}], %{state | master: v}}
   end
 
-  defp to_commands({:midi, bytes}, state) when is_binary(bytes), do: {midi_cmds(bytes, nil), state}
+  defp to_commands({:midi, bytes}, state) when is_binary(bytes),
+    do: {midi_cmds(bytes, nil), state}
 
   defp to_commands({:midi_at, frame, bytes}, state) when is_integer(frame) and is_binary(bytes),
     do: {midi_cmds(bytes, frame), state}
@@ -566,12 +694,16 @@ defmodule FMutate.Instance do
     n = if div(st, 16) in [0xC, 0xD], do: 1, else: 2
 
     case rest do
-      <<data::binary-size(^n), tail::binary>> -> split_midi(tail, [[st | :binary.bin_to_list(data)] | acc])
-      _ -> Enum.reverse(acc)
+      <<data::binary-size(^n), tail::binary>> ->
+        split_midi(tail, [[st | :binary.bin_to_list(data)] | acc])
+
+      _ ->
+        Enum.reverse(acc)
     end
   end
 
-  defp split_midi(<<st, rest::binary>>, acc) when st in [0xF8, 0xFA, 0xFB, 0xFC], do: split_midi(rest, [[st] | acc])
+  defp split_midi(<<st, rest::binary>>, acc) when st in [0xF8, 0xFA, 0xFB, 0xFC],
+    do: split_midi(rest, [[st] | acc])
 
   defp split_midi(<<0xF2, lsb, msb, rest::binary>>, acc) when lsb < 0x80 and msb < 0x80,
     do: split_midi(rest, [[0xF2, lsb, msb] | acc])
@@ -620,7 +752,8 @@ defmodule FMutate.Instance do
     }
   end
 
-  defp health_view(_state), do: %{clock_pct: nil, slow: false, fill: nil, cpu_mhz: nil, cpu_mode: nil, advice: nil}
+  defp health_view(_state),
+    do: %{clock_pct: nil, slow: false, fill: nil, cpu_mhz: nil, cpu_mode: nil, advice: nil}
 
   # keep the emulator engine's clock for its firmware (saved when it changed)
   defp remember_cpu(state, fw) do
@@ -665,7 +798,8 @@ defmodule FMutate.Instance do
       master: state.master,
       quarantined: MapSet.to_list(state.quarantined),
       buffer: state.buffer,
-      cpu: state.cpu
+      cpu: state.cpu,
+      app_crashes: state.app_crashes
     }
 
     File.write!(Paths.instance_state(state.id), :erlang.term_to_binary(data))
