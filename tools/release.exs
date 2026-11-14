@@ -103,7 +103,7 @@ defmodule FMutate.Release do
         )
 
     Mix.Task.run("mob.release", ["--android"])
-    cmd!("./gradlew", ["assembleRelease", "--no-daemon"], cd: "android")
+    cmd!("bash", ["gradlew", "assembleRelease", "--no-daemon"], cd: "android")
     out = Path.join(["_build", "release", "fmutate-#{version["versionName"]}.apk"])
     File.mkdir_p!(Path.dirname(out))
     File.cp!("android/app/build/outputs/apk/release/app-release.apk", out)
@@ -187,9 +187,10 @@ defmodule FMutate.Release do
     unless git_ok?(["rev-parse", "--verify", "--quiet", since <> "^{commit}"]),
       do: fail("#{since} isn't a commit here (the build's tag; --since REF to compare with something else)")
 
-    # the working tree against REF, untracked files included (a new module is a change too)
+    # the working tree against REF, plus new (untracked) modules under lib/; build outputs a release leaves
+    # untracked elsewhere (otp.zip, generated plugin bridges) are not source changes
     changed =
-      (git!(["diff", "--name-only", since]) <> "\n" <> git!(["ls-files", "--others", "--exclude-standard"]))
+      (git!(["diff", "--name-only", since]) <> "\n" <> git!(["ls-files", "--others", "--exclude-standard", "--", "lib"]))
       |> String.split("\n", trim: true)
       |> Enum.uniq()
 
