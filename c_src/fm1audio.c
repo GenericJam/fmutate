@@ -176,8 +176,10 @@ static const char *result_text(int res);
 static int load_backend(void);
 
 /* Close the stream and, for a reopen, open it again if wanted, 100 ms later on a helper thread. Only the latest
- * request acts (an interruption's close must not land after its end's reopen). arg: generation * 2 + reopen. */
+ * request acts (an interruption's close must not land after its end's reopen). arg: generation * 2 + reopen.
+ * pending_close: the latest request is a close not yet done (nif_start does it first, then opens). */
 static _Atomic intptr_t helper_gen;
+static _Atomic int pending_close;
 
 static void *reopen_thread(void *arg)
 {
@@ -185,6 +187,7 @@ static void *reopen_thread(void *arg)
     usleep(100000);
     pthread_mutex_lock(&lock);
     if (a / 2 == atomic_load(&helper_gen)) {
+        atomic_store(&pending_close, 0);
         close_stream_locked();
         if ((a & 1) && atomic_load(&want_running)) open_stream_locked();
     }
@@ -196,6 +199,7 @@ static void on_helper_thread(int reopen)
 {
     pthread_t t;
     intptr_t gen = atomic_fetch_add(&helper_gen, 1) + 1;
+    atomic_store(&pending_close, !reopen);
     if (pthread_create(&t, NULL, reopen_thread, (void *)(gen * 2 + (reopen ? 1 : 0))) == 0) pthread_detach(t);
 }
 
@@ -480,6 +484,10 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     if (load_backend()) return error_text(env, "libaaudio.so not available", 0);
     pthread_mutex_lock(&lock);
     atomic_store(&want_running, 1);
+    if (atomic_exchange(&pending_close, 0)) { /* (an interruption's close still queued: do it now, then open) */
+        atomic_fetch_add(&helper_gen, 1);
+        close_stream_locked();
+    }
     if (!stream_open()) res = open_stream_locked();
     pthread_mutex_unlock(&lock);
     return res == 0 ? atom(env, "ok") : error_text(env, "open failed", res);
