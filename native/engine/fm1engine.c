@@ -136,6 +136,8 @@ static void handle(struct eng *e, const uint8_t *m, uint32_t n)
     case 0x08: break;                           /* the emulated CPU's clock: the emulator engine's */
     case 0x10: c->debug(1); break;
     case 0x11: c->debug(2); break;
+    case 0x12: c->debug(3); break;
+    case 0x13: c->debug(4); break;
     default: fprintf(stderr, "fm1engine: unknown op 0x%02x\n", m[0]);
     }
 }

@@ -15,6 +15,8 @@ defmodule FMutate.Engine.Wire do
           | {:cpu_mhz, pos_integer}
           | :crash
           | :hang
+          | :segv
+          | :stall
 
   @spec encode(cmd) :: binary
   def encode({:key, key, down}) when key in 0..26, do: <<0x01, key, bool(down)>>
@@ -38,8 +40,12 @@ defmodule FMutate.Engine.Wire do
   # the emulator engine's CPU clock, now (MHz; it clamps to 20..240 itself); the native engine ignores it
   def encode({:cpu_mhz, mhz}) when is_integer(mhz), do: <<0x08, clamp(mhz, 0, 0xFFFF)::16>>
 
+  # debug (native cartridges): :crash and :hang are simulated in-process (the app lives); :segv is a real SIGSEGV
+  # (in-process it ends the app: the crash marker's test), :stall firmware code busy for 4 s that no stop reaches
   def encode(:crash), do: <<0x10>>
   def encode(:hang), do: <<0x11>>
+  def encode(:segv), do: <<0x12>>
+  def encode(:stall), do: <<0x13>>
 
   @type status :: %{
           ms: non_neg_integer,
@@ -91,11 +97,13 @@ defmodule FMutate.Engine.Wire do
 
   def encode_event({:status, %{cpu_mhz: mhz} = s}) when is_integer(mhz),
     do:
-      <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32, s.glow_keys::32, mhz::16,
-        s.stale::32, s.cpu_ms::32>>
+      <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32,
+        s.glow_keys::32, mhz::16, s.stale::32, s.cpu_ms::32>>
 
   def encode_event({:status, s}),
-    do: <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32, s.glow_keys::32>>
+    do:
+      <<0x82, s.ms::32, s.fill::32, s.fb_seq::32, s.led_buttons::32, s.led_keys::32,
+        s.glow_keys::32>>
 
   def encode_event({:flash_saved, bytes}), do: <<0x84, bytes::32>>
 

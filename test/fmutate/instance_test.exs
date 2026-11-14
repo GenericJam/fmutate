@@ -75,6 +75,44 @@ defmodule FMutate.InstanceTest do
     assert Instance.view("a").firmware == "obervave"
   end
 
+  test "switching back to the firmware still playing before the new one is ready keeps it running" do
+    start_instance()
+    await_state(running?("obervave"))
+    old = engine_os_pid("a")
+
+    # (both calls queued before the instance runs the first, so the new engine can't be READY in between)
+    pid = GenServer.whereis(Instance.via("a"))
+    :sys.suspend(pid)
+    away = Task.async(fn -> Instance.switch_firmware("a", "shineon") end)
+    Process.sleep(50)
+    back = Task.async(fn -> Instance.switch_firmware("a", "obervave") end)
+    Process.sleep(50)
+    :sys.resume(pid)
+    assert [:ok, :ok] = Task.await_many([away, back])
+    Process.sleep(1_000)
+    view = Instance.view("a")
+    assert view.firmware == "obervave" and view.phase == :running
+    assert engine_os_pid("a") == old
+    assert %{next: nil} = :sys.get_state(Instance.via("a"))
+  end
+
+  test "a firmware that ended the app (in-process crash marker) is quarantined at the second launch in a row" do
+    start_supervised!({Instance, id: "a", crashed: ["obervave"]}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    view = await_state(running?("obervave"))
+    refute view.quarantined
+    stop_supervised!({:instance, "a"})
+
+    # (another firmware's crash isn't counted against it)
+    start_supervised!({Instance, id: "a", crashed: ["shineon"]}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    await_state(running?("obervave"))
+    stop_supervised!({:instance, "a"})
+
+    start_supervised!({Instance, id: "a", crashed: ["obervave"]}, id: {:instance, "a"})
+    assert %{phase: :safe_mode, quarantined: true, last_exit: :app_crash} = Instance.view("a")
+  end
+
   test "a crashed engine is restarted in place" do
     start_instance()
     await_state(running?("obervave"))

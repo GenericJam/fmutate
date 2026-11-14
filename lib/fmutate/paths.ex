@@ -72,6 +72,9 @@ defmodule FMutate.Paths do
   def instance_state(instance),
     do: Path.join(ensure(Path.join(data_dir(), "instances")), "#{instance}.term")
 
+  @doc "The fatal-signal marker of in-process engines (`FMutate.CrashMarker`): the firmwares that ended the app."
+  def crash_marker, do: Path.join(ensure(data_dir()), "crash_marker")
+
   # ── I/O (FMutate.IO, FMutate.MIDI, FMutate.Dist) ──
 
   @doc "Per-instance MIDI settings (clock mode, tempo, per-source channel)."

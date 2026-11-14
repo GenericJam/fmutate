@@ -162,6 +162,7 @@ defmodule FMutate.IOScreen do
 
   defp phase_label(:safe_mode), do: "safe mode"
   defp phase_label(:not_installed), do: "can't run here"
+  defp phase_label(:hung), do: "stuck: restart the app"
   defp phase_label(phase), do: to_string(phase)
 
   # the instance's speed (FMutate.Instance.Health): one source for this card, the instrument and sibling apps;

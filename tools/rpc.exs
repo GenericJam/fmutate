@@ -17,8 +17,11 @@
 #     --environment-variables '{"MOB_NODE_HOST":"127.0.0.1"}' com.genericjam.fmutate
 [serial, expr] =
   case System.argv() do
-    [s, e] -> [s, e]
-    _ -> raise "usage: mix run --no-start tools/rpc.exs <adb serial | iPhone udid> '<elixir expression>'"
+    [s, e] ->
+      [s, e]
+
+    _ ->
+      raise "usage: mix run --no-start tools/rpc.exs <adb serial | iPhone udid> '<elixir expression>'"
   end
 
 Mix.Task.run("app.config")
@@ -35,16 +38,28 @@ end
 {target, host_port, undo} =
   if iphone? do
     port = free_port.()
-    iproxy = Port.open({:spawn_executable, System.find_executable("iproxy")},
-      [:binary, args: ["#{port}:9101", "-u", serial]])
+
+    iproxy =
+      Port.open(
+        {:spawn_executable, System.find_executable("iproxy")},
+        [:binary, args: ["#{port}:9101", "-u", serial]]
+      )
+
     {:os_pid, iproxy_pid} = Port.info(iproxy, :os_pid)
     Process.sleep(500)
-    {:"fmutate_app_ios@127.0.0.1", port, fn -> System.cmd("kill", [Integer.to_string(iproxy_pid)]) end}
+
+    {:"fmutate_app_ios@127.0.0.1", port,
+     fn -> System.cmd("kill", [Integer.to_string(iproxy_pid)]) end}
   else
     instance = "a"
-    {out, 0} = System.cmd("adb", ["-s", serial, "forward", "tcp:0", "tcp:#{FMutate.Dist.port(instance)}"])
+
+    {out, 0} =
+      System.cmd("adb", ["-s", serial, "forward", "tcp:0", "tcp:#{FMutate.Dist.port(instance)}"])
+
     port = out |> String.trim() |> String.to_integer()
-    {FMutate.Dist.node_name(instance), port, fn -> System.cmd("adb", ["-s", serial, "forward", "--remove", "tcp:#{port}"]) end}
+
+    {FMutate.Dist.node_name(instance), port,
+     fn -> System.cmd("adb", ["-s", serial, "forward", "--remove", "tcp:#{port}"]) end}
   end
 
 result =
@@ -65,7 +80,11 @@ result =
 
 case result do
   {:badrpc, :cannot_connect} ->
-    IO.puts(:stderr, "cannot connect to #{target} on #{serial} (is the app running? deployed with mix mob.deploy?)")
+    IO.puts(
+      :stderr,
+      "cannot connect to #{target} on #{serial} (is the app running? deployed with mix mob.deploy?)"
+    )
+
     System.halt(1)
 
   {:badrpc, reason} ->

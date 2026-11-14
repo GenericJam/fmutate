@@ -356,6 +356,8 @@ private func screenMessage(_ phase: String, _ restarts: Int, _ slow: Bool, _ spe
     case "crashed": return FMScreenMessage(title: restarts > 0 ? "Restarting…" : "Crashed", color: FMC.muted)
     case "safe_mode": return FMScreenMessage(title: "Crashed twice", color: FMC.muted, action: "Run anyway")
     case "not_installed": return FMScreenMessage(title: "Doesn't run here yet", color: FMC.warn)
+    // (in-process: its firmware's loop hung and holds the cartridge, FMutate.Instance phase :hung)
+    case "hung": return FMScreenMessage(title: "Stuck", color: FMC.warn, hint: "Restart the app to run it again")
     case "running":
         if slow { return FMScreenMessage(title: "Too slow · \(speed) % speed", color: FMC.warn, hint: hint) }
         if !hint.isEmpty { return FMScreenMessage(title: "Audio dropouts", color: FMC.warn, hint: hint) }

@@ -28,6 +28,7 @@ struct fm1c_api {
     void (*stop)(void);                   /* ask the loop to stop at its next park point (any thread) */
     int (*quit)(uint32_t timeout_ms);     /* stop it and wait: 0 ended (its thread joined), -1 still running */
     void (*state)(void **data, size_t *data_n, void **bss, size_t *bss_n);   /* its globals, for a fresh boot */
+    int (*on_loop_thread)(void);          /* the caller is its firmware's loop thread (async-signal-safe) */
 };
 
 /* How an engine talks to its host. */

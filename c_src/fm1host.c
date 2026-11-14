@@ -13,12 +13,15 @@
  *   {Ref, {exit_status, Code}}: the messages a Port sends, so FMutate.Engine keeps one state machine.
  * - `kill` abandons an engine (as kill -9): {exit_status, 137} at once, and the thread, which can't be stopped
  *   from outside, ends at its next look at the flag. A cartridge whose firmware never parks again (a hang in its
- *   own code) keeps its thread and stays busy until the app restarts: its globals are in use.
+ *   own code: the engine's watchdog sees no STATUS and kills it) gives the engine's thread back, but its loop's
+ *   thread keeps the cartridge's globals: it is `hung` until that loop ends, if ever (then the next start finds
+ *   it free again), else until the app restarts.
  * - A cartridge's globals are restored before each boot (its data section from a copy taken before its first
- *   boot, its BSS zeroed), so it boots fresh as in a new process. One engine per cartridge at a time.
- * - Fatal signals (a native firmware crashing ends the app: there is no process to lose instead) write the ids
- *   of the cartridges running to a marker file before the previous handler runs; the instance reads it at the
- *   next launch (`crash_marker/1`).
+ *   boot, its BSS zeroed), so it boots fresh as in a new process. One engine per cartridge at a time: a start
+ *   while its previous engine is still ending returns `busy` at once (FMutate.Engine tries again).
+ * - Fatal signals (a native firmware crashing ends the app: there is no process to lose instead) on a firmware's
+ *   threads (its engine's, its main loop's) write that cartridge's id to a marker file before the previous
+ *   handler runs; the app reads it at its next launch (`crash_marker/1`, FMutate.CrashMarker).
  */
 #include <erl_nif.h>
 
@@ -47,7 +50,6 @@ extern int fm1emu_bench(const char *package, double secs, uint32_t mhz, char *ou
 #undef FM1_CART
 
 #define QUIT_MS 1000u                         /* a firmware's loop ends at its next park point: 1 ms normally */
-#define BUSY_WAIT_MS 3000u                    /* a start waits this long for the cartridge's previous engine */
 #define ENGINE_STACK (8u << 20)
 
 struct cart {
@@ -55,17 +57,18 @@ struct cart {
     const struct fm1c_api *api;
     void *data_copy;                          /* its data section before its first boot */
     int busy;                                 /* an engine runs it (or a hung one holds it) */
-    int hung;                                 /* its firmware's loop didn't end: busy until the app restarts */
+    int hung;                                 /* its firmware's loop didn't end: busy until it does, if ever */
+    volatile int on_thread;                   /* engine_th is its engine's thread */
+    pthread_t engine_th;
 };
 
-#define FM1_CART(id) {#id, &fm1c_##id, NULL, 0, 0},
+#define FM1_CART(id) {#id, &fm1c_##id, NULL, 0, 0, 0, 0},
 static struct cart carts[] = {
 #include "../native/build/ios/fm1_cartridges.h"
 };
 #undef FM1_CART
 #define NCART (sizeof carts / sizeof carts[0])
 static pthread_mutex_t carts_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t carts_freed = PTHREAD_COND_INITIALIZER;
 
 enum kind { NATIVE, EMU };
 
@@ -92,16 +95,27 @@ static ERL_NIF_TERM a_ok, a_error, a_data, a_exit_status, a_native, a_emu, a_bus
 /* ---- the crash marker */
 
 static int marker_fd = -1;
-static char running[1024];                    /* ids of the cartridges running, one per line */
-static volatile size_t running_n;
 static struct sigaction previous[32];
 static const int fatal[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP, SIGABRT};
 
+/* The cartridge whose engine or main loop this thread is, else NULL (a crash elsewhere isn't a firmware's). */
+static const struct cart *culprit(void)
+{
+    pthread_t self = pthread_self();
+    for (size_t i = 0; i < NCART; i++) {
+        const struct cart *c = &carts[i];
+        if (!c->busy) continue;
+        if ((c->on_thread && pthread_equal(self, c->engine_th)) || c->api->on_loop_thread()) return c;
+    }
+    return NULL;
+}
+
 static void on_fatal(int sig, siginfo_t *info, void *uc)
 {
-    size_t n = running_n;
-    if (marker_fd >= 0 && n > 0) {            /* (async-signal-safe: write, fsync) */
-        ssize_t w = write(marker_fd, running, n);
+    const struct cart *c = culprit();
+    if (marker_fd >= 0 && c) {                /* (async-signal-safe: write, fsync) */
+        ssize_t w = write(marker_fd, c->id, strlen(c->id));
+        w = write(marker_fd, "\n", 1);
         (void)w;
         fsync(marker_fd);
     }
@@ -114,18 +128,20 @@ static void on_fatal(int sig, siginfo_t *info, void *uc)
         raise(sig);
 }
 
-static void running_update_locked(void)       /* carts_lock held */
+/* A stack of the thread's own for on_fatal (SA_ONSTACK), so a firmware that overflows its stack still leaves its
+ * marker. live.c gives the firmware's loop thread one the same way. */
+static void *altstack_on(void)
 {
-    size_t n = 0;
-    running_n = 0;
-    for (size_t i = 0; i < NCART; i++) {
-        size_t len = strlen(carts[i].id);
-        if (!carts[i].busy || n + len + 1 > sizeof running) continue;
-        memcpy(running + n, carts[i].id, len);
-        running[n + len] = '\n';
-        n += len + 1;
-    }
-    running_n = n;
+    stack_t ss = {.ss_sp = malloc(SIGSTKSZ), .ss_size = SIGSTKSZ, .ss_flags = 0};
+    if (ss.ss_sp && sigaltstack(&ss, NULL)) { free(ss.ss_sp); return NULL; }
+    return ss.ss_sp;
+}
+static void altstack_off(void *sp)
+{
+    stack_t off = {.ss_flags = SS_DISABLE};
+    if (!sp) return;
+    sigaltstack(&off, NULL);
+    free(sp);
 }
 
 /* ---- engine threads */
@@ -171,21 +187,24 @@ static void fresh_globals(struct cart *c)
 static void *engine_main(void *arg)
 {
     engine *e = arg;
+    void *alt = altstack_on();
     int code;
     if (e->kind == NATIVE) {
         struct cart *c = e->cart;
         int quit;
+        c->engine_th = pthread_self();
+        __atomic_store_n(&c->on_thread, 1, __ATOMIC_RELEASE);
         fresh_globals(c);
         code = fm1engine_run(c->api, e->prefix, e->flash, e->fill, &e->io);
+        __atomic_store_n(&c->on_thread, 0, __ATOMIC_RELEASE);
         quit = c->api->quit(QUIT_MS);         /* (the firmware's loop thread: parked, or a debug hang let go) */
         pthread_mutex_lock(&carts_lock);
         if (quit) c->hung = 1;
         else c->busy = 0;
-        running_update_locked();
-        pthread_cond_broadcast(&carts_freed);
         pthread_mutex_unlock(&carts_lock);
     } else
         code = fm1emu_run(e->file, e->prefix, e->flash, e->fill, e->mhz, &e->io);
+    altstack_off(alt);
 
     pthread_mutex_lock(&e->lock);
     e->done = 1;
@@ -196,6 +215,20 @@ static void *engine_main(void *arg)
     pthread_mutex_unlock(&e->lock);
     enif_release_resource(e);
     return NULL;
+}
+
+/* A hung cartridge whose loop has ended since (firmware code that was busy for long, not forever) is free again.
+ * carts_lock held. */
+static void recover_locked(struct cart *c)
+{
+    if (c->hung && !c->api->quit(0)) c->hung = c->busy = 0;
+}
+
+static void release_cart(struct cart *c)
+{
+    pthread_mutex_lock(&carts_lock);
+    c->busy = 0;
+    pthread_mutex_unlock(&carts_lock);
 }
 
 /* ---- the resource */
@@ -236,7 +269,8 @@ static char *string_arg(ErlNifEnv *env, ERL_NIF_TERM t)
 }
 
 /* start(ref, :native | :emu, cart_id_or_package, prefix, flash, fill, mhz) -> {:ok, handle} | {:error, reason}
- * (fill 0: the engine's default; mhz: the emulated CPU's clock at start, 0 = 240) */
+ * (fill 0: the engine's default; mhz: the emulated CPU's clock at start, 0 = 240). Doesn't wait: {:error, :busy}
+ * while the cartridge's previous engine is still ending, {:error, :hung} while a hung firmware loop holds it. */
 static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     engine *e;
@@ -255,19 +289,11 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     if (!(what = string_arg(env, argv[2]))) return enif_make_badarg(env);
 
     if (enif_is_identical(argv[1], a_native)) {
-        uint32_t waited = 0;
         for (size_t i = 0; i < NCART; i++)
             if (!strcmp(carts[i].id, what)) c = &carts[i];
         if (!c) { free(what); return error(env, a_unknown); }
         pthread_mutex_lock(&carts_lock);
-        while (c->busy && !c->hung && waited < BUSY_WAIT_MS) {   /* (its previous engine is still stopping) */
-            struct timespec ts;
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_nsec += 50000000L;
-            if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
-            pthread_cond_timedwait(&carts_freed, &carts_lock, &ts);
-            waited += 50;
-        }
+        recover_locked(c);
         if (c->busy) {
             ERL_NIF_TERM why = c->hung ? a_hung : a_busy;
             pthread_mutex_unlock(&carts_lock);
@@ -275,14 +301,13 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
             return error(env, why);
         }
         c->busy = 1;
-        running_update_locked();
         pthread_mutex_unlock(&carts_lock);
     }
 
     if (pipe(fds)) {
         int err = errno;
         free(what);
-        if (c) { pthread_mutex_lock(&carts_lock); c->busy = 0; running_update_locked(); pthread_mutex_unlock(&carts_lock); }
+        if (c) release_cart(c);
         return error(env, enif_make_atom(env, err == EMFILE ? "emfile" : "pipe"));
     }
     fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
@@ -311,7 +336,7 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
         close(fds[0]);
         close(fds[1]);
         e->in_r = e->in_w = -1;
-        if (c) { pthread_mutex_lock(&carts_lock); c->busy = 0; running_update_locked(); pthread_mutex_unlock(&carts_lock); }
+        if (c) release_cart(c);
         enif_release_resource(e);
         return enif_make_badarg(env);
     }
@@ -329,7 +354,7 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
         close(fds[1]);
         e->in_r = e->in_w = -1;
         enif_demonitor_process(env, e, &e->mon);
-        if (c) { pthread_mutex_lock(&carts_lock); c->busy = 0; running_update_locked(); pthread_mutex_unlock(&carts_lock); }
+        if (c) release_cart(c);
         enif_release_resource(e);
         enif_release_resource(e);
         return error(env, enif_make_atom(env, "thread"));
@@ -373,7 +398,7 @@ static ERL_NIF_TERM nif_close(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
 }
 
 /* kill(handle) -> :ok: as kill -9: {exit_status, 137} now; the thread ends when it next looks (a debug hang is let
- * go), or never (a firmware's own hang: its cartridge stays busy) */
+ * go; a pass waiting for a firmware loop that hangs gives up), and a hung loop keeps its cartridge (`hung`) */
 static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     engine *e;
@@ -389,7 +414,7 @@ static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return a_ok;
 }
 
-/* cartridges() -> ["obervave", ...]: what this build links in, and whether each can start now */
+/* cartridges() -> [{"obervave", :ok | :hung}, ...]: what this build links in, and whether a hung loop holds each */
 static ERL_NIF_TERM nif_cartridges(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     ERL_NIF_TERM list = enif_make_list(env, 0);
@@ -398,6 +423,7 @@ static ERL_NIF_TERM nif_cartridges(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
     for (size_t i = NCART; i-- > 0;) {
         ERL_NIF_TERM id;
         size_t len = strlen(carts[i].id);
+        recover_locked(&carts[i]);
         memcpy(enif_make_new_binary(env, len, &id), carts[i].id, len);
         list = enif_make_list_cell(env, enif_make_tuple2(env, id, carts[i].hung ? a_hung : a_ok), list);
     }
@@ -405,7 +431,8 @@ static ERL_NIF_TERM nif_cartridges(ErlNifEnv *env, int argc, const ERL_NIF_TERM 
     return list;
 }
 
-/* crash_marker(path) -> :ok: from now on a fatal signal writes the running cartridges' ids to `path` */
+/* crash_marker(path) -> :ok: from now on a fatal signal on a firmware's thread writes that cartridge's id to `path`.
+ * It empties `path`: read the previous launch's marker first (FMutate.CrashMarker). */
 static ERL_NIF_TERM nif_crash_marker(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     char *path;

@@ -21,11 +21,13 @@
 #define OBV_HOST 1
 #define OBV_WASM 1
 #include <pthread.h>
+#include <sched.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #ifdef FM1C_TABLE
 #define FM1C_INPROC 1
@@ -81,15 +83,33 @@ static int sem_down_ms(fm1_sem *s, uint32_t ms)  /* 1 = taken, 0 = timed out */
 static fm1_sem run_app, run_caller;
 static pthread_t app_thread;
 static volatile int booted, debug_crash, debug_hang;
+static volatile uint32_t debug_stall_ms;
 #ifdef FM1C_INPROC
 static fm1_sem loop_done;                       /* posted once the loop's thread is about to end */
 static jmp_buf loop_exit;
 static volatile int quitting, ended;            /* ended: 1 stopped, 2 the debug crash */
+static volatile int stuck;                      /* a pass gave up on a loop that never parked again (quitting) */
 #endif
+
+static void stall(uint32_t ms)                  /* (debug: firmware code busy for `ms`, looking at nothing) */
+{
+    struct timespec t0, t;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    do clock_gettime(CLOCK_MONOTONIC, &t);
+    while ((uint64_t)(t.tv_sec - t0.tv_sec) * 1000u + (uint64_t)((t.tv_nsec - t0.tv_nsec) / 1000000L) < ms);
+}
 
 static void platform_poll(void)                 /* the app, every pass: park until the next millisecond */
 {
+    if (debug_stall_ms) {                       /* (debug: a real hang, as long as it lasts: no flag stops it) */
+        stall(debug_stall_ms);
+        debug_stall_ms = 0;
+    }
 #ifdef FM1C_INPROC
+    if (debug_crash == 2) {                     /* (debug: a real crash, which in-process ends the app) */
+        static int *volatile garbage = (int *)8;
+        *garbage = 1;
+    }
     if (debug_crash) {                          /* (debug: in-process the loop ends as if it had crashed) */
         ended = 2;
         longjmp(loop_exit, 1);
@@ -112,10 +132,17 @@ static void platform_poll(void)                 /* the app, every pass: park unt
 static void *app_run(void *arg)
 {
     (void)arg;
+#ifdef FM1C_INPROC
+    /* (a stack of its own for the app's fatal-signal handler, c_src/fm1host.c: a firmware that overflows this
+       thread's stack still leaves its marker) */
+    stack_t ss = {.ss_sp = malloc(SIGSTKSZ), .ss_size = SIGSTKSZ, .ss_flags = 0}, off = {.ss_flags = SS_DISABLE};
+    if (ss.ss_sp) sigaltstack(&ss, 0);
+#endif
     sem_down(&run_app);
 #ifdef FM1C_INPROC
     if (!setjmp(loop_exit)) app_main();         /* (never returns; a stop jumps back here) */
     if (!ended) ended = 1;
+    if (ss.ss_sp) { sigaltstack(&off, 0); free(ss.ss_sp); }
     sem_up(&run_caller);                        /* a pass waiting for the loop goes on */
     sem_up(&loop_done);
 #else
@@ -126,10 +153,16 @@ static void *app_run(void *arg)
 static void fm1c_pass(void)                     /* one pass of the main loop (the first: boot up to its first poll) */
 {
 #ifdef FM1C_INPROC
-    if (ended) return;
-#endif
+    if (ended || stuck) return;
+    sem_up(&run_app);
+    /* A loop that doesn't park again is firmware code that hangs: the host's watchdog sees no STATUS and stops
+       the engine (quitting), and the pass gives the engine's thread back; the loop's thread keeps the cartridge. */
+    while (!sem_down_ms(&run_caller, 50))
+        if (quitting) { stuck = 1; return; }
+#else
     sem_up(&run_app);
     sem_down(&run_caller);
+#endif
 }
 
 /* ---- the panel's keys and buttons, as the device's debounced matrix delivers them. Input comes in batches (a
@@ -225,6 +258,9 @@ EXPORT uint32_t fm1c_rate(void) { return FS; }
 EXPORT void fm1c_render(int16_t *out, uint32_t n)   /* n stereo frames, interleaved */
 {
     uint32_t i, j;
+#ifdef FM1C_INPROC
+    if (stuck) { memset(out, 0, (size_t)n * 4u); return; }   /* (its loop never parked again: no ISR beside it) */
+#endif
     for (i = 0; i < n; i++) {
         if (blk_pos >= HALF_FRAMES) {           /* the ISR: a block, the MASTER knob, the device's clip */
             memset(blk, 0, sizeof blk);
@@ -243,6 +279,9 @@ EXPORT void fm1c_render(int16_t *out, uint32_t n)   /* n stereo frames, interlea
             edges_due();
             fm1_ms++;
             fm1c_pass();
+#ifdef FM1C_INPROC
+            if (stuck) { memset(out + 2u * (i + 1u), 0, (size_t)(n - i - 1u) * 4u); return; }
+#endif
         }
     }
 }
@@ -303,23 +342,33 @@ EXPORT uint32_t fm1c_store_hash(void)
 }
 
 /* ---- debug: prove the isolation */
-EXPORT void fm1c_debug(uint32_t what)           /* 1: crash at the next pass, 2: hang at the next pass */
+EXPORT void fm1c_debug(uint32_t what)           /* at the next pass: 1 crash, 2 hang (both simulated in-process, so the
+                                                   app lives), 3 a real SIGSEGV (in-process it ends the app), 4 firmware
+                                                   code busy for 4 s that no stop reaches (a real hang that ends) */
 {
     if (what == 1u) debug_crash = 1;
     if (what == 2u) debug_hang = 1;
+    if (what == 3u) debug_crash = 2;
+    if (what == 4u) debug_stall_ms = 4000u;
 }
 
 #ifdef FM1C_INPROC
 /* ---- an engine on a thread of the app (c_src/fm1host.c, through fm1engine.h's table) */
 static int fm1c_ended(void) { return ended; }
-static void fm1c_stop(void) { quitting = 1; }   /* (any thread: a hung debug loop sees it; a parked loop at its next
-                                                   wake) */
-static int fm1c_quit(uint32_t timeout_ms)       /* the engine's thread, after its last pass: end the loop's thread */
+static void fm1c_stop(void) { quitting = 1; }   /* (any thread: a hung debug loop and a waiting pass see it; a parked
+                                                   loop at its next wake) */
+static int fm1c_quit(uint32_t timeout_ms)       /* after its last pass, or later to see whether a hung loop has ended
+                                                   since: end the loop's thread */
 {
     if (!booted) return 0;
     quitting = 1;
     sem_up(&run_app);                           /* (a parked loop wakes and leaves) */
-    if (!sem_down_ms(&loop_done, timeout_ms)) return -1;   /* (firmware code that never parks: it stays) */
+    if (!sem_down_ms(&loop_done, timeout_ms)) { /* firmware code that never parks: it keeps its thread, at the lowest
+                                                   priority so it takes as little as it can from the rest */
+        struct sched_param sp = {.sched_priority = sched_get_priority_min(SCHED_OTHER)};
+        pthread_setschedparam(app_thread, SCHED_OTHER, &sp);
+        return -1;
+    }
     pthread_join(app_thread, 0);
     sem_free(&run_app);
     sem_free(&run_caller);
@@ -327,6 +376,8 @@ static int fm1c_quit(uint32_t timeout_ms)       /* the engine's thread, after it
     booted = 0;
     return 0;
 }
+/* (the app's fatal-signal handler: is the crash in this firmware's main loop? async-signal-safe) */
+static int fm1c_on_loop_thread(void) { return booted && pthread_equal(pthread_self(), app_thread); }
 
 /* The cartridge's writable globals, where native/build_ios.sh moved them (ld -r -rename_section): all of this
  * file and the firmware it includes. The host keeps a copy of the data from before the first boot and puts it
@@ -346,6 +397,6 @@ __attribute__((used, visibility("default"))) const struct fm1c_api FM1C_TABLE = 
     fm1c_init, fm1c_rate, fm1c_render, fm1c_ms, fm1c_master, fm1c_key, fm1c_button, fm1c_enc, fm1c_midi,
     fm1c_fb, fm1c_fb_hash, fm1c_leds_buttons, fm1c_leds_keys, fm1c_glow_keys,
     fm1c_blob_count, fm1c_blob_size, fm1c_store_hash, fm1c_blob, fm1c_debug,
-    fm1c_ended, fm1c_stop, fm1c_quit, fm1c_state,
+    fm1c_ended, fm1c_stop, fm1c_quit, fm1c_state, fm1c_on_loop_thread,
 };
 #endif
