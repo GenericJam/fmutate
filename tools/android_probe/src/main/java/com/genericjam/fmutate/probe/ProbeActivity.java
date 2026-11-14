@@ -25,6 +25,11 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  *   am start -n com.genericjam.fmutate.probe/.ProbeActivity --es do cookie
  *       the sibling node, port and cookie from FMutate's signature-protected provider
+ *   am start -n ... --es do register --es node fmutate_probe@127.0.0.1
+ *       registers the node name with the provider (protocol.md §7): I/O then lists it for Allow
+ *   am start -n ... --es do atoms [--ei count 500] [--ei port 9150]
+ *       distribution handshakes to 127.0.0.1:port, each under a fresh node name nobody registered, and what
+ *       FMutate answered (it should refuse them all with not_allowed, before making an atom of the name)
  *   am start -n ... --es do notes [--ei note 60] [--ei count 1] [--ei hold 1500] [--ei gap 300] [--ei channel 1]
  *       note on/off into the "FMutate A" virtual port, each stamped System.nanoTime()
  *   am start -n ... --es do listen [--ei ms 3000]
@@ -48,6 +53,8 @@ public class ProbeActivity extends Activity {
                     case "notes": notes(x); break;
                     case "listen": listen(x); break;
                     case "emit": emit(x); break;
+                    case "register": register(x); break;
+                    case "atoms": atoms(x); break;
                     default: Log.w(TAG, "unknown command " + what);
                 }
             } catch (Throwable t) {
@@ -69,6 +76,49 @@ public class ProbeActivity extends Activity {
         } catch (SecurityException e) {
             Log.w(TAG, "cookie: refused: " + e.getMessage());
         }
+    }
+
+    private void register(Bundle x) {
+        Uri uri = Uri.parse("content://com.genericjam.fmutate.siblings");
+        String node = x.getString("node", "fmutate_probe@127.0.0.1");
+        try {
+            Bundle answer = getContentResolver().call(uri, "register", node, null);
+            Log.i(TAG, "register " + node + ": " + (answer == null ? "no answer" : answer.getString("result")));
+        } catch (SecurityException e) {
+            Log.w(TAG, "register: refused: " + e.getMessage());
+        }
+    }
+
+    // The distribution flags OTP 26+ requires of a connecting (hidden) node, as in mob_pair's dist_test.
+    private static final long DIST_FLAGS = 0x4_0307_0F94L;
+
+    private void atoms(Bundle x) throws Exception {
+        int count = x.getInt("count", 500), port = x.getInt("port", 9150);
+        String prefix = "probe" + Long.toString(System.nanoTime(), 36) + "x";
+        java.util.Map<String, Integer> answers = new java.util.TreeMap<>();
+        for (int i = 0; i < count; i++) {
+            byte[] name = (prefix + i + "@127.0.0.1").getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+            String answer;
+            try (java.net.Socket s = new java.net.Socket("127.0.0.1", port)) {
+                s.setSoTimeout(5_000);
+                java.io.DataOutputStream out = new java.io.DataOutputStream(s.getOutputStream());
+                out.writeShort(1 + 8 + 4 + 2 + name.length);
+                out.writeByte('N');
+                out.writeLong(DIST_FLAGS);
+                out.writeInt(1);
+                out.writeShort(name.length);
+                out.write(name);
+                out.flush();
+                java.io.DataInputStream in = new java.io.DataInputStream(s.getInputStream());
+                byte[] reply = new byte[in.readUnsignedShort()];
+                in.readFully(reply);
+                answer = new String(reply, java.nio.charset.StandardCharsets.US_ASCII);
+            } catch (java.io.IOException e) {
+                answer = "error " + e.getClass().getSimpleName();
+            }
+            answers.merge(answer, 1, Integer::sum);
+        }
+        Log.i(TAG, "atoms: " + count + " handshakes as " + prefix + "<n>@127.0.0.1 to port " + port + ": " + answers);
     }
 
     private MidiDevice openPort(MidiManager m, Handler h) throws InterruptedException {

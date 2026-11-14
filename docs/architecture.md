@@ -265,6 +265,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.MIDI` (+ `FMutate.MIDI.Map`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, notes → keys, bend if `caps.pitch_bend`), clock follow/send/off |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
+| `FMutate.Pairing`, `FMutate.PairScreen`, mob_pair (`MobPair.Host`, `MobPair.Pairings`, `MobPair.Front`) | pairing sibling apps by QR code or typed code, on this phone or another on the Wi-Fi; TLS distribution for the latter (`docs/design/protocol.md` §7 "Pairing") |
 
 - **Audio route**: the AAudio stream's device id (`FMutate.Audio.stats/0` `device_id`) named through
   `AudioManager`. **Latency shown** = device output latency + the engine's ring fill (what a key press waits).
@@ -274,6 +275,12 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
   is a setting (default 120 BPM).
 - **Bluetooth**: "Scan Bluetooth" asks for the `:midi_bluetooth` permission (`Mob.Permissions`) the first time
   the scan is refused; a connected device then lists and opens like a USB one.
+- **Pairing across phones** needs TLS distribution, but FMutate's node starts at runtime on plain `inet_tcp`
+  (`-proto_dist` is read at boot, and Android starts distribution after the UI). Rather than relaunching the
+  BEAM with `-proto_dist inet_tls`, which would also take the loopback listener from development tools and
+  same-key siblings, `MobPair.Front` terminates TLS on the Wi-Fi address (pinned client certificates, the
+  paired node name checked) and forwards to the loopback listener; it runs only while an app on another phone
+  is paired.
 
 ### MIDI latency (`tools/midi_latency.exs`, notes from a second app into `FMutate A`)
 

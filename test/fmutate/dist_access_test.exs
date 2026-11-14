@@ -1,7 +1,7 @@
 defmodule FMutate.Dist.AccessTest do
   use ExUnit.Case, async: true
 
-  alias FMutate.Dist.{Access, Knock}
+  alias FMutate.Dist.{Access, Requests}
 
   @rig :"fmutate_rig@127.0.0.1"
   @voice :"voice@127.0.0.1"
@@ -89,23 +89,50 @@ defmodule FMutate.Dist.AccessTest do
            ]
   end
 
-  test "the knock handler recognises OTP's refused-handshake report" do
-    event = %{
-      level: :error,
-      msg:
-        {~c"** Connection attempt from node ~w rejected. Invalid challenge reply. **~n", [@rig]},
-      meta: %{}
-    }
+  describe "registrations (the content provider's requests directory)" do
+    setup do
+      dir = Path.join(System.tmp_dir!(), "fmutate_requests_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      on_exit(fn -> File.rm_rf(dir) end)
+      %{dir: dir}
+    end
 
-    assert Knock.node_of(event) == @rig
-    assert Knock.node_of(%{event | msg: {~c"** Node ~p not responding **~n", [@rig]}}) == nil
-    assert Knock.node_of(%{event | msg: {:string, "hello"}}) == nil
+    test "a sibling's name is taken once; anything else is deleted unread", %{dir: dir} do
+      fresh = "zz#{System.unique_integer([:positive])}"
+      good = ["voice@127.0.0.1", "humdinger_ab2c@127.0.0.1", "fmutate_probe@127.0.0.1"]
 
-    # as handlers see it behind Elixir's Logger translator (what the device showed), and as a report
-    translated = ~s(** Connection attempt from node :"fmutate_probe@127.0.0.1" rejected. Invalid challenge reply. **)
-    assert Knock.node_of(%{event | msg: {:string, translated}}) == :"fmutate_probe@127.0.0.1"
+      bad = [
+        "#{fresh}A@127.0.0.1",
+        "#{fresh}@192.168.1.4",
+        "#{fresh}@127.0.0.1.tmp",
+        "1#{fresh}@127.0.0.1",
+        "#{String.duplicate("a", 65)}@127.0.0.1",
+        "fmutate_a@127.0.0.1"
+      ]
 
-    report = %{label: {:error_logger, :error_msg}, format: elem(event.msg, 0), args: [@rig]}
-    assert Knock.node_of(%{event | msg: {:report, report}}) == @rig
+      for name <- good ++ bad, do: File.touch!(Path.join(dir, name))
+
+      assert Enum.sort(Requests.take(dir)) == Enum.sort(good)
+      assert File.ls!(dir) == []
+      assert Requests.take(dir) == []
+
+      for name <- bad,
+          name =~ fresh,
+          do: assert_raise(ArgumentError, fn -> String.to_existing_atom(name) end)
+    end
+
+    test "at most 16 at a time, the oldest first; the rest are dropped", %{dir: dir} do
+      for i <- 1..20 do
+        path = Path.join(dir, "app#{i}@127.0.0.1")
+        File.touch!(path, 1_700_000_000 + i)
+      end
+
+      assert Requests.take(dir) == for(i <- 1..16, do: "app#{i}@127.0.0.1")
+      assert File.ls!(dir) == []
+    end
+
+    test "no directory, no registrations" do
+      assert Requests.take("/nonexistent/requests") == []
+    end
   end
 end

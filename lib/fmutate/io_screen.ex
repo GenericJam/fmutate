@@ -636,13 +636,27 @@ defmodule FMutate.IOScreen do
         nil -> "distribution not available"
       end
 
+    unsaved =
+      if d[:unsaved],
+        do: [
+          ~MOB"""
+          <Text
+            text="A change to these apps couldn't be saved yet (retrying). It holds while FMutate runs."
+            text_size={11}
+            text_color={hex(:warn)}
+          />
+          """
+        ],
+        else: []
+
     card(
-      [section_label("APPS ON THIS PHONE · ERLANG DISTRIBUTION")] ++
+      [section_label("APPS · ERLANG DISTRIBUTION")] ++
         rows ++
+        unsaved ++
         [
           ~MOB"""
           <Text
-            text="Only apps signed by FMutate's maker can ask. An app you allow gets full control of FMutate (Erlang distribution: it could run code here). Network pairing is off."
+            text="Apps signed by FMutate's maker ask here. Other apps, and apps on another phone on this Wi-Fi, pair with menu › Pair an app. An app you allow gets full control of FMutate (Erlang distribution: it could run code here)."
             text_size={11}
             text_color={0xFFA9A3B8}
           />
@@ -675,7 +689,8 @@ defmodule FMutate.IOScreen do
       end
 
     tap = {self(), {String.downcase(act) |> String.to_existing_atom(), app.node}}
-    name = app_name(app.node)
+    name = app_name(app)
+    sub = sub <> paired_label(app[:paired])
 
     ~MOB"""
     <Row gap={10} align={:center}>
@@ -699,8 +714,10 @@ defmodule FMutate.IOScreen do
     """
   end
 
-  # fmutate_rig@127.0.0.1 → "Fmutate Rig"
-  defp app_name(node) do
+  # a paired app's own name; else fmutate_rig@127.0.0.1 → "Fmutate Rig"
+  defp app_name(%{paired: %{app_name: name}}), do: name
+
+  defp app_name(%{node: node}) do
     node
     |> Atom.to_string()
     |> String.split("@")
@@ -708,6 +725,10 @@ defmodule FMutate.IOScreen do
     |> String.split("_")
     |> Enum.map_join(" ", &String.capitalize/1)
   end
+
+  defp paired_label(nil), do: ""
+  defp paired_label(%{remote: true, device_name: device}), do: " · paired · Wi-Fi · #{device}"
+  defp paired_label(%{remote: false}), do: " · paired · this phone"
 
   ## Developer
 

@@ -70,9 +70,18 @@ JNI symbols in Mob's generated code follow it.)
   "1"}])` over rpc, then start the package again (switch to it, or `FMutate.Instance.debug("a", :kill9)`): the
   emulator engine interprets and runs slower than real time, so the instance lowers its emulated CPU clock
   (`docs/engine_protocol.md` "Speed and fill"). `Application.delete_env(:fmutate_app, :emu_env)` undoes it.
-- **From outside**: `tools/android_probe` is a second app (same debug key) that plays MIDI into `FMutate A` and
-  reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
-  latency.
+- **From outside**: `tools/android_probe` is a second app (same debug key) that plays MIDI into `FMutate A`,
+  reads the sibling cookie, registers a sibling node name (`--es do register`) and floods the distribution port
+  with unknown names (`--es do atoms`: FMutate should refuse every one); `tools/sibling_probe.exs` is a sibling
+  node (register its name first); `tools/midi_latency.exs` measures MIDI
+  latency; `tools/pair_probe.exs` pairs a node with the Pair screen (QR link or typed code, through
+  `adb forward` or over Wi-Fi) using mob_pair's joining client, then connects and calls `:fmutate_instance`.
+- **Pairing** (menu › Pair an app; `docs/design/protocol.md` §7 "Pairing") is built on the shared package
+  [mob_pair](https://github.com/GenericJam/mob_pair): the protocol, its security model and what stays in FMutate
+  are in that package's DECISIONS.md. Change protocol behaviour there, not here (Humdinger and Magpie use it
+  too); FMutate keeps the screen (`FMutate.PairScreen`), the service (`FMutate.Pairing`) and admission
+  (`FMutate.Dist` follows `MobPair.Pairings`). Over rpc: `FMutate.Pairing.info()` (shows the live secret),
+  `MobPair.Pairings.list()` (shows every paired app's cookie): keep their output out of logs and issues.
 
 ## Conventions
 
