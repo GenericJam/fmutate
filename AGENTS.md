@@ -53,6 +53,28 @@ adb -s <serial> shell am start -n com.genericjam.fmutate/com.example.fmutate_app
 (The application id is `com.genericjam.fmutate`; the Kotlin package stays `com.example.fmutate_app` because the
 JNI symbols in Mob's generated code follow it.)
 
+## Releases and updates
+
+FMutate updates itself two ways (docs/decisions/2026-11-13-updates.md; menu → Updates, `FMutate.Updates`): the
+**APK** from this repository's GitHub Releases (mob_app_update; the user taps Install and confirms Android's
+dialog), and **Elixir code** over the air from GitHub Pages (`gh-pages` branch, `ota/`; mob_deliver, static
+endpoint, channel `<track>-<versionCode>`).
+
+| What | Command |
+|---|---|
+| Release the app (raise `android/version.properties` and `mix.exs` first, commit, push) | `mise exec -- mix run --no-start tools/release.exs apk --notes-file NOTES.md` |
+| Ship Elixir-only changes to the installed build | `mise exec -- mix run --no-start tools/release.exs ota --push` |
+| A test build that follows pre-releases and its own OTA channel | `FMUTATE_UPDATE_TRACK=updates-test mise exec -- mix mob.deploy --native --android --device <serial>` |
+
+- **The release key is not on every machine** (it isn't on Kevin's Mac). Release APKs must be signed with
+  FMutate's release certificate (SHA-256 `154ffa7b77ae7ab1cf427e4d01af941663778392eb28207830bdf80f8440e28f`, since
+  v0.1.0) or no installed copy accepts them as an update; `tools/release.exs apk` needs `android/keystore.properties`
+  pointing at that keystore and refuses an APK signed with anything else. Never make a new "release" key.
+- **The OTA key** is `~/.config/fmutate/mob_deliver_signing.key` on the publishing machine (its public half is
+  `config :mob_deliver, :trusted_publish_key`). Back it up; neither key goes into GitHub secrets without Kevin's OK.
+- Test releases are GitHub **pre-releases** (`--prerelease`, with `--track updates-test`); only builds made with
+  `FMUTATE_UPDATE_TRACK` see them. Delete them (`gh release delete <tag> --cleanup-tag`) when done.
+
 ## Looking at the running app
 
 - **Screenshots**: `adb -s <serial> shell screencap -p /sdcard/s.png && adb -s <serial> pull /sdcard/s.png

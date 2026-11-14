@@ -1,7 +1,7 @@
 defmodule FMutate.InstrumentScreen do
   @moduledoc """
   The instrument (HANDOFF §4, P1-a): the current layout full screen. The creature button is the only app
-  chrome: tap → menu (Library, Edit layout, I/O), long-press → page grid.
+  chrome: tap → menu (Library, Edit layout, I/O, Updates), long-press → page grid.
   """
 
   use Mob.Screen
@@ -51,6 +51,7 @@ defmodule FMutate.InstrumentScreen do
     library = {self(), :library}
     edit = {self(), :edit}
     io = {self(), :io}
+    updates = {self(), :updates}
     editor_sheets = Editor.sheets(assigns)
 
     ~MOB"""
@@ -61,6 +62,7 @@ defmodule FMutate.InstrumentScreen do
           <Button text="Library" on_tap={library} background="#221F2B" text_color="#F3EFF8" />
           <Button text="Edit layout" on_tap={edit} background="#221F2B" text_color="#F3EFF8" />
           <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
+          <Button text="Updates" on_tap={updates} background="#221F2B" text_color="#F3EFF8" />
         </Column>
       </Sheet>
       {editor_sheets}
@@ -109,6 +111,9 @@ defmodule FMutate.InstrumentScreen do
 
   def handle_info({:tap, :io}, socket),
     do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.IOScreen)}
+
+  def handle_info({:tap, :updates}, socket),
+    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.UpdatesScreen)}
 
   def handle_info({:tap, :edit}, socket),
     do: {:noreply, Mob.Socket.assign(socket, menu: false, editing: true)}
