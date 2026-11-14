@@ -17,8 +17,11 @@
  *
  * Their panel order is the printed labels' (Felucca's: FX SEL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT- OCT+;
  * encoders SELECT ALGO PRESET K1..K4); the engine's is fm1-emu's matrix order (docs/engine_protocol.md), mapped here.
- * Build-time knobs: WEB_MASTER_MAX (the value web_master takes for the knob all the way up: 4096 in X0X's lineage,
- * 1023 in Felucca's ADC one), WEB_FB_SWAP (1: the screen is high byte first). */
+ * Build-time knobs (tools/native_catalog/recipes/web.py reads them from the entry and its page): WEB_MASTER_MAX (the
+ * value web_master takes for the knob all the way up: 4096 in X0X's lineage, 1023 in Felucca's ADC one), WEB_FB_SWAP
+ * (1: the screen is high byte first), WEB_BTN_MAP / WEB_ENC_MAP (the page's bit for each wire button, its index for
+ * each wire encoder, where the page has its own tables: Melodee's are the matrix order), WEB_BOOT_MASTER (web_boot
+ * takes the MASTER knob), WEB_MIDI_IN_3 (web_midi_in takes status, data1, data2). */
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -36,7 +39,11 @@
 
 #define EXPORT __attribute__((used, visibility("default")))
 
+#if WEB_BOOT_MASTER
+void web_boot(uint32_t master);
+#else
 void web_boot(void);
+#endif
 void web_render(uint32_t n);
 float *web_out_l(void);
 float *web_out_r(void);
@@ -54,8 +61,11 @@ void web_keys(uint32_t m);
 #endif
 #if WEB_HAS_web_enc
 void web_enc(int role, int32_t n);
-#else
-#define web_enc ((void (*)(int role, int32_t n))0)
+#define WEB_ENC_ANY 1
+#elif WEB_HAS_web_encoder
+void web_encoder(uint32_t e, int32_t n);
+#define web_enc(role, n) web_encoder((uint32_t)(role), n)
+#define WEB_ENC_ANY 1
 #endif
 #if WEB_HAS_web_master
 void web_master(uint32_t v);
@@ -74,11 +84,17 @@ uint16_t * web_screen(void);
 #endif
 #if WEB_HAS_web_lit_buttons
 uint32_t web_lit_buttons(void);
+#elif WEB_HAS_web_led_buttons
+uint32_t web_led_buttons(void);
+#define web_lit_buttons web_led_buttons
 #else
 #define web_lit_buttons ((uint32_t (*)(void))0)
 #endif
 #if WEB_HAS_web_lit_keys
 uint32_t web_lit_keys(void);
+#elif WEB_HAS_web_led_keys
+uint32_t web_led_keys(void);
+#define web_lit_keys web_led_keys
 #else
 #define web_lit_keys ((uint32_t (*)(void))0)
 #endif
@@ -92,7 +108,9 @@ uint32_t web_midi(uint32_t st, uint32_t d1, uint32_t d2);
 #else
 #define web_midi ((uint32_t (*)(uint32_t st, uint32_t d1, uint32_t d2))0)
 #endif
-#if WEB_HAS_web_midi_in
+#if WEB_HAS_web_midi_in && WEB_MIDI_IN_3
+void web_midi_in(uint32_t st, uint32_t d1, uint32_t d2);
+#elif WEB_HAS_web_midi_in
 void web_midi_in(uint32_t port, uint32_t pkt);
 #else
 #define web_midi_in ((void (*)(uint32_t port, uint32_t pkt))0)
@@ -159,8 +177,14 @@ uint32_t web_sample_rate(void);
 #endif
 
 /* wire order (0 OCT- 1 OCT+ 2 FX 3 SEL ... 13 REC) -> label bit; encoders 0 SELECT 1 ALGORITHM 2-5 KNOB1-4 6 PRESETS -> role */
-static const uint8_t BTN_LABEL[14] = {12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
-static const uint8_t ENC_ROLE[7] = {0, 1, 3, 4, 5, 6, 2};
+#ifndef WEB_BTN_MAP
+#define WEB_BTN_MAP 12, 13, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11
+#endif
+#ifndef WEB_ENC_MAP
+#define WEB_ENC_MAP 0, 1, 3, 4, 5, 6, 2
+#endif
+static const uint8_t BTN_LABEL[14] = {WEB_BTN_MAP};
+static const uint8_t ENC_ROLE[7] = {WEB_ENC_MAP};
 
 static uint32_t frames, booted;
 static volatile int debug_crash, debug_hang;
@@ -309,7 +333,11 @@ EXPORT int fm1c_init(void)
     objs_to_firmware();
     for (i = 0; i < EDGE_NIN; i++) edge[i].at = (uint32_t)-EDGE_GAP_MS;
     if (web_master) web_master(WEB_MASTER_MAX);  /* (MASTER at unity until the app sets it, as live.c) */
+#if WEB_BOOT_MASTER
+    web_boot(WEB_MASTER_MAX);
+#else
     web_boot();
+#endif
     for (i = 0; i < EDGE_NIN; i++) edge[i].at = fw_ms() - EDGE_GAP_MS;
     booted = 1;
     return 0;
@@ -348,14 +376,26 @@ EXPORT void fm1c_master(uint32_t k10)
 }
 EXPORT void fm1c_key(uint32_t k, uint32_t down) { if (k < 27u) edge_in(EDGE_KEY0 + k, down); }
 EXPORT void fm1c_button(uint32_t b, uint32_t down) { if (b < 14u) edge_in(b, down); }
-EXPORT void fm1c_enc(uint32_t e, int32_t steps) { if (e < 7u && web_enc) web_enc(ENC_ROLE[e], steps); }
+EXPORT void fm1c_enc(uint32_t e, int32_t steps)
+{
+#if WEB_ENC_ANY
+    if (e < 7u) web_enc(ENC_ROLE[e], steps);
+#else
+    (void)e, (void)steps;
+#endif
+}
 EXPORT void fm1c_midi(uint32_t st, uint32_t d1, uint32_t d2)
 {
     if (st < 0x80u || st >= 0xF0u) return;
     if (web_midi)
         web_midi(st, d1 & 0x7Fu, d2 & 0x7Fu);
+#if WEB_MIDI_IN_3
+    else if (web_midi_in)
+        web_midi_in(st, d1 & 0x7Fu, d2 & 0x7Fu);
+#else
     else if (web_midi_in)
         web_midi_in(0u, (st >> 4) | st << 8 | (d1 & 0x7Fu) << 16 | (d2 & 0x7Fu) << 24);
+#endif
 }
 
 /* ---- what the panel shows */

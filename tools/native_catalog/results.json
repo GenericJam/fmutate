@@ -106,14 +106,24 @@
   "why": [],
   "native_chord_db": -22.8,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": 0.999,
+   "window": "play",
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.985,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 3.4
+   "screen_diff_chord": 3.1,
+   "screen_diff_play": 3.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 403.41,
+   "cpu_rt": 403.43,
+   "boot_2s_wall": 0.004,
+   "fw_ms": 10008,
+   "peak": 8776,
+   "rms_db": -22.2
   }
  },
  "melodee": {
@@ -132,18 +142,29 @@
   "check": "diverges",
   "why": [
    "screen boot 48.8",
-   "screen chord 48.7"
+   "screen chord 48.7",
+   "screen play 23.2"
   ],
-  "native_chord_db": -16.1,
+  "native_chord_db": -16.2,
   "compare": {
-   "level_diff_db": 0.1,
-   "spectrum_corr": 0.944,
+   "window": "chord",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 0.942,
    "screen_diff_boot": 48.8,
-   "screen_diff_chord": 48.7
+   "screen_diff_chord": 48.7,
+   "screen_diff_play": 23.2
   },
   "boot_ms": {
    "native_first_screen": 250,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 71.03,
+   "cpu_rt": 94.37,
+   "boot_2s_wall": 0.006,
+   "fw_ms": 10008,
+   "peak": 11267,
+   "rms_db": -16.3
   }
  },
  "sloop": {
@@ -249,20 +270,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 771840,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": -0.4,
+   "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 1.6
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 240.0,
+   "cpu_rt": 239.99,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "x0xrmx": {
@@ -278,20 +307,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 770304,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": 0.1,
+   "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.1
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 1.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 234.09,
+   "cpu_rt": 237.85,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "fomni": {
@@ -311,14 +348,24 @@
   "why": [],
   "native_chord_db": -24.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.1,
    "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 798.08,
+   "cpu_rt": 798.08,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10002,
+   "peak": 14748,
+   "rms_db": -30.2
   }
  },
  "choralroot": {
@@ -336,18 +383,28 @@
   "size": 1413896,
   "check": "no-ref",
   "why": [
-   "emulator silent in the chord"
+   "emulator silent in the chord and PLAY",
+   "screen boot 20.6"
   ],
-  "native_chord_db": -26.6,
+  "native_chord_db": -26.4,
   "compare": {
-   "level_diff_db": 213.4,
-   "spectrum_corr": NaN,
+   "window": "chord",
+   "level_diff_db": 213.6,
    "screen_diff_boot": 20.6,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 250
+   "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 326.54,
+   "cpu_rt": 327.23,
+   "boot_2s_wall": 0.018,
+   "fw_ms": 10007,
+   "peak": 9129,
+   "rms_db": -31.5
   }
  },
  "waveloop": {
@@ -367,14 +424,24 @@
   "why": [],
   "native_chord_db": -23.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 1.1
+   "screen_diff_chord": 3.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 782.24,
+   "cpu_rt": 782.24,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3505,
+   "rms_db": -23.7
   }
  },
  "obervave": {
@@ -390,20 +457,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 315952,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -26.7,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 1.2
+   "screen_diff_chord": 1.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 105.12,
+   "cpu_rt": 108.78,
+   "boot_2s_wall": 0.018,
+   "fw_ms": 10007,
+   "peak": 8944,
+   "rms_db": -27.3
   }
  },
  "shineon": {
@@ -419,20 +494,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 298528,
-  "check": "diverges",
-  "why": [
-   "level +6.0 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -24.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 1.2
+   "screen_diff_chord": 1.1,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 112.27,
+   "cpu_rt": 118.79,
+   "boot_2s_wall": 0.016,
+   "fw_ms": 10007,
+   "peak": 17422,
+   "rms_db": -22.2
   }
  },
  "dinghy": {
@@ -448,20 +531,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 85888,
-  "check": "diverges",
-  "why": [
-   "level +6.0 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -9.5,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
-   "spectrum_corr": 1.0,
+   "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.3
+   "screen_diff_chord": 0.3,
+   "screen_diff_play": 0.3
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 200
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 45.46,
+   "cpu_rt": 128.13,
+   "boot_2s_wall": 0.015,
+   "fw_ms": 10007,
+   "peak": 26996,
+   "rms_db": -9.5
   }
  },
  "vibe-link": {
@@ -477,20 +568,29 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 86168,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 0.1
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 3.1
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 173.65,
+   "cpu_rt": 181.16,
+   "boot_2s_wall": 0.013,
+   "fw_ms": 10007,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "fimba": {
@@ -508,16 +608,26 @@
   "size": 293216,
   "check": "match",
   "why": [],
-  "native_chord_db": -26.3,
+  "native_chord_db": -26.4,
   "compare": {
-   "level_diff_db": 0.1,
+   "window": "chord",
+   "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 403.06,
+   "cpu_rt": 403.06,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 8202,
+   "rms_db": -32.4
   }
  },
  "jiant": {
@@ -535,21 +645,32 @@
   "size": 1475504,
   "check": "diverges",
   "why": [
-   "level +12.8 dB",
-   "spectrum r=0.766",
-   "screen boot 15.0",
-   "screen chord 20.2"
+   "screen boot 15.1",
+   "screen chord 20.1",
+   "screen play 20.1",
+   "level +12.8 dB (chord)",
+   "spectrum r=0.766 (chord)"
   ],
   "native_chord_db": -55.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 12.8,
    "spectrum_corr": 0.766,
-   "screen_diff_boot": 15.0,
-   "screen_diff_chord": 20.2
+   "screen_diff_boot": 15.1,
+   "screen_diff_chord": 20.1,
+   "screen_diff_play": 20.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 121.93,
+   "cpu_rt": 122.42,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10008,
+   "peak": 336,
+   "rms_db": -62.3
   }
  },
  "chord": {
@@ -582,16 +703,26 @@
   "size": 377808,
   "check": "match",
   "why": [],
-  "native_chord_db": -33.6,
+  "native_chord_db": -33.7,
   "compare": {
-   "level_diff_db": 0.0,
+   "window": "chord",
+   "level_diff_db": -0.1,
    "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 509.26,
+   "cpu_rt": 509.23,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 2806,
+   "rms_db": -38.9
   }
  },
  "maku": {
@@ -609,18 +740,28 @@
   "size": 1308480,
   "check": "diverges",
   "why": [
-   "spectrum r=0.883"
+   "spectrum r=0.705 (play)"
   ],
   "native_chord_db": -30.4,
   "compare": {
-   "level_diff_db": 2.1,
-   "spectrum_corr": 0.883,
-   "screen_diff_boot": 4.9,
-   "screen_diff_chord": 5.0
+   "window": "play",
+   "level_diff_db": 1.9,
+   "spectrum_corr": 0.705,
+   "screen_diff_boot": 5.2,
+   "screen_diff_chord": 5.2,
+   "screen_diff_play": 4.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 175.53,
+   "cpu_rt": 231.93,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10008,
+   "peak": 6149,
+   "rms_db": -29.2
   }
  },
  "rainbow": {
@@ -640,14 +781,24 @@
   "why": [],
   "native_chord_db": -30.5,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
-   "screen_diff_boot": 3.1,
-   "screen_diff_chord": 2.0
+   "screen_diff_boot": 3.2,
+   "screen_diff_chord": 2.1,
+   "screen_diff_play": 5.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 126.36,
+   "cpu_rt": 126.37,
+   "boot_2s_wall": 0.031,
+   "fw_ms": 10008,
+   "peak": 4210,
+   "rms_db": -33.8
   }
  },
  "amb": {
@@ -663,18 +814,30 @@
   "recipe": "web",
   "build": "clean",
   "size": 332816,
-  "check": "match",
-  "why": [],
+  "check": "diverges",
+  "why": [
+   "spectrum r=0.854 (play)"
+  ],
   "native_chord_db": -22.9,
   "compare": {
-   "level_diff_db": -1.8,
-   "spectrum_corr": 0.957,
+   "window": "play",
+   "level_diff_db": 1.1,
+   "spectrum_corr": 0.854,
    "screen_diff_boot": 0.7,
-   "screen_diff_chord": 0.2
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 340.05,
+   "cpu_rt": 341.63,
+   "boot_2s_wall": 0.008,
+   "fw_ms": 10002,
+   "peak": 17703,
+   "rms_db": -17.8
   }
  },
  "ctl": {
@@ -692,16 +855,26 @@
   "size": 642192,
   "check": "match",
   "why": [],
-  "native_chord_db": -31.9,
+  "native_chord_db": -31.8,
   "compare": {
-   "level_diff_db": 1.8,
+   "window": "play",
+   "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.3
+   "screen_diff_chord": 0.3,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 1672.94,
+   "cpu_rt": 1679.61,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 5049,
+   "rms_db": -37.8
   }
  },
  "winampfm": {
@@ -747,18 +920,30 @@
   "recipe": "web",
   "build": "clean",
   "size": 1092032,
-  "check": "match",
-  "why": [],
+  "check": "diverges",
+  "why": [
+   "level +47.5 dB (play)",
+   "spectrum r=None (play)"
+  ],
   "native_chord_db": -36.3,
   "compare": {
-   "level_diff_db": -2.6,
-   "spectrum_corr": 1.0,
+   "window": "play",
+   "level_diff_db": 47.5,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 1763.67,
+   "cpu_rt": 1763.28,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 3393,
+   "rms_db": -42.0
   }
  },
  "etch": {
@@ -791,18 +976,27 @@
   "size": 373904,
   "check": "broken",
   "why": [
-   "native silent in the chord"
+   "native silent, the emulator sounds"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": -198.8,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.6
+   "screen_diff_chord": 0.6,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 250
+   "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 1766.39,
+   "cpu_rt": 1766.39,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "tribe": {
@@ -818,20 +1012,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 715856,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "play",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.1
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 124.03,
+   "cpu_rt": 124.03,
+   "boot_2s_wall": 0.017,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "duell": {
@@ -866,14 +1068,24 @@
   "why": [],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 100
+   "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 660.28,
+   "cpu_rt": 660.17,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3568,
+   "rms_db": -23.9
   }
  },
  "fart": {
@@ -893,14 +1105,24 @@
   "why": [],
   "native_chord_db": -64.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -0.6,
-   "spectrum_corr": 0.989,
+   "spectrum_corr": 0.988,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 793.34,
+   "cpu_rt": 796.97,
+   "boot_2s_wall": 0.004,
+   "fw_ms": 10002,
+   "peak": 278,
+   "rms_db": -69.9
   }
  },
  "orbit": {
@@ -946,20 +1168,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 848000,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 1284.93,
+   "cpu_rt": 1284.93,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "cs1": {
@@ -994,14 +1225,24 @@
   "why": [],
   "native_chord_db": -19.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.7,
    "spectrum_corr": 0.959,
-   "screen_diff_boot": 5.2,
-   "screen_diff_chord": 6.2
+   "screen_diff_boot": 5.4,
+   "screen_diff_chord": 5.5,
+   "screen_diff_play": 4.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 235.51,
+   "cpu_rt": 235.51,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 12562,
+   "rms_db": -18.8
   }
  },
  "tonitor": {
@@ -1051,14 +1292,24 @@
   "why": [],
   "native_chord_db": -10.7,
   "compare": {
+   "window": "chord",
    "level_diff_db": -0.1,
    "spectrum_corr": 0.992,
-   "screen_diff_boot": 2.3,
-   "screen_diff_chord": 1.7
+   "screen_diff_boot": 2.5,
+   "screen_diff_chord": 1.6,
+   "screen_diff_play": 0.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 189.7,
+   "cpu_rt": 189.73,
+   "boot_2s_wall": 0.01,
+   "fw_ms": 10002,
+   "peak": 25995,
+   "rms_db": -10.5
   }
  },
  "demake": {
@@ -1108,14 +1359,24 @@
   "why": [],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 2.9
+   "screen_diff_chord": 3.2,
+   "screen_diff_play": 1.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 670.69,
+   "cpu_rt": 670.75,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "coralflower": {
@@ -1133,18 +1394,28 @@
   "size": 896840,
   "check": "diverges",
   "why": [
-   "level +6.0 dB"
+   "level +6.0 dB (chord)"
   ],
   "native_chord_db": -15.5,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
-   "screen_diff_boot": 9.5,
-   "screen_diff_chord": 8.8
+   "screen_diff_boot": 8.7,
+   "screen_diff_chord": 8.7,
+   "screen_diff_play": 9.5
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 100
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 200.38,
+   "cpu_rt": 201.44,
+   "boot_2s_wall": 0.012,
+   "fw_ms": 10007,
+   "peak": 20817,
+   "rms_db": -15.4
   }
  },
  "vector37": {
@@ -1209,14 +1480,24 @@
   "why": [],
   "native_chord_db": -13.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -0.2,
    "spectrum_corr": 0.999,
-   "screen_diff_boot": 0.6,
-   "screen_diff_chord": 0.5
+   "screen_diff_boot": 0.5,
+   "screen_diff_chord": 0.6,
+   "screen_diff_play": 0.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 182.25,
+   "cpu_rt": 182.42,
+   "boot_2s_wall": 0.008,
+   "fw_ms": 10002,
+   "peak": 26826,
+   "rms_db": -13.4
   }
  },
  "purplemonkey": {
@@ -1234,18 +1515,28 @@
   "size": 570072,
   "check": "diverges",
   "why": [
-   "level +4.0 dB"
+   "level +4.1 dB (chord)"
   ],
-  "native_chord_db": -24.3,
+  "native_chord_db": -24.2,
   "compare": {
-   "level_diff_db": 4.0,
-   "spectrum_corr": 0.931,
-   "screen_diff_boot": 3.2,
-   "screen_diff_chord": 8.8
+   "window": "chord",
+   "level_diff_db": 4.1,
+   "spectrum_corr": 0.932,
+   "screen_diff_boot": 3.5,
+   "screen_diff_chord": 10.3,
+   "screen_diff_play": 10.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 332.92,
+   "cpu_rt": 332.9,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10007,
+   "peak": 16534,
+   "rms_db": -25.7
   }
  },
  "gammawave": {
@@ -1263,16 +1554,26 @@
   "size": 1302808,
   "check": "match",
   "why": [],
-  "native_chord_db": -19.7,
+  "native_chord_db": -19.6,
   "compare": {
-   "level_diff_db": 0.0,
+   "window": "chord",
+   "level_diff_db": 0.1,
    "spectrum_corr": 1.0,
-   "screen_diff_boot": 0.8,
-   "screen_diff_chord": 2.6
+   "screen_diff_boot": 1.2,
+   "screen_diff_chord": 2.5,
+   "screen_diff_play": 1.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 403.82,
+   "cpu_rt": 403.82,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 8915,
+   "rms_db": -19.7
   }
  },
  "tuna": {
@@ -1290,21 +1591,32 @@
   "size": 1077104,
   "check": "diverges",
   "why": [
-   "level -4.8 dB",
-   "spectrum r=0.696",
    "screen boot 20.6",
-   "screen chord 22.2"
+   "screen chord 22.2",
+   "screen play 21.5",
+   "level -4.8 dB (chord)",
+   "spectrum r=0.7 (chord)"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -4.8,
-   "spectrum_corr": 0.696,
+   "spectrum_corr": 0.7,
    "screen_diff_boot": 20.6,
-   "screen_diff_chord": 22.2
+   "screen_diff_chord": 22.2,
+   "screen_diff_play": 21.5
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 652.95,
+   "cpu_rt": 652.95,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "frodhes": {
@@ -1429,14 +1741,24 @@
   "why": [],
   "native_chord_db": -30.8,
   "compare": {
-   "level_diff_db": 0.1,
-   "spectrum_corr": 1.0,
+   "window": "play",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 0.978,
    "screen_diff_boot": 1.4,
-   "screen_diff_chord": 1.5
+   "screen_diff_chord": 1.6,
+   "screen_diff_play": 1.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 128.11,
+   "cpu_rt": 128.11,
+   "boot_2s_wall": 0.008,
+   "fw_ms": 10002,
+   "peak": 3209,
+   "rms_db": -31.9
   }
  },
  "fm1gm": {
@@ -1497,20 +1819,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 172592,
-  "check": "diverges",
-  "why": [
-   "level +6.0 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -38.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
    "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 99.94,
+   "cpu_rt": 104.52,
+   "boot_2s_wall": 0.016,
+   "fw_ms": 10007,
+   "peak": 378,
+   "rms_db": -38.8
   }
  },
  "sid1": {
@@ -1526,20 +1856,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 153936,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -18.4,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 74.39,
+   "cpu_rt": 109.32,
+   "boot_2s_wall": 0.019,
+   "fw_ms": 10007,
+   "peak": 13736,
+   "rms_db": -18.4
   }
  },
  "minitone": {
@@ -1559,14 +1897,24 @@
   "why": [],
   "native_chord_db": -36.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 1.3
+   "screen_diff_chord": 0.7,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 701.02,
+   "cpu_rt": 701.69,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 1408,
+   "rms_db": -39.8
   }
  },
  "morpheus": {
@@ -1601,14 +1949,24 @@
   "why": [],
   "native_chord_db": -19.7,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 0.1
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 1035.87,
+   "cpu_rt": 1040.72,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "dub": {
@@ -1628,14 +1986,24 @@
   "why": [],
   "native_chord_db": -15.5,
   "compare": {
+   "window": "chord",
    "level_diff_db": -1.2,
    "spectrum_corr": 0.98,
-   "screen_diff_boot": 6.1,
-   "screen_diff_chord": 6.7
+   "screen_diff_boot": 6.3,
+   "screen_diff_chord": 7.3,
+   "screen_diff_play": 1.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 257.68,
+   "cpu_rt": 257.68,
+   "boot_2s_wall": 0.008,
+   "fw_ms": 10002,
+   "peak": 20789,
+   "rms_db": -15.2
   }
  },
  "fmel": {
@@ -1651,20 +2019,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 657328,
-  "check": "diverges",
-  "why": [
-   "level +6.0 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -17.1,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 3.4
+   "screen_diff_chord": 3.5,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 91.65,
+   "cpu_rt": 112.54,
+   "boot_2s_wall": 0.018,
+   "fw_ms": 10007,
+   "peak": 15087,
+   "rms_db": -17.0
   }
  },
  "zen": {
@@ -1683,18 +2059,29 @@
   "check": "diverges",
   "why": [
    "screen boot 17.0",
-   "screen chord 24.7"
+   "screen chord 25.6",
+   "screen play 26.4"
   ],
-  "native_chord_db": -50.6,
+  "native_chord_db": -51.0,
   "compare": {
-   "level_diff_db": 0.1,
-   "spectrum_corr": 0.997,
+   "window": "chord",
+   "level_diff_db": -0.3,
+   "spectrum_corr": 0.996,
    "screen_diff_boot": 17.0,
-   "screen_diff_chord": 24.7
+   "screen_diff_chord": 25.6,
+   "screen_diff_play": 26.4
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 50
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 79.27,
+   "cpu_rt": 79.59,
+   "boot_2s_wall": 0.027,
+   "fw_ms": 10002,
+   "peak": 812,
+   "rms_db": -50.6
   }
  },
  "golana": {
@@ -1714,14 +2101,24 @@
   "why": [],
   "native_chord_db": -17.5,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 2.2
+   "screen_diff_chord": 2.1,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 1031.59,
+   "cpu_rt": 1031.59,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "golanadz": {
@@ -1741,14 +2138,24 @@
   "why": [],
   "native_chord_db": -17.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 4.2
+   "screen_diff_chord": 3.5,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 614.3,
+   "cpu_rt": 614.25,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "modelar": {
@@ -1764,20 +2171,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 344848,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.2
+   "screen_diff_chord": 0.2,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
-   "native_first_screen": 200,
+   "native_first_screen": 250,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 583.18,
+   "cpu_rt": 583.18,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "niagara": {
@@ -1793,20 +2209,31 @@
   "recipe": "web",
   "build": "clean",
   "size": 666640,
-  "check": "broken",
+  "check": "diverges",
   "why": [
-   "native silent in the chord"
+   "screen boot 28.7",
+   "screen play 12.7"
   ],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": 0.7,
+   "spectrum_corr": 0.954,
    "screen_diff_boot": 28.7,
-   "screen_diff_chord": 7.0
+   "screen_diff_chord": 7.0,
+   "screen_diff_play": 12.7
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 650
+   "emu_first_screen": 600
+  },
+  "bench": {
+   "rt": 557.72,
+   "cpu_rt": 557.72,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "unholy": {
@@ -1825,18 +2252,29 @@
   "check": "diverges",
   "why": [
    "screen boot 40.4",
-   "screen chord 43.1"
+   "screen chord 43.2",
+   "screen play 40.4"
   ],
   "native_chord_db": -45.4,
   "compare": {
-   "level_diff_db": -0.1,
-   "spectrum_corr": 0.999,
+   "window": "play",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 40.4,
-   "screen_diff_chord": 43.1
+   "screen_diff_chord": 43.2,
+   "screen_diff_play": 40.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 451.52,
+   "cpu_rt": 451.49,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 1342,
+   "rms_db": -40.6
   }
  },
  "emb": {
@@ -1882,20 +2320,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 1444608,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 2.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 394.71,
+   "cpu_rt": 397.85,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "monk": {
@@ -1913,18 +2360,27 @@
   "size": 456640,
   "check": "broken",
   "why": [
-   "native silent in the chord"
+   "native silent, the emulator sounds"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": -221.5,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 3.1
+   "screen_diff_chord": 3.1,
+   "screen_diff_play": 1.6
   },
   "boot_ms": {
    "native_first_screen": 150,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 562.39,
+   "cpu_rt": 562.39,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "flyfish": {
@@ -1942,21 +2398,32 @@
   "size": 1225664,
   "check": "diverges",
   "why": [
-   "level +12.8 dB",
-   "spectrum r=0.624",
    "screen boot 20.8",
-   "screen chord 21.2"
+   "screen chord 21.3",
+   "screen play 21.4",
+   "level +12.8 dB (chord)",
+   "spectrum r=0.574 (chord)"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": 12.8,
-   "spectrum_corr": 0.624,
+   "spectrum_corr": 0.574,
    "screen_diff_boot": 20.8,
-   "screen_diff_chord": 21.2
+   "screen_diff_chord": 21.3,
+   "screen_diff_play": 21.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 603.27,
+   "cpu_rt": 603.55,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "bytemania": {
@@ -1974,20 +2441,30 @@
   "size": 154536,
   "check": "diverges",
   "why": [
-   "level +6.0 dB",
-   "spectrum r=0.642",
-   "screen chord 14.6"
+   "screen chord 15.5",
+   "screen play 16.3",
+   "spectrum r=0.645 (chord)"
   ],
   "native_chord_db": -8.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
-   "spectrum_corr": 0.642,
+   "spectrum_corr": 0.645,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 14.6
+   "screen_diff_chord": 15.5,
+   "screen_diff_play": 16.3
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 99.83,
+   "cpu_rt": 100.71,
+   "boot_2s_wall": 0.017,
+   "fw_ms": 10007,
+   "peak": 19765,
+   "rms_db": -8.7
   }
  },
  "hera": {
@@ -2022,14 +2499,24 @@
   "why": [],
   "native_chord_db": -30.1,
   "compare": {
-   "level_diff_db": 1.6,
-   "spectrum_corr": 0.993,
-   "screen_diff_boot": 0.7,
-   "screen_diff_chord": 1.1
+   "window": "play",
+   "level_diff_db": -0.7,
+   "spectrum_corr": 0.996,
+   "screen_diff_boot": 0.6,
+   "screen_diff_chord": 1.2,
+   "screen_diff_play": 1.5
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 109.81,
+   "cpu_rt": 109.98,
+   "boot_2s_wall": 0.006,
+   "fw_ms": 10002,
+   "peak": 12430,
+   "rms_db": -21.7
   }
  },
  "tessera": {
@@ -2060,20 +2547,30 @@
   "recipe": "web",
   "build": "clean",
   "size": 675424,
-  "check": "broken",
+  "check": "diverges",
   "why": [
-   "native silent in the chord"
+   "screen play 13.0"
   ],
-  "native_chord_db": -92.1,
+  "native_chord_db": -98.6,
   "compare": {
-   "level_diff_db": 147.9,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": 1.1,
+   "spectrum_corr": 0.998,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 6.3
+   "screen_diff_chord": 6.3,
+   "screen_diff_play": 13.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 300
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 3189.79,
+   "cpu_rt": 3189.79,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "carnac": {
@@ -2098,6 +2595,14 @@
   "boot_ms": {
    "native_first_screen": null,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 220.93,
+   "cpu_rt": 221.2,
+   "boot_2s_wall": 0.008,
+   "fw_ms": 10008,
+   "peak": 670,
+   "rms_db": -46.5
   }
  },
  "drift": {
@@ -2117,14 +2622,24 @@
   "why": [],
   "native_chord_db": -21.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.1,
    "spectrum_corr": 0.999,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 339.17,
+   "cpu_rt": 340.01,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10008,
+   "peak": 8742,
+   "rms_db": -19.2
   }
  },
  "sidou": {
@@ -2174,14 +2689,24 @@
   "why": [],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.9,
-   "screen_diff_chord": 0.9
+   "screen_diff_chord": 0.9,
+   "screen_diff_play": 0.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 326.3,
+   "cpu_rt": 326.62,
+   "boot_2s_wall": 0.006,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "midimon": {
@@ -2212,20 +2737,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 387072,
-  "check": "diverges",
-  "why": [
-   "level +6.2 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -23.4,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.2,
    "spectrum_corr": 0.998,
    "screen_diff_boot": 2.6,
-   "screen_diff_chord": 2.6
+   "screen_diff_chord": 2.6,
+   "screen_diff_play": 5.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 122.77,
+   "cpu_rt": 143.39,
+   "boot_2s_wall": 0.013,
+   "fw_ms": 10007,
+   "peak": 6524,
+   "rms_db": -23.3
   }
  },
  "estampie": {
@@ -2256,20 +2789,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 1422560,
-  "check": "diverges",
-  "why": [
-   "spectrum r=0.667"
-  ],
-  "native_chord_db": -51.6,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -52.0,
   "compare": {
-   "level_diff_db": 0.2,
-   "spectrum_corr": 0.667,
-   "screen_diff_boot": 6.8,
-   "screen_diff_chord": 3.7
+   "window": "play",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 0.998,
+   "screen_diff_boot": 0.0,
+   "screen_diff_chord": 3.7,
+   "screen_diff_play": 1.3
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 337.5,
+   "cpu_rt": 346.37,
+   "boot_2s_wall": 0.015,
+   "fw_ms": 10002,
+   "peak": 491,
+   "rms_db": -59.3
   }
  },
  "matryoshka": {
@@ -2304,14 +2845,24 @@
   "why": [],
   "native_chord_db": -27.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.7
+   "screen_diff_chord": 1.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 535.91,
+   "cpu_rt": 535.94,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 2597,
+   "rms_db": -27.4
   }
  },
  "tastywaves": {
@@ -2327,20 +2878,28 @@
   "recipe": "dinghy",
   "build": "clean",
   "size": 684824,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -24.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 0.2
+   "screen_diff_chord": 0.2,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 43.39,
+   "cpu_rt": 138.12,
+   "boot_2s_wall": 0.013,
+   "fw_ms": 10007,
+   "peak": 8404,
+   "rms_db": -24.3
   }
  },
  "arctic": {
@@ -2371,20 +2930,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 247504,
-  "check": "diverges",
-  "why": [
-   "level +3.6 dB"
-  ],
-  "native_chord_db": -45.8,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -45.2,
   "compare": {
-   "level_diff_db": 3.6,
+   "window": "chord",
+   "level_diff_db": 4.2,
    "spectrum_corr": 0.992,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 24.65,
+   "cpu_rt": 92.69,
+   "boot_2s_wall": 0.032,
+   "fw_ms": 10007,
+   "peak": 3216,
+   "rms_db": -41.6
   }
  },
  "gator": {
@@ -2434,14 +3001,24 @@
   "why": [],
   "native_chord_db": -18.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": -1.4,
    "spectrum_corr": 0.918,
-   "screen_diff_boot": 6.3,
-   "screen_diff_chord": 7.9
+   "screen_diff_boot": 6.2,
+   "screen_diff_chord": 8.5,
+   "screen_diff_play": 6.9
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 176.37,
+   "cpu_rt": 176.37,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 14545,
+   "rms_db": -17.9
   }
  },
  "j6": {
@@ -2502,20 +3079,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 436512,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.9
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 300
+   "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 5921.54,
+   "cpu_rt": 5917.16,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "mnm1": {
@@ -2636,20 +3222,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 1196008,
-  "check": "diverges",
-  "why": [
-   "spectrum r=0.866"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -64.6,
   "compare": {
-   "level_diff_db": -2.7,
-   "spectrum_corr": 0.866,
+   "window": "play",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.6
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 701.02,
+   "cpu_rt": 701.63,
+   "boot_2s_wall": 0.004,
+   "fw_ms": 10008,
+   "peak": 238,
+   "rms_db": -67.3
   }
  },
  "nachtfahrt": {
@@ -2669,14 +3263,24 @@
   "why": [],
   "native_chord_db": -17.6,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.4,
-   "spectrum_corr": 0.999,
-   "screen_diff_boot": 2.0,
-   "screen_diff_chord": 2.0
+   "spectrum_corr": 0.998,
+   "screen_diff_boot": 1.8,
+   "screen_diff_chord": 2.0,
+   "screen_diff_play": 0.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 189.32,
+   "cpu_rt": 189.4,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10002,
+   "peak": 21167,
+   "rms_db": -17.4
   }
  },
  "daurade": {
@@ -2692,21 +3296,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 671376,
-  "check": "diverges",
-  "why": [
-   "level +6.2 dB",
-   "spectrum r=0.556"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -25.8,
   "compare": {
-   "level_diff_db": 6.2,
-   "spectrum_corr": 0.556,
+   "window": "play",
+   "level_diff_db": 0.0,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 713.14,
+   "cpu_rt": 726.88,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 3853,
+   "rms_db": -26.0
   }
  },
  "luxr": {
@@ -2739,18 +3350,30 @@
   "size": 853504,
   "check": "no-ref",
   "why": [
-   "emulator silent in the chord"
+   "emulator silent in the chord and PLAY",
+   "screen boot 30.4",
+   "screen chord 31.5",
+   "screen play 25.1"
   ],
   "native_chord_db": -23.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 216.2,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 30.4,
-   "screen_diff_chord": 31.5
+   "screen_diff_chord": 31.5,
+   "screen_diff_play": 25.1
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 350
+   "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 743.43,
+   "cpu_rt": 743.43,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 3505,
+   "rms_db": -23.7
   }
  },
  "kwasub": {
@@ -2783,20 +3406,31 @@
   "size": 1159664,
   "check": "diverges",
   "why": [
-   "spectrum r=-0.123",
    "screen boot 22.9",
-   "screen chord 24.1"
+   "screen chord 24.1",
+   "screen play 25.9",
+   "spectrum r=-0.12 (chord)"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -1.5,
-   "spectrum_corr": -0.123,
+   "spectrum_corr": -0.12,
    "screen_diff_boot": 22.9,
-   "screen_diff_chord": 24.1
+   "screen_diff_chord": 24.1,
+   "screen_diff_play": 25.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 654.77,
+   "cpu_rt": 654.77,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "smileyface": {
@@ -2827,20 +3461,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 833984,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
-   "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "window": "play",
+   "level_diff_db": -0.1,
+   "spectrum_corr": 0.999,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 550
+  },
+  "bench": {
+   "rt": 542.04,
+   "cpu_rt": 544.4,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 14460,
+   "rms_db": -28.3
   }
  },
  "penumbra": {
@@ -2873,21 +3515,32 @@
   "size": 808736,
   "check": "diverges",
   "why": [
-   "level +15.4 dB",
-   "spectrum r=-0.858",
-   "screen boot 22.6",
-   "screen chord 28.5"
+   "screen boot 22.9",
+   "screen chord 27.8",
+   "screen play 23.1",
+   "level +15.4 dB (chord)",
+   "spectrum r=-0.858 (chord)"
   ],
   "native_chord_db": -19.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 15.4,
    "spectrum_corr": -0.858,
-   "screen_diff_boot": 22.6,
-   "screen_diff_chord": 28.5
+   "screen_diff_boot": 22.9,
+   "screen_diff_chord": 27.8,
+   "screen_diff_play": 23.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 209.07,
+   "cpu_rt": 209.74,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 12547,
+   "rms_db": -18.8
   }
  },
  "xmod": {
@@ -2918,20 +3571,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 482128,
-  "check": "broken",
+  "check": "diverges",
   "why": [
-   "native silent in the chord"
+   "screen boot 30.1"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
-   "screen_diff_boot": 30.6,
-   "screen_diff_chord": 0.0
+   "screen_diff_boot": 30.1,
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 450
+   "emu_first_screen": 500
+  },
+  "bench": {
+   "rt": 4018.08,
+   "cpu_rt": 4020.1,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "hawkchua": {
@@ -2979,18 +3641,28 @@
   "size": 1063472,
   "check": "diverges",
   "why": [
-   "level +6.1 dB"
+   "level +6.1 dB (chord)"
   ],
   "native_chord_db": -18.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.5,
-   "screen_diff_chord": 0.5
+   "screen_diff_chord": 0.5,
+   "screen_diff_play": 0.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 468.27,
+   "cpu_rt": 468.25,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10032,
+   "peak": 12949,
+   "rms_db": -23.9
   }
  },
  "lsdjburrito": {
@@ -3070,14 +3742,24 @@
   "why": [],
   "native_chord_db": -10.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": -1.0,
    "spectrum_corr": 0.986,
-   "screen_diff_boot": 10.4,
-   "screen_diff_chord": 6.7
+   "screen_diff_boot": 10.5,
+   "screen_diff_chord": 8.4,
+   "screen_diff_play": 6.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 171.3,
+   "cpu_rt": 171.95,
+   "boot_2s_wall": 0.006,
+   "fw_ms": 10002,
+   "peak": 18443,
+   "rms_db": -11.1
   }
  },
  "fm1trax": {
@@ -3108,20 +3790,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 544096,
-  "check": "diverges",
-  "why": [
-   "level +5.3 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -17.7,
   "compare": {
+   "window": "chord",
    "level_diff_db": 5.3,
    "spectrum_corr": 0.995,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 122.88,
+   "cpu_rt": 128.09,
+   "boot_2s_wall": 0.12,
+   "fw_ms": 10007,
+   "peak": 10880,
+   "rms_db": -18.4
   }
  },
  "rupture": {
@@ -3154,18 +3844,30 @@
   "size": 1043440,
   "check": "no-ref",
   "why": [
-   "emulator silent in the chord"
+   "emulator silent in the chord and PLAY",
+   "screen boot 66.7",
+   "screen chord 66.6",
+   "screen play 66.9"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": 216.1,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 66.7,
-   "screen_diff_chord": 66.6
+   "screen_diff_chord": 66.6,
+   "screen_diff_play": 66.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 746.62,
+   "cpu_rt": 746.62,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "amenity": {
@@ -3183,18 +3885,27 @@
   "size": 300192,
   "check": "broken",
   "why": [
-   "native silent in the chord"
+   "native silent, the emulator sounds"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 1.1,
-   "screen_diff_chord": 1.1
+   "screen_diff_chord": 1.1,
+   "screen_diff_play": 2.9
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 50
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 1985.6,
+   "cpu_rt": 1987.08,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "arcturus": {
@@ -3212,19 +3923,28 @@
   "size": 290048,
   "check": "diverges",
   "why": [
-   "level +8.1 dB",
-   "spectrum r=0.64"
+   "spectrum r=0.64 (chord)"
   ],
   "native_chord_db": -18.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 8.1,
    "spectrum_corr": 0.64,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.2
+   "screen_diff_chord": 0.2,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 250
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 86.0,
+   "cpu_rt": 87.88,
+   "boot_2s_wall": 0.021,
+   "fw_ms": 10007,
+   "peak": 10832,
+   "rms_db": -18.6
   }
  },
  "kittenrack": {
@@ -3257,18 +3977,28 @@
   "size": 326064,
   "check": "diverges",
   "why": [
-   "screen boot 22.7"
+   "screen boot 26.2"
   ],
   "native_chord_db": -15.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.1,
-   "spectrum_corr": 0.998,
-   "screen_diff_boot": 22.7,
-   "screen_diff_chord": 2.1
+   "spectrum_corr": 0.997,
+   "screen_diff_boot": 26.2,
+   "screen_diff_chord": 1.7,
+   "screen_diff_play": 1.5
   },
   "boot_ms": {
-   "native_first_screen": 200,
+   "native_first_screen": 250,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 94.9,
+   "cpu_rt": 95.34,
+   "boot_2s_wall": 0.018,
+   "fw_ms": 10002,
+   "peak": 22566,
+   "rms_db": -15.1
   }
  },
  "beetleblue": {
@@ -3331,20 +4061,30 @@
   "size": 456464,
   "check": "diverges",
   "why": [
-   "level -12.0 dB",
-   "spectrum r=-0.22",
-   "screen chord 12.7"
+   "screen chord 12.2",
+   "screen play 15.4",
+   "spectrum r=0.107 (play)"
   ],
   "native_chord_db": -32.2,
   "compare": {
-   "level_diff_db": -12.0,
-   "spectrum_corr": -0.22,
+   "window": "play",
+   "level_diff_db": -0.6,
+   "spectrum_corr": 0.107,
    "screen_diff_boot": 7.9,
-   "screen_diff_chord": 12.7
+   "screen_diff_chord": 12.2,
+   "screen_diff_play": 15.4
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 655.31,
+   "cpu_rt": 656.06,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 6473,
+   "rms_db": -32.2
   }
  },
  "veffbox": {
@@ -3375,20 +4115,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 138240,
-  "check": "diverges",
-  "why": [
-   "level +6.0 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -23.4,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 84.83,
+   "cpu_rt": 99.07,
+   "boot_2s_wall": 0.018,
+   "fw_ms": 10007,
+   "peak": 16420,
+   "rms_db": -17.0
   }
  },
  "elixir": {
@@ -3404,20 +4152,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 1289728,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": -0.1,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 0.1
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 6.3
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 202.98,
+   "cpu_rt": 215.95,
+   "boot_2s_wall": 0.011,
+   "fw_ms": 10008,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "dx747": {
@@ -3452,14 +4208,24 @@
   "why": [],
   "native_chord_db": -32.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": -0.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 504.16,
+   "cpu_rt": 505.72,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10008,
+   "peak": 1492,
+   "rms_db": -32.7
   }
  },
  "coqui": {
@@ -3490,20 +4256,31 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 272304,
-  "check": "broken",
+  "check": "diverges",
   "why": [
-   "native silent in the chord"
+   "level +12.6 dB (play)",
+   "spectrum r=0.296 (play)"
   ],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
-   "screen_diff_boot": 0.0,
-   "screen_diff_chord": 6.0
+   "window": "play",
+   "level_diff_db": 18.6,
+   "spectrum_corr": 0.296,
+   "screen_diff_boot": 1.9,
+   "screen_diff_chord": 6.0,
+   "screen_diff_play": 6.4
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 250
+   "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 88.08,
+   "cpu_rt": 90.15,
+   "boot_2s_wall": 0.019,
+   "fw_ms": 10007,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "cultbox": {
@@ -3519,20 +4296,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 325408,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -18.7,
   "compare": {
-   "level_diff_db": 6.1,
+   "window": "play",
+   "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 47.36,
+   "cpu_rt": 102.21,
+   "boot_2s_wall": 0.021,
+   "fw_ms": 10007,
+   "peak": 7777,
+   "rms_db": -18.8
   }
  },
  "piterfly": {
@@ -3565,20 +4350,31 @@
   "size": 1044640,
   "check": "diverges",
   "why": [
-   "spectrum r=0.71",
    "screen boot 22.8",
-   "screen chord 23.6"
+   "screen chord 23.6",
+   "screen play 22.8",
+   "spectrum r=0.71 (chord)"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -2.0,
    "spectrum_corr": 0.71,
    "screen_diff_boot": 22.8,
-   "screen_diff_chord": 23.6
+   "screen_diff_chord": 23.6,
+   "screen_diff_play": 22.8
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 100
+   "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 609.06,
+   "cpu_rt": 646.15,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "atek303": {
@@ -3639,20 +4435,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 347440,
-  "check": "diverges",
-  "why": [
-   "level +5.2 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -19.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 5.2,
    "spectrum_corr": 0.993,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 2.3
+   "screen_diff_chord": 1.9,
+   "screen_diff_play": 0.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 114.36,
+   "cpu_rt": 119.62,
+   "boot_2s_wall": 0.013,
+   "fw_ms": 10007,
+   "peak": 10872,
+   "rms_db": -19.2
   }
  },
  "patchwerk": {
@@ -3672,14 +4476,24 @@
   "why": [],
   "native_chord_db": -16.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
-   "native_first_screen": 50,
+   "native_first_screen": 250,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 317.2,
+   "cpu_rt": 318.32,
+   "boot_2s_wall": 0.006,
+   "fw_ms": 10002,
+   "peak": 8090,
+   "rms_db": -16.0
   }
  },
  "remotefm1": {
@@ -3740,20 +4554,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 683240,
-  "check": "diverges",
-  "why": [
-   "spectrum r=0.889"
-  ],
-  "native_chord_db": -19.4,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -17.7,
   "compare": {
-   "level_diff_db": -0.8,
-   "spectrum_corr": 0.889,
-   "screen_diff_boot": 0.5,
-   "screen_diff_chord": 0.6
+   "window": "chord",
+   "level_diff_db": 0.9,
+   "spectrum_corr": 0.941,
+   "screen_diff_boot": 0.4,
+   "screen_diff_chord": 0.3,
+   "screen_diff_play": 0.3
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 236.41,
+   "cpu_rt": 236.41,
+   "boot_2s_wall": 0.01,
+   "fw_ms": 10002,
+   "peak": 18110,
+   "rms_db": -18.5
   }
  },
  "ombak": {
@@ -3814,20 +4636,33 @@
   "recipe": "web",
   "build": "clean",
   "size": 229312,
-  "check": "no-ref",
+  "check": "diverges",
   "why": [
-   "emulator silent in the chord"
+   "screen boot 40.2",
+   "screen chord 41.3",
+   "screen play 43.2",
+   "level +222.8 dB (chord)",
+   "spectrum r=None (chord)"
   ],
   "native_chord_db": -17.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 222.8,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 40.2,
-   "screen_diff_chord": 41.3
+   "screen_diff_chord": 41.3,
+   "screen_diff_play": 43.2
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 200
+   "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 2786.49,
+   "cpu_rt": 2785.52,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 6381,
+   "rms_db": -17.2
   }
  },
  "jamtrack": {
@@ -3845,16 +4680,26 @@
   "size": 817056,
   "check": "match",
   "why": [],
-  "native_chord_db": -27.3,
+  "native_chord_db": -27.2,
   "compare": {
-   "level_diff_db": 1.4,
+   "window": "play",
+   "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 10.3
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 495.39,
+   "cpu_rt": 496.03,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 4572,
+   "rms_db": -27.2
   }
  },
  "quartet": {
@@ -3870,20 +4715,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 272080,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -40.4,
   "compare": {
-   "level_diff_db": 6.1,
+   "window": "play",
+   "level_diff_db": 6.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 3.6
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 125.34,
+   "cpu_rt": 167.51,
+   "boot_2s_wall": 0.013,
+   "fw_ms": 10007,
+   "peak": 2241,
+   "rms_db": -46.6
   }
  },
  "keystepone": {
@@ -3918,14 +4771,24 @@
   "why": [],
   "native_chord_db": -21.4,
   "compare": {
+   "window": "chord",
    "level_diff_db": -1.5,
    "spectrum_corr": 0.978,
    "screen_diff_boot": 0.2,
-   "screen_diff_chord": 0.2
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
-   "native_first_screen": 300,
-   "emu_first_screen": 200
+   "native_first_screen": 250,
+   "emu_first_screen": 350
+  },
+  "bench": {
+   "rt": 156.28,
+   "cpu_rt": 156.51,
+   "boot_2s_wall": 0.012,
+   "fw_ms": 10002,
+   "peak": 9055,
+   "rms_db": -22.4
   }
  },
  "mpyre": {
@@ -3986,20 +4849,33 @@
   "recipe": "web",
   "build": "clean",
   "size": 753056,
-  "check": "broken",
+  "check": "diverges",
   "why": [
-   "native silent in the chord"
+   "screen boot 120.5",
+   "screen chord 120.5",
+   "screen play 122.1",
+   "level +217.3 dB (play)",
+   "spectrum r=None (play)"
   ],
   "native_chord_db": -240.0,
   "compare": {
-   "level_diff_db": -214.1,
-   "spectrum_corr": NaN,
+   "window": "play",
+   "level_diff_db": 217.3,
    "screen_diff_boot": 120.5,
-   "screen_diff_chord": 120.5
+   "screen_diff_chord": 120.5,
+   "screen_diff_play": 122.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 240.5,
+   "cpu_rt": 240.49,
+   "boot_2s_wall": 0.01,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "satie1": {
@@ -4017,21 +4893,32 @@
   "size": 855552,
   "check": "diverges",
   "why": [
-   "level +12.0 dB",
-   "spectrum r=0.897",
-   "screen boot 31.5",
-   "screen chord 32.6"
+   "screen boot 31.3",
+   "screen chord 33.2",
+   "screen play 31.7",
+   "level +12.0 dB (chord)",
+   "spectrum r=0.896 (chord)"
   ],
   "native_chord_db": -18.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 12.0,
-   "spectrum_corr": 0.897,
-   "screen_diff_boot": 31.5,
-   "screen_diff_chord": 32.6
+   "spectrum_corr": 0.896,
+   "screen_diff_boot": 31.3,
+   "screen_diff_chord": 33.2,
+   "screen_diff_play": 31.7
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 177.04,
+   "cpu_rt": 177.31,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 14537,
+   "rms_db": -17.8
   }
  },
  "guru600": {
@@ -4064,19 +4951,28 @@
   "size": 212192,
   "check": "broken",
   "why": [
-   "native silent in the chord",
-   "native screen dark"
+   "native screen dark",
+   "native silent, the emulator sounds"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": -214.4,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 128.5,
-   "screen_diff_chord": 128.7
+   "screen_diff_chord": 128.7,
+   "screen_diff_play": 128.5
   },
   "boot_ms": {
    "native_first_screen": null,
    "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 7200.72,
+   "cpu_rt": 7207.21,
+   "boot_2s_wall": 0.0,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "trumpagotchi": {
@@ -4096,14 +4992,24 @@
   "why": [],
   "native_chord_db": -19.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 2.6,
-   "screen_diff_chord": 0.3
+   "screen_diff_chord": 0.3,
+   "screen_diff_play": 0.3
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 350
+   "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 746.2,
+   "cpu_rt": 747.45,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 10854,
+   "rms_db": -19.2
   }
  },
  "krisjangle": {
@@ -4121,20 +5027,31 @@
   "size": 229272,
   "check": "diverges",
   "why": [
-   "spectrum r=0.555",
    "screen boot 82.8",
-   "screen chord 83.6"
+   "screen chord 83.6",
+   "screen play 88.3",
+   "spectrum r=0.555 (chord)"
   ],
   "native_chord_db": -17.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 1.1,
    "spectrum_corr": 0.555,
    "screen_diff_boot": 82.8,
-   "screen_diff_chord": 83.6
+   "screen_diff_chord": 83.6,
+   "screen_diff_play": 88.3
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 250
+  },
+  "bench": {
+   "rt": 2772.96,
+   "cpu_rt": 2772.96,
+   "boot_2s_wall": 0.001,
+   "fw_ms": 10002,
+   "peak": 6381,
+   "rms_db": -17.2
   }
  },
  "cord": {
@@ -4152,20 +5069,29 @@
   "size": 1105952,
   "check": "diverges",
   "why": [
-   "level +5.2 dB",
-   "spectrum r=0.424",
-   "screen chord 17.2"
+   "screen chord 17.2",
+   "level +6.1 dB (play)"
   ],
   "native_chord_db": -10.8,
   "compare": {
-   "level_diff_db": 5.2,
-   "spectrum_corr": 0.424,
+   "window": "play",
+   "level_diff_db": 6.1,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 6.3,
-   "screen_diff_chord": 17.2
+   "screen_diff_chord": 17.2,
+   "screen_diff_play": 8.9
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 347.03,
+   "cpu_rt": 347.04,
+   "boot_2s_wall": 0.009,
+   "fw_ms": 10007,
+   "peak": 25949,
+   "rms_db": -10.8
   }
  },
  "pocketband": {
@@ -4196,20 +5122,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 451464,
-  "check": "diverges",
-  "why": [
-   "spectrum r=0.658"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -28.4,
   "compare": {
-   "level_diff_db": -0.6,
-   "spectrum_corr": 0.658,
+   "window": "play",
+   "level_diff_db": -2.4,
+   "spectrum_corr": 0.907,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 1.1
+   "screen_diff_chord": 1.1,
+   "screen_diff_play": 2.2
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 345.38,
+   "cpu_rt": 345.78,
+   "boot_2s_wall": 0.003,
+   "fw_ms": 10002,
+   "peak": 11107,
+   "rms_db": -28.4
   }
  },
  "dubbox": {
@@ -4242,18 +5176,28 @@
   "size": 559640,
   "check": "diverges",
   "why": [
-   "screen boot 24.6"
+   "screen boot 25.2"
   ],
   "native_chord_db": -18.8,
   "compare": {
+   "window": "chord",
    "level_diff_db": 1.6,
    "spectrum_corr": 0.999,
-   "screen_diff_boot": 24.6,
-   "screen_diff_chord": 1.4
+   "screen_diff_boot": 25.2,
+   "screen_diff_chord": 1.4,
+   "screen_diff_play": 1.5
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 100
+   "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 306.7,
+   "cpu_rt": 307.46,
+   "boot_2s_wall": 0.068,
+   "fw_ms": 10002,
+   "peak": 11941,
+   "rms_db": -19.2
   }
  },
  "splitmilk": {
@@ -4269,20 +5213,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 305464,
-  "check": "diverges",
-  "why": [
-   "level +6.3 dB"
-  ],
-  "native_chord_db": -38.9,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -39.3,
   "compare": {
-   "level_diff_db": 6.3,
+   "window": "chord",
+   "level_diff_db": 5.9,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.1
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 200
+  },
+  "bench": {
+   "rt": 148.98,
+   "cpu_rt": 157.33,
+   "boot_2s_wall": 0.015,
+   "fw_ms": 10007,
+   "peak": 2445,
+   "rms_db": -45.3
   }
  },
  "argo": {
@@ -4334,14 +5286,24 @@
   ],
   "native_chord_db": -37.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 2.4,
    "spectrum_corr": 0.981,
    "screen_diff_boot": 22.2,
-   "screen_diff_chord": 0.8
+   "screen_diff_chord": 0.8,
+   "screen_diff_play": 0.2
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 600
+   "emu_first_screen": 650
+  },
+  "bench": {
+   "rt": 316.92,
+   "cpu_rt": 316.91,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 29123,
+   "rms_db": -14.0
   }
  },
  "tack": {
@@ -4357,20 +5319,28 @@
   "recipe": "web",
   "build": "clean",
   "size": 683776,
-  "check": "broken",
-  "why": [
-   "native silent in the chord"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "play",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
+   "spectrum_corr": 1.0,
    "screen_diff_boot": 0.1,
-   "screen_diff_chord": 0.6
+   "screen_diff_chord": 0.6,
+   "screen_diff_play": 2.9
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 50
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 180.08,
+   "cpu_rt": 180.08,
+   "boot_2s_wall": 0.011,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "manifold": {
@@ -4401,20 +5371,29 @@
   "recipe": "web",
   "build": "clean",
   "size": 703144,
-  "check": "broken",
+  "check": "silent",
   "why": [
-   "native silent in the chord"
+   "no sound from a chord or PLAY in either"
   ],
   "native_chord_db": -240.0,
   "compare": {
+   "window": "chord",
    "level_diff_db": 0.0,
-   "spectrum_corr": NaN,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 4.4
   },
   "boot_ms": {
-   "native_first_screen": 100,
+   "native_first_screen": 200,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 840.16,
+   "cpu_rt": 840.16,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10002,
+   "peak": 0,
+   "rms_db": -240.0
   }
  },
  "fm1yoga": {
@@ -4434,14 +5413,24 @@
   "why": [],
   "native_chord_db": -25.3,
   "compare": {
+   "window": "chord",
    "level_diff_db": 1.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 448.68,
+   "cpu_rt": 448.93,
+   "boot_2s_wall": 0.004,
+   "fw_ms": 10002,
+   "peak": 13099,
+   "rms_db": -26.1
   }
  },
  "hadal1": {
@@ -4459,18 +5448,29 @@
   "size": 519024,
   "check": "diverges",
   "why": [
-   "spectrum r=0.889"
+   "level +3.6 dB (play)",
+   "spectrum r=0.5 (play)"
   ],
-  "native_chord_db": -38.8,
+  "native_chord_db": -37.4,
   "compare": {
-   "level_diff_db": -0.4,
-   "spectrum_corr": 0.889,
+   "window": "play",
+   "level_diff_db": 3.6,
+   "spectrum_corr": 0.5,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
-   "native_first_screen": 350,
+   "native_first_screen": 300,
    "emu_first_screen": 50
+  },
+  "bench": {
+   "rt": 47.68,
+   "cpu_rt": 47.73,
+   "boot_2s_wall": 0.026,
+   "fw_ms": 10002,
+   "peak": 4864,
+   "rms_db": -26.2
   }
  },
  "agtdeck": {
@@ -4501,20 +5501,28 @@
   "recipe": "dinghy",
   "build": "shims",
   "size": 500200,
-  "check": "diverges",
-  "why": [
-   "level +6.1 dB"
-  ],
+  "check": "match",
+  "why": [],
   "native_chord_db": -28.2,
   "compare": {
+   "window": "chord",
    "level_diff_db": 6.1,
    "spectrum_corr": 1.0,
    "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.0
+   "screen_diff_chord": 0.0,
+   "screen_diff_play": 0.0
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 150
+  },
+  "bench": {
+   "rt": 101.56,
+   "cpu_rt": 118.23,
+   "boot_2s_wall": 0.019,
+   "fw_ms": 10007,
+   "peak": 2164,
+   "rms_db": -28.2
   }
  },
  "rhytmsec1": {
@@ -4547,19 +5555,29 @@
   "size": 1250656,
   "check": "diverges",
   "why": [
-   "level +4.6 dB",
-   "spectrum r=-0.339"
+   "level +9.7 dB (play)",
+   "spectrum r=0.626 (play)"
   ],
   "native_chord_db": -22.3,
   "compare": {
-   "level_diff_db": 4.6,
-   "spectrum_corr": -0.339,
+   "window": "play",
+   "level_diff_db": 9.7,
+   "spectrum_corr": 0.626,
    "screen_diff_boot": 12.0,
-   "screen_diff_chord": 11.0
+   "screen_diff_chord": 11.0,
+   "screen_diff_play": 11.8
   },
   "boot_ms": {
    "native_first_screen": 50,
-   "emu_first_screen": 150
+   "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 518.71,
+   "cpu_rt": 518.74,
+   "boot_2s_wall": 0.005,
+   "fw_ms": 10007,
+   "peak": 5927,
+   "rms_db": -27.6
   }
  },
  "lrry": {
@@ -4592,21 +5610,32 @@
   "size": 1258912,
   "check": "diverges",
   "why": [
-   "level -4.3 dB",
-   "spectrum r=0.589",
    "screen boot 20.6",
-   "screen chord 22.3"
+   "screen chord 22.3",
+   "screen play 22.8",
+   "level -4.3 dB (chord)",
+   "spectrum r=0.589 (chord)"
   ],
   "native_chord_db": -23.9,
   "compare": {
+   "window": "chord",
    "level_diff_db": -4.3,
    "spectrum_corr": 0.589,
    "screen_diff_boot": 20.6,
-   "screen_diff_chord": 22.3
+   "screen_diff_chord": 22.3,
+   "screen_diff_play": 22.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 659.03,
+   "cpu_rt": 659.09,
+   "boot_2s_wall": 0.002,
+   "fw_ms": 10008,
+   "peak": 3947,
+   "rms_db": -23.7
   }
  },
  "adrift": {
@@ -4639,18 +5668,30 @@
   "size": 665208,
   "check": "no-ref",
   "why": [
-   "emulator silent in the chord"
+   "emulator silent in the chord and PLAY",
+   "screen boot 52.4",
+   "screen chord 19.8",
+   "screen play 23.8"
   ],
-  "native_chord_db": -10.6,
+  "native_chord_db": -10.7,
   "compare": {
-   "level_diff_db": 229.4,
-   "spectrum_corr": NaN,
-   "screen_diff_boot": 52.7,
-   "screen_diff_chord": 19.9
+   "window": "chord",
+   "level_diff_db": 229.3,
+   "screen_diff_boot": 52.4,
+   "screen_diff_chord": 19.8,
+   "screen_diff_play": 23.8
   },
   "boot_ms": {
    "native_first_screen": 50,
    "emu_first_screen": 100
+  },
+  "bench": {
+   "rt": 187.99,
+   "cpu_rt": 188.38,
+   "boot_2s_wall": 0.01,
+   "fw_ms": 10002,
+   "peak": 25995,
+   "rms_db": -10.5
   }
  },
  "drumtonic": {
@@ -4666,6 +5707,14 @@
   "recipe": "dinghy",
   "build": "failed",
   "stage": "compile",
-  "cause": "drumtonic/tree/firmware/src/app_fm1.c:662:9: error: call to undeclared function 'platform_poll'; ISO C99 and later do not support implicit function declarations"
+  "cause": "drumtonic/tree/firmware/src/app_fm1.c:662:9: error: call to undeclared function 'platform_poll'; ISO C99 and later do not support implicit function declarations",
+  "bench": {
+   "rt": 145.52,
+   "cpu_rt": 152.81,
+   "boot_2s_wall": 0.023,
+   "fw_ms": 10007,
+   "peak": 0,
+   "rms_db": -240.0
+  }
  }
 }

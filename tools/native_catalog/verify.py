@@ -32,8 +32,8 @@ import numpy as np
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-CAT = ROOT / "native/build/catalog"
-HOST = ROOT / "native/build/host"
+CAT = Path(os.environ.get("FM1_CATALOG_DIR") or ROOT / "native/build/catalog")
+HOST = Path(os.environ.get("FM1_ENGINE_DIR") or ROOT / "native/build/host")   # libfm1engine.so, libfm1emu.so
 PINS = json.loads((HERE / "pins.json").read_text())
 HUB = "https://thefirmwarehub.com/"
 
@@ -61,8 +61,10 @@ def package(fid):
 
 
 class Engine:
-    def __init__(self, exe, file, env=None):
+    def __init__(self, exe, file, env=None, flash=None):
         self.dir = tempfile.mkdtemp(prefix="fm1v")
+        if flash:
+            Path(self.dir, "flash.bin").write_bytes(flash)
         self.prefix = os.path.join(self.dir, "e")
         self.t0 = time.monotonic()
         self.p = subprocess.Popen([str(exe), str(file), self.prefix, os.path.join(self.dir, "flash.bin"), "1024"],
@@ -185,8 +187,29 @@ PLAY_MS = 2500                                 # ... and tapped again after this
 END_MS = PLAY_AT + PLAY_MS + 500
 
 
-def run(exe, file, env=None):
-    e = Engine(exe, file, env)
+def emu_seed(fid):
+    """The emulator's flash file for a firmware whose Hub package leaves out what its own installer writes besides
+    (emu_seed.json: {id: {url, sha256, at}}; Melodee's factory sounds at 0xCB000): the file, as fm1-emu's saved
+    sectors (records of a u32 LE offset and 4096 bytes), or None. The native build links them in."""
+    seeds = json.loads((HERE / "emu_seed.json").read_text()) if (HERE / "emu_seed.json").exists() else {}
+    s = seeds.get(fid)
+    if not s:
+        return None
+    p = CAT / "pkg" / f"{fid}.seed.bin"
+    if not p.exists() or hashlib.sha256(p.read_bytes()).hexdigest() != s["sha256"]:
+        req = urllib.request.Request(s["url"], headers={"User-Agent": "fmutate-native-catalog"})
+        data = urllib.request.urlopen(req, timeout=120).read()
+        if hashlib.sha256(data).hexdigest() != s["sha256"]:
+            raise SystemExit(f"{fid}: the seed doesn't match its SHA-256")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(data)
+    data = p.read_bytes()
+    data += b"\xff" * (-len(data) % 4096)
+    return b"".join(struct.pack("<I", s["at"] + i) + data[i:i + 4096] for i in range(0, len(data), 4096))
+
+
+def run(exe, file, env=None, flash=None):
+    e = Engine(exe, file, env, flash)
     res = {"ready_wall_ms": round(e.ready_wall_ms), "ready_fw_ms": e.ready_ms}
     first_screen_ms = None
     audio = []
@@ -260,7 +283,7 @@ def main():
     e = None
     if not a.no_emu:
         try:
-            e = run(HOST / "libfm1emu.so", Path(a.pkg) if a.pkg else package(fid))
+            e = run(HOST / "libfm1emu.so", Path(a.pkg) if a.pkg else package(fid), flash=emu_seed(fid))
             rep["emu"] = e[0]
         except Exception as ex:
             rep["emu_error"] = str(ex)[-600:]

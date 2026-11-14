@@ -1,0 +1,85 @@
+#!/usr/bin/env python3
+"""A stand-in for the WebAssembly compilers a firmware's own browser build calls without Emscripten: clang
+--target=wasm32, `zig cc --target=wasm32-freestanding` (also as `python3 -m ziglang cc`, pyshim/ziglang), a WASI SDK's
+bin/clang, Binaryen's wasm-opt (by the name it is called as).
+
+tools/native_catalog/recipes/wasm.py runs the firmware's script with this directory first on PATH. A wasm32 compile
+is appended to $FM1_EMCC_LOG as one JSON line ({"tool": "clang", "cwd", "args"}) and leaves a placeholder where its
+output would go, so the script carries on; wasm-opt copies its input to its output. A compile for any other target
+(the script's own host tools) runs the real compiler. Nothing is compiled for wasm here.
+"""
+import json
+import os
+import shutil
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+tool = os.path.basename(sys.argv[0])
+args = sys.argv[1:]
+
+
+def real(name):
+    """the real `name` on PATH, past this directory (and its wasi/bin)"""
+    path = [p for p in os.environ.get("PATH", "").split(os.pathsep)
+            if p and os.path.realpath(p) not in (HERE, os.path.join(HERE, "wasi", "bin"))]
+    return shutil.which(name, path=os.pathsep.join(path))
+
+
+def touch(path, data=b""):
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(data)
+
+
+def wasm_target(a):
+    return any(x.startswith("--target=wasm") or x.startswith("-target=wasm") for x in a) or \
+        any(a[i] in ("-target", "--target") and a[i + 1].startswith("wasm") for i in range(len(a) - 1))
+
+
+def record(a):
+    log = os.environ.get("FM1_EMCC_LOG")
+    if log:
+        with open(log, "a") as f:
+            f.write(json.dumps({"tool": "clang", "cwd": os.getcwd(), "args": a}) + "\n")
+    out = None
+    for i, x in enumerate(a):
+        if x == "-o" and i + 1 < len(a):
+            out = a[i + 1]
+        elif x.startswith("-o") and len(x) > 2:
+            out = x[2:]
+    if out:
+        touch(out, b"\0asm\1\0\0\0" if out.endswith(".wasm") else b"")
+    sys.exit(0)
+
+
+if tool == "wasm-opt":
+    if "--version" in args:
+        print("wasm-opt version 133 (fmutate native_catalog stand-in)")
+        sys.exit(0)
+    out = args[args.index("-o") + 1] if "-o" in args else None
+    src = next((a for i, a in enumerate(args) if a.endswith(".wasm") and (i == 0 or args[i - 1] != "-o")), None)
+    if out and src and os.path.exists(src):
+        shutil.copyfile(src, out)
+    sys.exit(0)
+
+if tool == "zig":
+    if args[:1] == ["cc"] and wasm_target(args[1:]):
+        record(args[1:])
+    if args[:1] == ["version"]:
+        print("0.13.0")
+        sys.exit(0)
+    z = real("zig")
+    if not z:
+        sys.exit("zig (native_catalog stand-in): only wasm32 compiles are recorded")
+    os.execv(z, [z, *args])
+
+# clang, cc, a WASI SDK's clang
+if wasm_target(args):
+    record(args)
+if "--version" in args and "wasi" in sys.argv[0]:
+    print("clang version 18.1.8 (fmutate native_catalog stand-in)")
+    sys.exit(0)
+c = real(tool) or real("cc")
+os.execv(c, [c, *args])

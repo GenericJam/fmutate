@@ -1,25 +1,26 @@
 #!/bin/sh
-# Fetches firmware sources at their pins (tools/native_catalog/pins.json) into native/build/catalog/src/<id>:
+# Fetches firmware sources at their pins (pins.json beside this script) into $FM1_CATALOG_DIR/src/<id> (default
+# native/build/catalog/src):
 # one shallow fetch of the pinned commit, submodules shallow too; then, to keep 213 trees in a few GB, the git
-# data goes (the commit stays in <id>/.pin) and so do media no build reads (video, audio previews, PDFs,
-# images other than PNG, archives, prebuilt .wasm) and the top-level docs/. Re-runnable (a tree at its pin is kept).
+# data goes (the commit stays in <id>/.pin) and so do media no build reads (video, audio previews, PDFs, GIFs,
+# archives, prebuilt .wasm). (Builds read docs/ and JPEGs: Duell's MIDI map, Ombak's logo.) Re-runnable (a tree at its pin is kept).
 #
 #   tools/native_catalog/fetch.sh <id>...      those
 #   tools/native_catalog/fetch.sh --all        every pinned firmware (8 at a time)
 set -e
-cd "$(dirname "$0")/../.."
-ROOT=$(pwd)
-SRC=$ROOT/native/build/catalog/src
+HERE=$(cd "$(dirname "$0")" && pwd)
+PINS=$HERE/pins.json
+SRC=${FM1_CATALOG_DIR:-$HERE/../../native/build/catalog}/src
 mkdir -p "$SRC"
 
 if [ "$1" = --all ]; then
-    python3 -c "import json; print('\n'.join(json.load(open('tools/native_catalog/pins.json'))))" |
+    python3 -c "import json; print('\n'.join(json.load(open('$PINS'))))" |
         xargs -P 8 -n 1 sh "$0"
     exit 0
 fi
 
 for id in "$@"; do
-    set -- $(python3 -c "import json, sys; p = json.load(open('tools/native_catalog/pins.json'))['$id']; print(p['repo'], p['commit'])")
+    set -- $(python3 -c "import json, sys; p = json.load(open('$PINS'))['$id']; print(p['repo'], p['commit'])")
     repo=$1 commit=$2
     dir=$SRC/$id
     if [ "$(cat "$dir/.pin" 2>/dev/null)" = "$commit" ]; then
@@ -35,8 +36,7 @@ for id in "$@"; do
         [ -s "$dir.submodule.log" ] || rm -f "$dir.submodule.log"
         find "$dir" -name .git -prune -exec rm -rf {} +
         find "$dir" -type f \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mp3' -o -iname '*.pdf' -o -iname '*.gif' \
-            -o -iname '*.zip' -o -iname '*.wasm' -o -iname '*.webm' -o -iname '*.jpg' -o -iname '*.jpeg' \) -delete
-        rm -rf "$dir/docs"
+            -o -iname '*.zip' -o -iname '*.wasm' -o -iname '*.webm' \) -delete
         echo "$commit" > "$dir/.pin"
         echo "$id: $(du -sh "$dir" | cut -f1)$sub"
     else

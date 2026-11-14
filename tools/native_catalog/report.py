@@ -14,12 +14,13 @@ per-firmware patches; failed: the stage and the first error), and the check agai
 """
 import argparse
 import json
+import os
 import re
 from collections import Counter
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-CAT = HERE.parents[1] / "native/build/catalog"
+CAT = Path(os.environ.get("FM1_CATALOG_DIR") or HERE.parents[1] / "native/build/catalog")
 PINS = json.loads((HERE / "pins.json").read_text())
 
 

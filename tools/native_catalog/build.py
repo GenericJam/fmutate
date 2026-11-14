@@ -25,8 +25,10 @@ from common import CAT, HERE, SRC, sh  # noqa: E402
 
 RECIPES = {}
 for _p in sorted((HERE / "recipes").glob("[a-z]*.py")):
-    _m = importlib.import_module("recipes." + _p.stem)
-    RECIPES[_p.stem] = _m
+    try:
+        RECIPES[_p.stem] = importlib.import_module("recipes." + _p.stem)
+    except Exception as _e:                             # (one broken recipe doesn't stop the others)
+        print(f"build: recipe {_p.stem} not loaded: {_e!r}", file=sys.stderr)
 
 
 def recipe(d, fid):

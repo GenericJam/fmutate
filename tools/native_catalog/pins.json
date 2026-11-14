@@ -1,5 +1,6 @@
 {
  "zp12": {
+  "name": "zp12",
   "repo": "zvenson/zp12",
   "version": "2.5",
   "pkg": "fw/zp12-2.5.fwsc",
@@ -11,6 +12,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "hortator": {
+  "name": "Hortator",
   "repo": "deadactive/hortator",
   "version": "1.0.1",
   "pkg": "fw/hortator-1.0.1.fwsc",
@@ -22,6 +24,7 @@
   "ref": "refs/tags/drum-v1.0.1"
  },
  "hortator-bt": {
+  "name": "Hortator (Bluetooth)",
   "repo": "deadactive/hortator",
   "version": "1.0.1",
   "pkg": "fw/hortator-bt-1.0.1.fwsc",
@@ -33,6 +36,7 @@
   "ref": "refs/tags/drum-v1.0.1"
  },
  "felucca": {
+  "name": "Felucca",
   "repo": "hugelton/Felucca",
   "version": "1.8.2",
   "pkg": "fw/felucca-1.8.2.fwsc",
@@ -44,6 +48,7 @@
   "ref": "refs/tags/v1.8.2"
  },
  "salt": {
+  "name": "Felucca [Salt]",
   "repo": "ChanceTheMaker/Felucca",
   "version": "0.9-salt14",
   "pkg": "fw/salt-0.9-salt14.fwsc",
@@ -55,6 +60,7 @@
   "ref": "refs/tags/v0.9-salt14"
  },
  "jangada": {
+  "name": "Jangada",
   "repo": "zednaked/jangada",
   "version": "1.0.1",
   "pkg": "fw/jangada-1.0.1.fwsc",
@@ -66,6 +72,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "ghoulbox": {
+  "name": "GHOULBOX",
   "repo": "jasonpersinger/ghoulbox-fm1-dungeon-synth",
   "version": "2.4",
   "pkg": "fw/ghoulbox-2.4.fwsc",
@@ -77,6 +84,7 @@
   "ref": "refs/tags/ghoulbox-v2.4"
  },
  "melodee": {
+  "name": "Melodee",
   "repo": "keremimo/melodee",
   "version": "1.6.1",
   "pkg": "fw/melodee-1.6.1.fwsc",
@@ -88,6 +96,7 @@
   "ref": "refs/tags/v1.6.1"
  },
  "sloop": {
+  "name": "SLOOP",
   "repo": "isod89/sloop-fm1",
   "version": "2.8.5",
   "pkg": "fw/sloop-2.8.5.fwsc",
@@ -99,6 +108,7 @@
   "ref": "refs/tags/v2.8.5"
  },
  "clipper": {
+  "name": "Clipper",
   "repo": "isod89/clipper-fm1",
   "version": "1.3.1",
   "pkg": "fw/clipper-1.3.1.fwsc",
@@ -110,6 +120,7 @@
   "ref": "refs/tags/v1.3.1"
  },
  "bubba": {
+  "name": "Bubba Machine",
   "repo": "Erbubar23/bubba-machine",
   "version": "0.10.0-beta",
   "pkg": "fw/bubba-0.10.0-beta.fwsc",
@@ -121,6 +132,7 @@
   "ref": "refs/tags/v0.10.0-beta"
  },
  "floyd": {
+  "name": "SLOOP Floyd FM",
   "repo": "renebohne/sloop-fm1",
   "version": "2.4",
   "pkg": "fw/floyd-2.4.fwsc",
@@ -132,6 +144,7 @@
   "ref": "refs/tags/v2.4"
  },
  "sloopbanks": {
+  "name": "SLOOP DX7 Banks",
   "repo": "majnikool/sloop-fm1",
   "version": "2.5-b28-test",
   "pkg": "fw/sloopbanks-2.5-b28-test.fwsc",
@@ -143,6 +156,7 @@
   "ref": "refs/tags/v2.5-b28-test"
  },
  "sloopdx": {
+  "name": "sloopDX",
   "repo": "zvenson/dxsloop",
   "version": "4.0.1",
   "pkg": "fw/sloopdx-4.0.1.fwsc",
@@ -154,6 +168,7 @@
   "ref": "refs/tags/v4.0.1"
  },
  "x0x": {
+  "name": "X0X",
   "repo": "charlesvestal/fm1-x0x",
   "version": "1.2.2",
   "pkg": "fw/x0x-1.2.2.fwsc",
@@ -165,6 +180,7 @@
   "ref": "refs/tags/v1.2.2"
  },
  "x0xrmx": {
+  "name": "X0X-RMX",
   "repo": "Mr-Roboto/fm1-x0x-rmx",
   "version": "1.1.0",
   "pkg": "fw/x0xrmx-1.1.0.fwsc",
@@ -176,6 +192,7 @@
   "ref": "refs/tags/v1.1.0"
  },
  "fomni": {
+  "name": "FoMni",
   "repo": "charlesvestal/fm1-fomni",
   "version": "0.4.1",
   "pkg": "fw/fomni-0.4.1.fwsc",
@@ -187,6 +204,7 @@
   "ref": "refs/tags/v0.4.1"
  },
  "choralroot": {
+  "name": "ChoralRoot",
   "repo": "Quixotic7/ChoralRootFM1",
   "version": "0.41",
   "pkg": "fw/choralroot-0.41.fwsc",
@@ -198,6 +216,7 @@
   "ref": "refs/tags/v0.41"
  },
  "waveloop": {
+  "name": "WaveLoop FM-1",
   "repo": "ELI7VH/Felucca",
   "version": "1.0.5.2-midi23",
   "pkg": "fw/waveloop-1.0.5.2-midi23.fwsc",
@@ -209,6 +228,7 @@
   "ref": "refs/tags/1.0.5.2-midi23"
  },
  "obervave": {
+  "name": "OberVave",
   "repo": "zvenson/obervave",
   "version": "3.5.2",
   "pkg": "fw/obervave-3.5.2.fwsc",
@@ -220,6 +240,7 @@
   "ref": "refs/tags/v3.5.2"
  },
  "shineon": {
+  "name": "Shine On",
   "repo": "zvenson/shineon",
   "version": "3.5",
   "pkg": "fw/shineon-3.5.fwsc",
@@ -231,6 +252,7 @@
   "ref": "refs/tags/v3.5"
  },
  "dinghy": {
+  "name": "Dinghy",
   "repo": "zvenson/dinghy",
   "version": "0.5",
   "pkg": "fw/dinghy-0.5.fwsc",
@@ -242,6 +264,7 @@
   "ref": "refs/tags/v0.5"
  },
  "vibe-link": {
+  "name": "VIBE FM Link",
   "repo": "zvenson/vibe-link",
   "version": "0.4",
   "pkg": "fw/vibe-link-0.4.fwsc",
@@ -253,6 +276,7 @@
   "ref": "refs/tags/v0.4"
  },
  "fimba": {
+  "name": "FiMba-1",
   "repo": "jadamsowers/fm1-fimba",
   "version": "0.7.0",
   "pkg": "fw/fimba-0.7.0.fwsc",
@@ -264,6 +288,7 @@
   "ref": "refs/tags/v0.7.0"
  },
  "jiant": {
+  "name": "JIANT FM",
   "repo": "juanjiant-bit/JIANT",
   "version": "V10.7.23",
   "pkg": "fw/jiant-V10.7.23.fwsc",
@@ -275,6 +300,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "chord": {
+  "name": "fm1-chord",
   "repo": "math0ne/fm1-chord",
   "version": "0.3",
   "pkg": "fw/chord-0.3.fwsc",
@@ -286,6 +312,7 @@
   "ref": "refs/tags/v0.3"
  },
  "fumi": {
+  "name": "FuMi-1",
   "repo": "cartesive/fumi-1",
   "version": "1.1.0",
   "pkg": "fw/fumi-1.1.0.fwsc",
@@ -297,6 +324,7 @@
   "ref": "refs/tags/fumi-1.1.0"
  },
  "maku": {
+  "name": "MAKU",
   "repo": "okumurari2/maku",
   "version": "1.0",
   "pkg": "fw/maku-1.0.fwsc",
@@ -308,6 +336,7 @@
   "ref": "refs/tags/maku-v1.0"
  },
  "rainbow": {
+  "name": "Rainbow Mode",
   "repo": "joshbartlettband-web/felucca-rainbow",
   "version": "1.1.5-rb",
   "pkg": "fw/rainbow-1.1.5-rb+22156c96.fwsc",
@@ -319,6 +348,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "amb": {
+  "name": "AMB-1",
   "repo": "charlesvestal/fm1-amb",
   "version": "1.3.2",
   "pkg": "fw/amb-1.3.2.fwsc",
@@ -330,6 +360,7 @@
   "ref": "refs/tags/v1.3.2"
  },
  "ctl": {
+  "name": "CTL-1",
   "repo": "charlesvestal/fm1-ctl",
   "version": "1.0.3",
   "pkg": "fw/ctl-1.0.3.fwsc",
@@ -341,6 +372,7 @@
   "ref": "refs/tags/v1.0.3"
  },
  "winampfm": {
+  "name": "winampFM Synth",
   "repo": "hericdk/winampFM",
   "version": "0.12",
   "pkg": "fw/winampfm-0.12.fwsc",
@@ -352,6 +384,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "mycelium": {
+  "name": "MYCELIUM",
   "repo": "megagott/mycelium-fm1",
   "version": "1.0-test",
   "pkg": "fw/mycelium-1.0-test.fwsc",
@@ -363,6 +396,7 @@
   "ref": "refs/tags/v1.0-test"
  },
  "polly": {
+  "name": "Polly",
   "repo": "charlesvestal/fm1-polly",
   "version": "0.6.4",
   "pkg": "fw/polly-0.6.4.fwsc",
@@ -374,6 +408,7 @@
   "ref": "refs/tags/v0.6.4"
  },
  "etch": {
+  "name": "ETCH",
   "repo": "SikkenWorks/ETCH",
   "version": "1.88",
   "pkg": "fw/etch-1.88.fwsc",
@@ -385,6 +420,7 @@
   "ref": "refs/tags/V1.88"
  },
  "fm106": {
+  "name": "FM-106",
   "repo": "PatttF/fm-106",
   "version": "1.0",
   "pkg": "fw/fm106-1.0.fwsc",
@@ -396,6 +432,7 @@
   "ref": "refs/tags/1.0"
  },
  "tribe": {
+  "name": "TRIBE",
   "repo": "apiel/fm1-tribe",
   "version": "0.3-beta",
   "pkg": "fw/tribe-0.3-beta.fwsc",
@@ -407,6 +444,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "duell": {
+  "name": "DUELL",
   "repo": "oscillr/DUELL",
   "version": "1.2",
   "pkg": "fw/duell-1.2.fwsc",
@@ -418,6 +456,7 @@
   "ref": "refs/tags/v1.2"
  },
  "skiff": {
+  "name": "Skiff",
   "repo": "illuminus5/skiff",
   "version": "2.6",
   "pkg": "fw/skiff-2.6.fwsc",
@@ -429,6 +468,7 @@
   "ref": "refs/tags/v2.6"
  },
  "fart": {
+  "name": "Fart Machine One",
   "repo": "adamcharleswilsonmusic-code/Fart-Machine-One",
   "version": "1.1.0",
   "pkg": "fw/fart-1.1.0.fwsc",
@@ -440,6 +480,7 @@
   "ref": "refs/tags/V1.1.0"
  },
  "orbit": {
+  "name": "ORBIT",
   "repo": "dspaudio/orbit",
   "version": "1.0.1B",
   "pkg": "fw/orbit-1.0.1B.fwsc",
@@ -451,6 +492,7 @@
   "ref": "refs/tags/v1.0.1B"
  },
  "felucca8": {
+  "name": "Felucca 8 Patterns",
   "repo": "echoe/Felucca_8_patterns",
   "version": "1.8.3",
   "pkg": "fw/felucca8-1.8.3.fwsc",
@@ -462,6 +504,7 @@
   "ref": "refs/tags/v1.8.3"
  },
  "pigeon": {
+  "name": "PIGEON",
   "repo": "TheShrimpBlimp/pigeon",
   "version": "0.5.0-beta.1",
   "pkg": "fw/pigeon-0.5.0-beta.1.fwsc",
@@ -473,6 +516,7 @@
   "ref": "refs/tags/v0.5.0-beta.1"
  },
  "cs1": {
+  "name": "CS-1",
   "repo": "twochannels/CS-1",
   "version": "2026.10.22",
   "pkg": "fw/cs1-2026.10.22.fwsc",
@@ -484,6 +528,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "hyp1": {
+  "name": "HYP-1",
   "repo": "RustyPawz/fm1-HYP1",
   "version": "1.5.62",
   "pkg": "fw/hyp1-1.5.62.fwsc",
@@ -495,6 +540,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "tonitor": {
+  "name": "Tonitor",
   "repo": "nzimas/tonitor",
   "version": "2026.11.10",
   "pkg": "fw/tonitor-2026.11.10.fwsc",
@@ -506,6 +552,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "bocjuhn": {
+  "name": "bocjuhn",
   "repo": "IanP06/bocjuhn",
   "version": "1.0.0-rc10",
   "pkg": "fw/bocjuhn-1.0.0-rc10.fwsc",
@@ -517,6 +564,7 @@
   "ref": "refs/tags/v1.0.0-rc10"
  },
  "aisling": {
+  "name": "AISLING",
   "repo": "stephencummins/fm1-aisling",
   "version": "1.4",
   "pkg": "fw/aisling-1.4.fwsc",
@@ -528,6 +576,7 @@
   "ref": "refs/tags/v1.4"
  },
  "demake": {
+  "name": "Demake",
   "repo": "InigoHernandez/demake-synth",
   "version": "0.4.24",
   "pkg": "fw/demake-0.4.24.fwsc",
@@ -539,6 +588,7 @@
   "ref": "refs/tags/v0.4.24"
  },
  "bigorna": {
+  "name": "Bigorna",
   "repo": "nzimas/bigorna",
   "version": "2026.11.13",
   "pkg": "fw/bigorna-2026.11.12.fwsc",
@@ -550,6 +600,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "noizdemons": {
+  "name": "NOIZ DEMONS",
   "repo": "SPIKE-the-Percussionist/noiz_demons",
   "version": "666",
   "pkg": "fw/noizdemons-666.fwsc",
@@ -561,6 +612,7 @@
   "ref": "refs/tags/v666"
  },
  "coralflower": {
+  "name": "CoralFlower",
   "repo": "FicusFicusov/CoralFlower",
   "version": "0.7.1",
   "pkg": "fw/coralflower-0.7.1.fwsc",
@@ -572,6 +624,7 @@
   "ref": "refs/tags/v0.7.1"
  },
  "vector37": {
+  "name": "Vector37",
   "repo": "genkigenki/Vector37",
   "version": "0.3.2",
   "pkg": "fw/vector37-0.3.2.fwsc",
@@ -583,6 +636,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "mc1": {
+  "name": "MC-1",
   "repo": "dspaudio/mc-1",
   "version": "1.2.0",
   "pkg": "fw/mc1-1.2.0.fwsc",
@@ -594,6 +648,7 @@
   "ref": "refs/tags/v1.2.0"
  },
  "beetle": {
+  "name": "BEETLE",
   "repo": "SikkenWorks/BEETLE",
   "version": "1.8.3",
   "pkg": "fw/beetle-1.8.3.fwsc",
@@ -605,6 +660,7 @@
   "ref": "refs/tags/V1.8.3"
  },
  "min1": {
+  "name": "MIN-1",
   "repo": "Reytian/fm1-min1",
   "version": "0.2.1",
   "pkg": "fw/min1-0.2.1.fwsc",
@@ -616,6 +672,7 @@
   "ref": "refs/tags/v0.2.1"
  },
  "purplemonkey": {
+  "name": "PurpleMonkey",
   "repo": "Quixotic7/PurpleMonkeyFM1",
   "version": "0.12",
   "pkg": "fw/purplemonkey-0.12.fwsc",
@@ -627,6 +684,7 @@
   "ref": "refs/tags/v0.12"
  },
  "gammawave": {
+  "name": "Pocket GammaWave",
   "repo": "fvalente/GammaWave-FM1",
   "version": "1.2.1-GW",
   "pkg": "fw/gammawave-1.2.1-GW.fwsc",
@@ -638,6 +696,7 @@
   "ref": "refs/tags/v1.2.1-GW"
  },
  "tuna": {
+  "name": "Tuna",
   "repo": "delirioux/tuna",
   "version": "1.2-99d50fb",
   "pkg": "fw/tuna-1.2-6f9a6dd.fwsc",
@@ -649,6 +708,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "frodhes": {
+  "name": "Frodhes",
   "repo": "leonardoMirabal/frodhes",
   "version": "0.9.11",
   "pkg": "fw/frodhes-0.9.11.fwsc",
@@ -660,6 +720,7 @@
   "ref": "refs/tags/v0.9.11"
  },
  "fomajam": {
+  "name": "FOMAJAM",
   "repo": "konsumer/fomajam",
   "version": "0.1.12",
   "pkg": "fw/fomajam-0.1.12.fwsc",
@@ -671,6 +732,7 @@
   "ref": "refs/tags/v0.1.12"
  },
  "kawa": {
+  "name": "KAWA",
   "repo": "Guizmoh/Kawa-Tracker-Fm1",
   "version": "0.9",
   "pkg": "fw/kawa-0.9.fwsc",
@@ -682,6 +744,7 @@
   "ref": "refs/tags/v0.9"
  },
  "nmsfm": {
+  "name": "No Man Sky FM",
   "repo": "hericdk/nomanskyFM",
   "version": "0.9",
   "pkg": "fw/nmsfm-0.9.fwsc",
@@ -693,6 +756,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "fm1quest": {
+  "name": "FM1 Quest",
   "repo": "hericdk/fm1-quest",
   "version": "43",
   "pkg": "fw/fm1quest-42.fwsc",
@@ -704,6 +768,7 @@
   "ref": "refs/tags/quest-43"
  },
  "grimm": {
+  "name": "GR!MM",
   "repo": "GRiMMBIENT/grimm",
   "version": "2.0.2",
   "pkg": "fw/grimm-2.0.2.fwsc",
@@ -715,6 +780,7 @@
   "ref": "refs/tags/v2.0.2"
  },
  "cutador": {
+  "name": "Cut-A-Dor",
   "repo": "kidbee85-beep/cut-a-dor-release",
   "version": "1.2.1",
   "pkg": "fw/cutador-1.2.1.fwsc",
@@ -726,6 +792,7 @@
   "ref": "refs/tags/v1.2.1"
  },
  "mutable": {
+  "name": "Mutable Dreams",
   "repo": "kidbee85-beep/mutable-dreams",
   "version": "2.1",
   "pkg": "fw/mutable-2.1.fwsc",
@@ -737,6 +804,7 @@
   "ref": "refs/tags/v2.1"
  },
  "fm1gm": {
+  "name": "FM1-GM",
   "repo": "jartificer/fm1-gm",
   "version": "1.2.0",
   "pkg": "fw/fm1gm-1.2.0.fwsc",
@@ -748,6 +816,7 @@
   "ref": "refs/tags/v1.2.0"
  },
  "386dx": {
+  "name": "386DX",
   "repo": "seajaysec/386-DX-FM1-KaraokeBot",
   "version": "2.0",
   "pkg": "fw/386dx-2.0.fwsc",
@@ -759,6 +828,7 @@
   "ref": "refs/tags/v2.0"
  },
  "bunker": {
+  "name": "Bunker Evolved",
   "repo": "kidbee85-beep/bunker-evolved",
   "version": "1.0.0",
   "pkg": "fw/bunker-1.0.0.fwsc",
@@ -770,6 +840,7 @@
   "ref": null
  },
  "opn1": {
+  "name": "OPN-1",
   "repo": "putchdev/opn-1",
   "version": "2.0.1",
   "pkg": "fw/opn1-2.0.1.fwsc",
@@ -781,6 +852,7 @@
   "ref": "refs/tags/v2.0.1"
  },
  "sid1": {
+  "name": "SID-1",
   "repo": "putchdev/sid-1",
   "version": "1.0.1",
   "pkg": "fw/sid1-1.0.1.fwsc",
@@ -792,6 +864,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "minitone": {
+  "name": "Mini-Tone",
   "repo": "eldontyrellcorp/Mini-Tone",
   "version": "1.0.5",
   "pkg": "fw/minitone-1.0.5.fwsc",
@@ -803,6 +876,7 @@
   "ref": "refs/tags/minitone-1.0.5"
  },
  "morpheus": {
+  "name": "MORPHEUS",
   "repo": "benbadio/morpheus-fm1",
   "version": "1.0.0",
   "pkg": "fw/morpheus-1.0.0.fwsc",
@@ -814,6 +888,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "fmini": {
+  "name": "FMini-1",
   "repo": "ruppert/fmini-1",
   "version": "2.5.12",
   "pkg": "fw/fmini-2.5.12.fwsc",
@@ -825,6 +900,7 @@
   "ref": "refs/tags/v2.5.12"
  },
  "dub": {
+  "name": "DUB-1",
   "repo": "sbegueria/fm1-dub",
   "version": "1.4.3",
   "pkg": "fw/dub-1.4.3.fwsc",
@@ -836,6 +912,7 @@
   "ref": "refs/tags/v1.4.3"
  },
  "fmel": {
+  "name": "FMEL-1",
   "repo": "AntonioAltea/fmel-1",
   "version": "1.3",
   "pkg": "fw/fmel-1.3.fwsc",
@@ -847,6 +924,7 @@
   "ref": "refs/tags/v1.3"
  },
  "zen": {
+  "name": "ZEN-1",
   "repo": "aceyprime/zen-1",
   "version": "1.2",
   "pkg": "fw/zen-1.2.fwsc",
@@ -858,6 +936,7 @@
   "ref": "refs/tags/v1.2"
  },
  "golana": {
+  "name": "Golana",
   "repo": "Gadlele/Golana",
   "version": "1.3",
   "pkg": "fw/golana-1.3.fwsc",
@@ -869,6 +948,7 @@
   "ref": "refs/tags/golana-v1.3"
  },
  "golanadz": {
+  "name": "Golana DZ Edition",
   "repo": "dzwerg/Golana-DZ",
   "version": "0.1.0-beta",
   "pkg": "fw/golanadz-0.1.0-beta.fwsc",
@@ -880,6 +960,7 @@
   "ref": "refs/tags/v0.1.0-beta"
  },
  "modelar": {
+  "name": "MODELAR",
   "repo": "hirakos999/MODELAR",
   "version": "0.3",
   "pkg": "fw/modelar-0.3.fwsc",
@@ -891,6 +972,7 @@
   "ref": "refs/tags/v0.3"
  },
  "niagara": {
+  "name": "Niagara Drift",
   "repo": "evanyerburgh/niagara-drift",
   "version": "0.3",
   "pkg": "fw/niagara-0.3.fwsc",
@@ -902,6 +984,7 @@
   "ref": "refs/tags/v0.3"
  },
  "unholy": {
+  "name": "Unholy Union",
   "repo": "actuallysparky/FM-1-Unholy-Union-generative-drone-firmware",
   "version": "0.2.3",
   "pkg": "fw/unholy-0.2.3.fwsc",
@@ -913,6 +996,7 @@
   "ref": "refs/tags/v0.2.3"
  },
  "emb": {
+  "name": "Evander's Music Box",
   "repo": "MikeTsak/Evanders-Music-Box--FM-1-LARP-firmware",
   "version": "1.5.2",
   "pkg": "fw/emb-1.5.2.fwsc",
@@ -924,6 +1008,7 @@
   "ref": "refs/tags/v1.5.2"
  },
  "chipbox": {
+  "name": "Chipbox",
   "repo": "pbarilla/chipbox",
   "version": "1.6.1-bluetoothbanter",
   "pkg": "fw/chipbox-1.6.1-bluetoothbanter.fwsc",
@@ -935,6 +1020,7 @@
   "ref": "refs/tags/v1.6.1-bluetoothbanter"
  },
  "loom": {
+  "name": "LOOM-8",
   "repo": "charlesvestal/fm1-loom",
   "version": "0.15.1",
   "pkg": "fw/loom-0.15.1.fwsc",
@@ -946,6 +1032,7 @@
   "ref": "refs/tags/v0.15.1"
  },
  "monk": {
+  "name": "MONK-1",
   "repo": "charlesvestal/fm1-monk",
   "version": "0.10",
   "pkg": "fw/monk-0.10.fwsc",
@@ -957,6 +1044,7 @@
   "ref": "refs/tags/v0.10"
  },
  "flyfish": {
+  "name": "Flyfish",
   "repo": "delirioux/flyfish",
   "version": "1.1.1-fc4974e",
   "pkg": "fw/flyfish-1.1.1-9abe2e8.fwsc",
@@ -968,6 +1056,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "bytemania": {
+  "name": "Bytemania",
   "repo": "llozd/bytemania",
   "version": "1.3.1",
   "pkg": "fw/bytemania-1.3.1.fwsc",
@@ -979,6 +1068,7 @@
   "ref": "refs/tags/v1.3.1"
  },
  "hera": {
+  "name": "HERA",
   "repo": "benbadio/hera-fm1",
   "version": "1.1",
   "pkg": "fw/hera-1.1.fwsc",
@@ -990,6 +1080,7 @@
   "ref": "refs/tags/v1.1"
  },
  "frasil": {
+  "name": "FRASIL",
   "repo": "styvesgoupil/frasil",
   "version": "3.3",
   "pkg": "fw/frasil-3.3.fwsc",
@@ -1001,6 +1092,7 @@
   "ref": "refs/tags/v3.3"
  },
  "tessera": {
+  "name": "Tessera",
   "repo": "Rastapopolix/tessera",
   "version": "3.5.3",
   "pkg": "fw/tessera-3.5.3.fwsc",
@@ -1012,6 +1104,7 @@
   "ref": "refs/tags/v3.5.3"
  },
  "delrio": {
+  "name": "Del Rio",
   "repo": "jsopdebeeck/fm1-delrio",
   "version": "1.0",
   "pkg": "fw/delrio-1.0.fwsc",
@@ -1023,6 +1116,7 @@
   "ref": "refs/tags/v1.0"
  },
  "carnac": {
+  "name": "Carnac OS",
   "repo": "OwenKirby/carnac-os",
   "version": "0.9.6",
   "pkg": "fw/carnac-0.9.6.fwsc",
@@ -1034,6 +1128,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "drift": {
+  "name": "DRIFT",
   "repo": "FBNFRTG/drift-fm1",
   "version": "0.9.6",
   "pkg": "fw/drift-0.9.6.fwsc",
@@ -1045,6 +1140,7 @@
   "ref": "refs/tags/v0.9.6"
  },
  "sidou": {
+  "name": "SIDOU",
   "repo": "dsablic/sidou",
   "version": "1.9.0",
   "pkg": "fw/sidou-1.9.0.fwsc",
@@ -1056,6 +1152,7 @@
   "ref": "refs/tags/v1.9.0"
  },
  "mono2k": {
+  "name": "MONO2K",
   "repo": "InigoHernandez/mono2k",
   "version": "1.9.1",
   "pkg": "fw/mono2k-1.9.1.fwsc",
@@ -1067,6 +1164,7 @@
   "ref": "refs/tags/v1.9.1"
  },
  "caravel": {
+  "name": "Caravel",
   "repo": "bonszaimusic/caravel",
   "version": "0.13.0",
   "pkg": "fw/caravel-0.13.0.fwsc",
@@ -1078,6 +1176,7 @@
   "ref": "refs/tags/v0.13.0"
  },
  "midimon": {
+  "name": "MIDIMON",
   "repo": "ignis32/midimonitor_fm1",
   "version": "0.5",
   "pkg": "fw/midimon-0.5.fwsc",
@@ -1089,6 +1188,7 @@
   "ref": "refs/tags/v0.5"
  },
  "makohai": {
+  "name": "Makohai",
   "repo": "delirioux/makohai",
   "version": "1.4",
   "pkg": "fw/makohai-1.4.fwsc",
@@ -1100,6 +1200,7 @@
   "ref": "refs/tags/v1.4"
  },
  "estampie": {
+  "name": "ESTAMPIE",
   "repo": "ocean/estampie",
   "version": "0.3.8",
   "pkg": "fw/estampie-0.3.8.fwsc",
@@ -1111,6 +1212,7 @@
   "ref": "refs/tags/v0.3.8"
  },
  "fizz": {
+  "name": "FIZZ",
   "repo": "Quixotic7/FIZZ",
   "version": "0.12.0-beta.17",
   "pkg": "fw/fizz-0.12.0-beta.17.fwsc",
@@ -1122,6 +1224,7 @@
   "ref": "refs/tags/v0.12.0-beta.17"
  },
  "matryoshka": {
+  "name": "Matryoshka",
   "repo": "glvno/matryoshka",
   "version": "1.14.0",
   "pkg": "fw/matryoshka-1.14.0.fwsc",
@@ -1133,6 +1236,7 @@
   "ref": "refs/tags/v1.14.0"
  },
  "loomfm1": {
+  "name": "Loom FM-1",
   "repo": "Co-oscillator/Loom-FM-1",
   "version": "0.1.0",
   "pkg": "fw/loomfm1-0.1.0.fwsc",
@@ -1144,6 +1248,7 @@
   "ref": "refs/tags/v0.1.0"
  },
  "tastywaves": {
+  "name": "TastyWaves",
   "repo": "marksweiss/tastywaves",
   "version": "1.0.1",
   "pkg": "fw/tastywaves-1.0.1.fwsc",
@@ -1155,6 +1260,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "arctic": {
+  "name": "Arctic Scream",
   "repo": "PolarPatch/Arctic-scream-FM-1",
   "version": "2.0",
   "pkg": "fw/arctic-2.0.fwsc",
@@ -1166,6 +1272,7 @@
   "ref": "refs/tags/v2.0"
  },
  "s1vave": {
+  "name": "S1Vave",
   "repo": "AndrewGG88/S1Vave",
   "version": "2.0.1",
   "pkg": "fw/s1vave-2.0.1.fwsc",
@@ -1177,6 +1284,7 @@
   "ref": "refs/tags/v2.0.1"
  },
  "gator": {
+  "name": "GATOR",
   "repo": "npi3pak/fm1-gator",
   "version": "0.6",
   "pkg": "fw/gator-0.6.fwsc",
@@ -1188,6 +1296,7 @@
   "ref": "refs/tags/v0.6"
  },
  "monohull": {
+  "name": "Monohull",
   "repo": "markterm/monohull",
   "version": "0.2.0",
   "pkg": "fw/monohull-0.2.0.fwsc",
@@ -1199,6 +1308,7 @@
   "ref": "refs/tags/v0.2.0"
  },
  "perf1": {
+  "name": "PERF-1",
   "repo": "deamonSLINKY/PERF-1",
   "version": "0.17.0",
   "pkg": "fw/perf1-0.17.0.fwsc",
@@ -1210,6 +1320,7 @@
   "ref": "refs/tags/v0.17.0"
  },
  "j6": {
+  "name": "J6",
   "repo": "JackieAlacrity2373/fm1-j6",
   "version": "1.4.0",
   "pkg": "fw/j6-1.4.0.fwsc",
@@ -1221,6 +1332,7 @@
   "ref": "refs/tags/v1.4.0"
  },
  "guitchordi": {
+  "name": "GuitChordi",
   "repo": "stoogs/guitchordi",
   "version": "0.1.0-beta.1",
   "pkg": "fw/guitchordi-0.1.0-beta.1.fwsc",
@@ -1232,6 +1344,7 @@
   "ref": "refs/tags/v0.1.0-beta.1"
  },
  "ravel": {
+  "name": "Ravel",
   "repo": "De-Pattern/Ravel_FM1",
   "version": "1.41.2",
   "pkg": "fw/ravel-1.41.2.fwsc",
@@ -1243,6 +1356,7 @@
   "ref": "refs/tags/v1.41.2"
  },
  "berlinan": {
+  "name": "Berlinan",
   "repo": "jiripisa/fm1-berlinan",
   "version": "0.5.1",
   "pkg": "fw/berlinan-0.5.1.fwsc",
@@ -1254,6 +1368,7 @@
   "ref": "refs/tags/v0.5.1"
  },
  "mnm1": {
+  "name": "MNM-1",
   "repo": "galfaroth/mnm1",
   "version": "1.0.1",
   "pkg": "fw/mnm1-1.0.1.fwsc",
@@ -1265,6 +1380,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "mope1": {
+  "name": "MOPE-1",
   "repo": "slothpallas/mope-1",
   "version": "0.4.1",
   "pkg": "fw/mope1-0.4.1.fwsc",
@@ -1276,6 +1392,7 @@
   "ref": "refs/tags/v0.4.1"
  },
  "kitten": {
+  "name": "Kitten Synths",
   "repo": "BlackKittenDevices/Kitten-Synths",
   "version": "2.8-kitten.8",
   "pkg": "fw/kitten-2.8-kitten.8.fwsc",
@@ -1287,6 +1404,7 @@
   "ref": "refs/tags/v2.8-kitten.8"
  },
  "nauclerus": {
+  "name": "Nauclerus",
   "repo": "Mr-Roboto/nauclerus",
   "version": "1.0.0",
   "pkg": "fw/nauclerus-1.0.0.fwsc",
@@ -1298,6 +1416,7 @@
   "ref": "refs/tags/v1.0.0"
  },
  "ptfm": {
+  "name": "PT/FM",
   "repo": "hitosu/ptfm",
   "version": "0.26",
   "pkg": "fw/ptfm-0.26+91deae9e.fwsc",
@@ -1309,6 +1428,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "spampy": {
+  "name": "SPAMPY",
   "repo": "Spampy-Droid/SPAMPY-0.0-r949",
   "version": "1.0",
   "pkg": "fw/spampy-1.0.fwsc",
@@ -1320,6 +1440,7 @@
   "ref": "refs/tags/v1.0"
  },
  "spellbox": {
+  "name": "SPELLBOX",
   "repo": "pjac1810/spellbox",
   "version": "0.3",
   "pkg": "fw/spellbox-0.3.fwsc",
@@ -1331,6 +1452,7 @@
   "ref": "refs/tags/v0.3"
  },
  "dungeontracker": {
+  "name": "Dungeon Tracker",
   "repo": "BourbonWX/Dungeon-Tracker",
   "version": "1.5",
   "pkg": "fw/dungeontracker-1.5.fwsc",
@@ -1342,6 +1464,7 @@
   "ref": "refs/tags/v1.5"
  },
  "nachtfahrt": {
+  "name": "NACHTFAHRT",
   "repo": "FartyPants/fm1-nachtfahrt",
   "version": "1.0.0",
   "pkg": "fw/nachtfahrt-1.0.0.fwsc",
@@ -1353,6 +1476,7 @@
   "ref": "refs/tags/v1.0.0"
  },
  "daurade": {
+  "name": "Daurade",
   "repo": "delirioux/daurade",
   "version": "1.0.1-01d6bd0",
   "pkg": "fw/daurade-1.0.1-0bf2076.fwsc",
@@ -1364,6 +1488,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "luxr": {
+  "name": "LUXR",
   "repo": "orbitator/LUXR",
   "version": "2026.11.02",
   "pkg": "fw/luxr-2026.10.25.fwsc",
@@ -1375,6 +1500,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "fmdj": {
+  "name": "FMDj",
   "repo": "DeadActive/FMDj",
   "version": "2026.10.22",
   "pkg": "fw/fmdj-2026.10.22.fwsc",
@@ -1386,6 +1512,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "kwasub": {
+  "name": "K-WASUB",
   "repo": "Guizmoh/K-WASUB_Firmware_for_FM1",
   "version": "1.1.02",
   "pkg": "fw/kwasub-1.1.02.fwsc",
@@ -1397,6 +1524,7 @@
   "ref": "refs/tags/v1.1.02"
  },
  "sill": {
+  "name": "Sill",
   "repo": "delirioux/sill",
   "version": "1.0.4-c5cfe9e",
   "pkg": "fw/sill-1.0.4-beeebd6.fwsc",
@@ -1408,6 +1536,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "smileyface": {
+  "name": "Smileyface",
   "repo": "pbarilla/smileyface",
   "version": "1.2.1-bleglee",
   "pkg": "fw/smileyface-1.2.1-bleglee.fwsc",
@@ -1419,6 +1548,7 @@
   "ref": "refs/tags/v1.2.1-bleglee"
  },
  "vesper": {
+  "name": "VESPER",
   "repo": "fatcatstudios-hub/vesper-fm1",
   "version": "2.0.2",
   "pkg": "fw/vesper-2.0.2.fwsc",
@@ -1430,6 +1560,7 @@
   "ref": "refs/tags/vesper-2.0.2"
  },
  "penumbra": {
+  "name": "Penumbra",
   "repo": "MadMooneyham/Penumbra",
   "version": "1.4",
   "pkg": "fw/penumbra-1.4.fwsc",
@@ -1441,6 +1572,7 @@
   "ref": "refs/tags/v1.4"
  },
  "jam": {
+  "name": "Jam Playground",
   "repo": "BunnyOrchard/jam-playground",
   "version": "1.2.0",
   "pkg": "fw/jam-1.2.0.fwsc",
@@ -1452,6 +1584,7 @@
   "ref": "refs/tags/jam-1.2.0"
  },
  "xmod": {
+  "name": "XMOD",
   "repo": "KotMorderca/XMOD",
   "version": "1.2.1",
   "pkg": "fw/xmod-1.2.1.fwsc",
@@ -1463,6 +1596,7 @@
   "ref": "refs/tags/v1.2.1"
  },
  "sidj": {
+  "name": "SiDJ",
   "repo": "thomasj/fm1-sidj",
   "version": "1.5.1",
   "pkg": "fw/sidj-1.5.1.fwsc",
@@ -1474,6 +1608,7 @@
   "ref": "refs/tags/v1.5.1"
  },
  "hawkchua": {
+  "name": "hawk-chua",
   "repo": "Plieuw/hawk-chua",
   "version": "2.1.6",
   "pkg": "fw/hawkchua-2.1.6.fwsc",
@@ -1485,6 +1620,7 @@
   "ref": "refs/tags/v2.1.6"
  },
  "bb1": {
+  "name": "BB1",
   "repo": "TexasRADIO/bb1-firmware",
   "version": "2.3",
   "pkg": "fw/bb1-2.3.fwsc",
@@ -1496,6 +1632,7 @@
   "ref": "refs/tags/v2.3"
  },
  "karma": {
+  "name": "KARMA",
   "repo": "eatyourgreensstudio-dotcom/karma-fm1",
   "version": "3.1.1",
   "pkg": "fw/karma-3.1.1.fwsc",
@@ -1507,6 +1644,7 @@
   "ref": "refs/tags/v3.1.1"
  },
  "lsdjburrito": {
+  "name": "LSDJ Burrito",
   "repo": "dreamsofbacon/lsdj-burrito-src",
   "version": "0.9.97",
   "pkg": "fw/lsdjburrito-0.9.97.fwsc",
@@ -1518,6 +1656,7 @@
   "ref": "refs/tags/v0.9.97"
  },
  "fm1dock": {
+  "name": "fm1-dock",
   "repo": "joakimeriksson/fm1-dock",
   "version": "0.8.2",
   "pkg": "fw/fm1dock-0.8.2.fwsc",
@@ -1529,6 +1668,7 @@
   "ref": "refs/tags/v0.8.2"
  },
  "scintilla": {
+  "name": "Scintilla",
   "repo": "joakimeriksson/scintilla-fm1",
   "version": "0.3.2",
   "pkg": "fw/scintilla-0.3.2.fwsc",
@@ -1540,6 +1680,7 @@
   "ref": "refs/tags/v0.3.2"
  },
  "fm1sid": {
+  "name": "FM-1 SID",
   "repo": "joakimeriksson/fm1-sid",
   "version": "0.3",
   "pkg": "fw/fm1sid-0.3.fwsc",
@@ -1551,6 +1692,7 @@
   "ref": "refs/tags/v0.3"
  },
  "dark1": {
+  "name": "DARK-1",
   "repo": "sparky480v/Dark-1",
   "version": "1.0.6",
   "pkg": "fw/dark1-1.0.6.fwsc",
@@ -1562,6 +1704,7 @@
   "ref": "refs/tags/v1.0.6"
  },
  "fm1trax": {
+  "name": "FM1-TRAX",
   "repo": "jartificer/fm1-trax",
   "version": "0.9.5",
   "pkg": "fw/fm1trax-0.9.5.fwsc",
@@ -1573,6 +1716,7 @@
   "ref": "refs/tags/v0.9.5"
  },
  "wanderer": {
+  "name": "Wanderer",
   "repo": "spinnicholas/lvm-wanderer-fm1",
   "version": "1.4.0",
   "pkg": "fw/wanderer-1.4.0.fwsc",
@@ -1584,6 +1728,7 @@
   "ref": "refs/tags/v1.4.0"
  },
  "rupture": {
+  "name": "RUPTURE",
   "repo": "SikkenWorks/RUPTURE",
   "version": "1.89",
   "pkg": "fw/rupture-1.89.fwsc",
@@ -1595,6 +1740,7 @@
   "ref": "refs/tags/V1.89"
  },
  "pulhra": {
+  "name": "PULHRA",
   "repo": "646timur-cell/pulhra_main",
   "version": "1.5.1",
   "pkg": "fw/pulhra-1.5.1.fwsc",
@@ -1606,6 +1752,7 @@
   "ref": "HEAD@2026-11-13"
  },
  "amenity": {
+  "name": "Amenity",
   "repo": "ejtb76/amenity",
   "version": "2.0.0",
   "pkg": "fw/amenity-2.0.0.fwsc",
@@ -1617,6 +1764,7 @@
   "ref": "refs/tags/v2.0.0"
  },
  "arcturus": {
+  "name": "Arcturus S6",
   "repo": "zeptosecond-dsp/Arcturus-S6",
   "version": "1.7",
   "pkg": "fw/arcturus-1.7.fwsc",
@@ -1628,6 +1776,7 @@
   "ref": "refs/tags/v1.7"
  },
  "kittenrack": {
+  "name": "Kitten Rack",
   "repo": "BlackKittenDevices/kitten-rack",
   "version": "1.4.0",
   "pkg": "fw/kittenrack-1.4.0.fwsc",
@@ -1639,6 +1788,7 @@
   "ref": "refs/tags/v1.4.0"
  },
  "blop": {
+  "name": "Blop",
   "repo": "OSR-Experiment/OSR-1",
   "version": "1.1.0",
   "pkg": "fw/blop-1.1.0.fwsc",
@@ -1650,6 +1800,7 @@
   "ref": "refs/tags/v1.1.0"
  },
  "beetleblue": {
+  "name": "BEETLE BLUE",
   "repo": "SikkenWorks/BEETLE-BLUE",
   "version": "1.3.1",
   "pkg": "fw/beetleblue-1.3.1.fwsc",
@@ -1661,6 +1812,7 @@
   "ref": "refs/tags/V1.3.1"
  },
  "b1": {
+  "name": "B1",
   "repo": "SikkenWorks/B1-Drawbar-Organ",
   "version": "5.6",
   "pkg": "fw/b1-5.6.fwsc",
@@ -1672,6 +1824,7 @@
   "ref": "refs/tags/V5.6"
  },
  "clatter": {
+  "name": "CLATTER Pocket",
   "repo": "clickysteve/clatter-pocket",
   "version": "1.0.0",
   "pkg": "fw/clatter-1.0.0.fwsc",
@@ -1683,6 +1836,7 @@
   "ref": "refs/tags/v1.0.0"
  },
  "choppah": {
+  "name": "CHOPPAH",
   "repo": "profikid/fm1-break-choppah",
   "version": "1.3.1",
   "pkg": "fw/choppah-1.3.1.fwsc",
@@ -1694,6 +1848,7 @@
   "ref": "refs/tags/v1.3.1"
  },
  "veffbox": {
+  "name": "Veffbox",
   "repo": "galfaroth/veffbox",
   "version": "0.11.0",
   "pkg": "fw/veffbox-0.11.0.fwsc",
@@ -1705,6 +1860,7 @@
   "ref": "refs/tags/v0.11.0"
  },
  "b3organ": {
+  "name": "B3 ORGAN",
   "repo": "R-Jeb/setBfree-fm1",
   "version": "0.3",
   "pkg": "fw/b3organ-0.3.fwsc",
@@ -1716,6 +1872,7 @@
   "ref": "refs/tags/v0.3"
  },
  "elixir": {
+  "name": "Elixir",
   "repo": "dmajka/elixir",
   "version": "1.3.1",
   "pkg": "fw/elixir-1.3.1.fwsc",
@@ -1727,6 +1884,7 @@
   "ref": "refs/tags/v1.3.1"
  },
  "dx747": {
+  "name": "DX747",
   "repo": "esbenvb/fm1-dx747",
   "version": "0.1",
   "pkg": "fw/dx747-0.1.fwsc",
@@ -1738,6 +1896,7 @@
   "ref": "refs/tags/v0.1"
  },
  "atlatl": {
+  "name": "Skiff Atlatl",
   "repo": "LIkst4/skiff-atlatl",
   "version": "1.1",
   "pkg": "fw/atlatl-1.1.fwsc",
@@ -1749,6 +1908,7 @@
   "ref": "refs/tags/V1.1"
  },
  "coqui": {
+  "name": "COQU\u00cd",
   "repo": "saulofilho/coqui-fm1",
   "version": "1.1.1",
   "pkg": "fw/coqui-1.1.1.fwsc",
@@ -1760,6 +1920,7 @@
   "ref": "refs/tags/v1.1.1"
  },
  "artihive": {
+  "name": "ARTIHIVE",
   "repo": "KHAVld/ARTIHIVE",
   "version": "2.0.4",
   "pkg": "fw/artihive-2.0.4.fwsc",
@@ -1771,6 +1932,7 @@
   "ref": "refs/tags/artihive-2.0.4"
  },
  "cultbox": {
+  "name": "CULTBOX",
   "repo": "beatcult/CULTBOX",
   "version": "1.2",
   "pkg": "fw/cultbox-1.2.fwsc",
@@ -1782,6 +1944,7 @@
   "ref": "refs/tags/v1.2"
  },
  "piterfly": {
+  "name": "Piterfly",
   "repo": "piotrwozniak/piterfly",
   "version": "1.1.0",
   "pkg": "fw/piterfly-1.1.0.fwsc",
@@ -1793,6 +1956,7 @@
   "ref": "refs/tags/1.1.0"
  },
  "sardine": {
+  "name": "Sardine",
   "repo": "delirioux/sardine",
   "version": "1.0.6",
   "pkg": "fw/sardine-1.0.6.fwsc",
@@ -1804,6 +1968,7 @@
   "ref": "refs/tags/v1.0.6"
  },
  "atek303": {
+  "name": "ATEK303",
   "repo": "animatek/FM1-Animatek",
   "version": "1.2",
   "pkg": "fw/atek303-1.2.fwsc",
@@ -1815,6 +1980,7 @@
   "ref": "refs/tags/atek303-v1.2"
  },
  "audiorouter": {
+  "name": "FM1 Audio Router",
   "repo": "maxravedj/fm1-audio-router",
   "version": "0.4.0",
   "pkg": "fw/audiorouter-0.4.0.fwsc",
@@ -1826,6 +1992,7 @@
   "ref": "refs/tags/v0.4.0"
  },
  "drumlab": {
+  "name": "Drumlab",
   "repo": "pbarilla/drumlab",
   "version": "0.1.4-insertbluetoothpunhere",
   "pkg": "fw/drumlab-0.1.4-insertbluetoothpunhere.fwsc",
@@ -1837,6 +2004,7 @@
   "ref": "refs/tags/v0.1.4-insertbluetoothpunhere"
  },
  "mvance": {
+  "name": "M-Vance",
   "repo": "bk40-home/M-vance",
   "version": "2.5.1",
   "pkg": "fw/mvance-2.5.1.fwsc",
@@ -1848,6 +2016,7 @@
   "ref": "refs/tags/v2.5.1"
  },
  "patchwerk": {
+  "name": "Patchwerk",
   "repo": "MattKuebrich/patchwerk",
   "version": "1.0.3",
   "pkg": "fw/patchwerk-1.0.3.fwsc",
@@ -1859,6 +2028,7 @@
   "ref": "refs/tags/v1.0.3"
  },
  "remotefm1": {
+  "name": "RemoteFM1",
   "repo": "Quixotic7/RemoteFM1",
   "version": "0.3.6",
   "pkg": "fw/remotefm1-0.3.6.fwsc",
@@ -1870,6 +2040,7 @@
   "ref": "refs/tags/v0.3.6"
  },
  "rhythmer": {
+  "name": "Rhythmer",
   "repo": "JazzyRhythmer/Rhythmer",
   "version": "0.1.1-beta3",
   "pkg": "fw/rhythmer-0.1.1-beta3.fwsc",
@@ -1881,6 +2052,7 @@
   "ref": "refs/tags/v0.1.1-beta3"
  },
  "mikufm": {
+  "name": "Miku-FM",
   "repo": "MichaelAPerry/MIKU-FM1",
   "version": "0.8",
   "pkg": "https://github.com/MichaelAPerry/MIKU-FM1/releases/download/v0.8/miku-fm-0.8.fwsc",
@@ -1892,6 +2064,7 @@
   "ref": "refs/tags/v0.8"
  },
  "echofield": {
+  "name": "ECHOFIELD",
   "repo": "Philip-Bos/echofield-fm1",
   "version": "0.2.11",
   "pkg": "fw/echofield-0.2.11.fwsc",
@@ -1903,6 +2076,7 @@
   "ref": "refs/tags/v0.2.11"
  },
  "ombak": {
+  "name": "Ombak",
   "repo": "MadMooneyham/Ombak",
   "version": "1.2",
   "pkg": "fw/ombak-1.2.fwsc",
@@ -1914,6 +2088,7 @@
   "ref": "refs/tags/v1.2"
  },
  "xenolith": {
+  "name": "XENOLITH",
   "repo": "CaptainChronosis/XENOLITH",
   "version": "1.0",
   "pkg": "fw/xenolith-1.0.fwsc",
@@ -1925,6 +2100,7 @@
   "ref": "refs/tags/v1.0"
  },
  "hungrytravis": {
+  "name": "Hungry Travis",
   "repo": "adamcharleswilsonmusic-code/Hungry-Travis",
   "version": "2026.11.10",
   "pkg": "fw/hungrytravis-2026.11.10.fwsc",
@@ -1936,6 +2112,7 @@
   "ref": "refs/tags/fm1-797"
  },
  "fmfam": {
+  "name": "FM-FAM",
   "repo": "davidamomusic/fm-fam",
   "version": "0.3.1",
   "pkg": "fw/fmfam-0.3.1.fwsc",
@@ -1947,6 +2124,7 @@
   "ref": "refs/tags/v0.3.1"
  },
  "jamtrack": {
+  "name": "JAMTRACK",
   "repo": "Philip-Bos/jamtrack-fm1",
   "version": "0.2.3",
   "pkg": "fw/jamtrack-0.2.3.fwsc",
@@ -1958,6 +2136,7 @@
   "ref": "refs/tags/v0.2.3"
  },
  "quartet": {
+  "name": "Quartet",
   "repo": "MammothCheese/quartet",
   "version": "1.3",
   "pkg": "fw/quartet-1.3.fwsc",
@@ -1969,6 +2148,7 @@
   "ref": "refs/tags/v1.3"
  },
  "keystepone": {
+  "name": "keySTEP ONE",
   "repo": "dzwerg/keySTEP-ONE",
   "version": "0.5.42",
   "pkg": "fw/keystepone-0.5.42.fwsc",
@@ -1980,6 +2160,7 @@
   "ref": "refs/tags/v0.5.42"
  },
  "rambeaver": {
+  "name": "RAMBEAVER",
   "repo": "adamcharleswilsonmusic-code/RAMBEAVER",
   "version": "745-hub",
   "pkg": "fw/rambeaver-745-hub.fwsc",
@@ -1991,6 +2172,7 @@
   "ref": "refs/tags/v745-hub"
  },
  "mpyre": {
+  "name": "M-PYRE",
   "repo": "HistoryOfSky/m-pyre",
   "version": "1.0.3",
   "pkg": "fw/mpyre-1.0.3.fwsc",
@@ -2002,6 +2184,7 @@
   "ref": "refs/tags/v1.0.3"
  },
  "assid": {
+  "name": "ASS-ID",
   "repo": "altessproduction/ASS-ID_FM1",
   "version": "1.0",
   "pkg": "fw/assid-1.0.fwsc",
@@ -2013,6 +2196,7 @@
   "ref": "refs/tags/v1.0"
  },
  "sloopdub": {
+  "name": "sloop-DUB",
   "repo": "altessproduction/sloop-dub-fm1",
   "version": "1.6",
   "pkg": "fw/sloopdub-1.6.fwsc",
@@ -2024,6 +2208,7 @@
   "ref": "refs/tags/v1.6"
  },
  "fm1amy": {
+  "name": "fm1-amy",
   "repo": "dpwe/fm1-amy",
   "version": "0.1.0",
   "pkg": "fw/fm1amy-0.1.0.fwsc",
@@ -2035,6 +2220,7 @@
   "ref": "refs/tags/v0.1.0"
  },
  "satie1": {
+  "name": "SATIE-1",
   "repo": "OCKM-STUDIO/SATIE-1",
   "version": "0.1.3-beta",
   "pkg": "fw/satie1-0.1.3-beta.fwsc",
@@ -2046,6 +2232,7 @@
   "ref": "refs/tags/v0.1.3-beta"
  },
  "guru600": {
+  "name": "Guru-600",
   "repo": "MarcGoudy/guru-600",
   "version": "1.0.2",
   "pkg": "fw/guru600-1.0.2+d9c0fd52.fwsc",
@@ -2057,6 +2244,7 @@
   "ref": "refs/tags/v1.0.2"
  },
  "playa": {
+  "name": "PLAYA",
   "repo": "juan-ms2lab/playa",
   "version": "0.1",
   "pkg": "fw/playa-0.1.fwsc",
@@ -2068,6 +2256,7 @@
   "ref": "refs/tags/playa-v0.1"
  },
  "trumpagotchi": {
+  "name": "Trumpagotchi",
   "repo": "adamcharleswilsonmusic-code/Trumpagotchi",
   "version": "1.0.1",
   "pkg": "fw/trumpagotchi-1.0.1.fwsc",
@@ -2079,6 +2268,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "krisjangle": {
+  "name": "Kris Jangle",
   "repo": "doohinkus/kris-jangle",
   "version": "0.12",
   "pkg": "fw/krisjangle-0.12.fwsc",
@@ -2090,6 +2280,7 @@
   "ref": "refs/tags/v0.12"
  },
  "cord": {
+  "name": "CORD",
   "repo": "chasedeanda/cord-fm1",
   "version": "1.0.3",
   "pkg": "fw/cord-1.0.3.fwsc",
@@ -2101,6 +2292,7 @@
   "ref": "refs/tags/v1.0.3"
  },
  "pocketband": {
+  "name": "Pocket Band",
   "repo": "elpabl0/pocketband",
   "version": "0.4",
   "pkg": "fw/pocketband-0.4.fwsc",
@@ -2112,6 +2304,7 @@
   "ref": "refs/tags/v0.4"
  },
  "mightyarp": {
+  "name": "Mighty Arp",
   "repo": "NickCulbertson/FM1-Mighty-Arp",
   "version": "1.4",
   "pkg": "fw/mightyarp-1.4.fwsc",
@@ -2123,6 +2316,7 @@
   "ref": "refs/tags/v1.4"
  },
  "dubbox": {
+  "name": "DUB-BOX",
   "repo": "altessproduction/DUB-BOX-FM1",
   "version": "1.0.8",
   "pkg": "fw/dubbox-1.0.8.fwsc",
@@ -2134,6 +2328,7 @@
   "ref": "refs/tags/v1.0.8"
  },
  "deepfield": {
+  "name": "DEEP FIELD",
   "repo": "WisestWizard/deepfield",
   "version": "1.8",
   "pkg": "fw/deepfield-1.8.fwsc",
@@ -2145,6 +2340,7 @@
   "ref": "refs/tags/1.8"
  },
  "splitmilk": {
+  "name": "SPLITMILK",
   "repo": "MammothCheese/SPLITMILK",
   "version": "1.0",
   "pkg": "fw/splitmilk-1.0.fwsc",
@@ -2156,6 +2352,7 @@
   "ref": "refs/tags/v1.0"
  },
  "argo": {
+  "name": "Argo",
   "repo": "echoe/argo_fm1",
   "version": "1.8.3",
   "pkg": "fw/argo-1.8.3.fwsc",
@@ -2167,6 +2364,7 @@
   "ref": "refs/tags/v1.8.3"
  },
  "kriechstrom": {
+  "name": "KRIECHSTROM",
   "repo": "Xforsa/kriechstrom",
   "version": "0.2",
   "pkg": "fw/kriechstrom-0.2.fwsc",
@@ -2178,6 +2376,7 @@
   "ref": "refs/tags/v0.2"
  },
  "paperlagoon": {
+  "name": "PaperLagoon",
   "repo": "hacha/paperlagoon",
   "version": "1.0.1",
   "pkg": "fw/paperlagoon-1.0.1.fwsc",
@@ -2189,6 +2388,7 @@
   "ref": "refs/tags/v1.0.1"
  },
  "tack": {
+  "name": "Tack",
   "repo": "oikoaudio/tack",
   "version": "0.14.1",
   "pkg": "fw/tack-0.14.1.fwsc",
@@ -2200,6 +2400,7 @@
   "ref": "refs/tags/v0.14.1"
  },
  "manifold": {
+  "name": "Manifold",
   "repo": "stets43/Manifold",
   "version": "1.0.4",
   "pkg": "fw/manifold-1.0.4.fwsc",
@@ -2211,6 +2412,7 @@
   "ref": "refs/tags/v1.0.4"
  },
  "loafbreaker": {
+  "name": "LOAF BREAKER",
   "repo": "FLEXOR-R/loaf-breaker",
   "version": "0.9.31",
   "pkg": "fw/loafbreaker-0.9.31.fwsc",
@@ -2222,6 +2424,7 @@
   "ref": "refs/tags/loaf-v0.9.31"
  },
  "fm1yoga": {
+  "name": "FM1 YOGA",
   "repo": "michamilz/fm1-yoga",
   "version": "1.0",
   "pkg": "fw/fm1yoga-1.0.fwsc",
@@ -2233,6 +2436,7 @@
   "ref": "refs/tags/v1.0"
  },
  "hadal1": {
+  "name": "HADAL-1",
   "repo": "sparky480v/hadal-1",
   "version": "1.0",
   "pkg": "fw/hadal1-1.0.fwsc",
@@ -2244,6 +2448,7 @@
   "ref": "refs/tags/v1.0"
  },
  "agtdeck": {
+  "name": "AGTDECK",
   "repo": "kevinelliott/fm-1-agent-deck",
   "version": "0.6.3",
   "pkg": "fw/agtdeck-0.6.3.fwsc",
@@ -2255,6 +2460,7 @@
   "ref": "refs/tags/v0.6.3"
  },
  "clavioline": {
+  "name": "Clavioline",
   "repo": "MammothCheese/clavioline",
   "version": "1.3",
   "pkg": "fw/clavioline-1.3.fwsc",
@@ -2266,6 +2472,7 @@
   "ref": "refs/tags/v1.3"
  },
  "rhytmsec1": {
+  "name": "RHYTM-SEC-1",
   "repo": "hamperj/rhytm-sec-1",
   "version": "1.4.2",
   "pkg": "fw/rhytmsec1-1.4.2.fwsc",
@@ -2277,6 +2484,7 @@
   "ref": "refs/tags/v1.4.2"
  },
  "rakt": {
+  "name": "RAKT",
   "repo": "chasedeanda/rakt-fm1",
   "version": "0.1.8",
   "pkg": "fw/rakt-0.1.8.fwsc",
@@ -2288,6 +2496,7 @@
   "ref": "refs/tags/v0.1.8"
  },
  "lrry": {
+  "name": "L/RRY",
   "repo": "oscillr/LRRY",
   "version": "0.1.0-beta",
   "pkg": "fw/lrry-0.1.0-beta.fwsc",
@@ -2299,6 +2508,7 @@
   "ref": "refs/tags/v0.1.0-beta"
  },
  "manta": {
+  "name": "Manta",
   "repo": "delirioux/manta",
   "version": "1.0",
   "pkg": "fw/manta-1.0.fwsc",
@@ -2310,6 +2520,7 @@
   "ref": "refs/tags/v1.0"
  },
  "adrift": {
+  "name": "Adrift",
   "repo": "romainguy/adrift",
   "version": "0.1.0",
   "pkg": "fw/adrift-0.1.0.fwsc",
@@ -2321,6 +2532,7 @@
   "ref": "refs/tags/v0.1.0"
  },
  "aislingfx1": {
+  "name": "AISLING FX-1",
   "repo": "stephencummins/fx1-aisling",
   "version": "1.0",
   "pkg": "fw/aislingfx1-1.0.fwsc",
@@ -2332,6 +2544,7 @@
   "ref": "refs/tags/v1.0"
  },
  "drumtonic": {
+  "name": "Drumtonic",
   "repo": "fc79/drumtonic",
   "version": "0.2.2",
   "pkg": "fw/drumtonic-0.2.2.fwsc",

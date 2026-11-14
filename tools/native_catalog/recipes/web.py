@@ -34,11 +34,12 @@ def fm1base_app(d, entry):
     base = d / entry.parents[2]                         # <base>/web/emu/emu_web.c
     if not (base / "tools/build.py").exists() or not (base / "host/plat_host.c").exists():
         return None
-    tomls = [p for p in d.rglob("fm1.toml") if not set(p.relative_to(d).parts) & SKIP
-             and base not in p.parents]
+    # the app: an fm1.toml outside the base, else one the base keeps among its own apps (DUB-BOX's src/apps/...),
+    # not its tests' and template's
+    tomls = [p for p in d.rglob("fm1.toml") if not set(p.relative_to(d).parts) & (SKIP | {"tests", "template"})]
     if not tomls:
         return None
-    tomls.sort(key=lambda p: len(p.relative_to(d).parts))
+    tomls.sort(key=lambda p: (base in p.parents, len(p.relative_to(d).parts)))
     return {"recipe": "web", "kind": "fm1-base", "entry": str(entry), "base": str(base.relative_to(d)),
             "app": str(tomls[0].parent.relative_to(d))}
 
@@ -63,13 +64,23 @@ def web_script(d, entry):
 
 # ------------------------------------------------------------------------------------------------ record ---
 
-def generate_tables(d, env, log):
+def tree_roots(d, entry):
+    """where the browser build's tree starts: the repository, and the entry's <root>/web/emu/x_web.c when that is
+    deeper (a firmware kept in firmware/, ext/Felucca/, upstream/felucca/ ...)"""
+    roots = [d]
+    if len(entry.parts) > 3 and entry.parts[-3] == "web":
+        roots.insert(0, d / entry.parents[2])
+    return roots
+
+
+def generate_tables(roots, env, log):
     """a Felucca-line tools/build.py's generate(): the tables, fonts and samples a browser build expects in build/gen"""
-    for b in ("tools/build.py",):
-        p = d / b
+    for d in roots:
+        p = d / "tools/build.py"
         if p.exists() and "def generate(" in p.read_text(errors="replace"):
             code = ("import sys; sys.argv=['build.py']; sys.path.insert(0, 'tools'); import build; build.generate()")
             sh([sys.executable, "-c", code], d, env, log)
+            return
 
 
 def gen_env(rec_log):
@@ -101,14 +112,15 @@ def record(fid, r, log):
         rec.unlink()
     env = gen_env(rec)
     env["HOSTCC_FORCE"] = "1"                           # (ChoralRoot's line keeps outputs its stamp says are current)
+    roots = tree_roots(d, Path(r["entry"]))
     # a clean tree: browser builds keep objects and libraries they built before, which the record has to see made
-    for b in [d / "build", *(d / r.get("app", "-") / "build",)]:
+    for b in [*(x / "build" for x in roots), d / r.get("app", "-") / "build"]:
         if b.is_dir():
             shutil.rmtree(b)
     if r["kind"] == "fm1-base":
         sh([sys.executable, str(d / r["base"] / "tools/build.py"), r["app"], "--web"], d, env, log)
     else:
-        generate_tables(d, env, log)
+        generate_tables(roots, env, log)
         for s in r["scripts"]:
             cmd = ["sh", s] if s.endswith(".sh") else [sys.executable, s] if s.endswith(".py") else ["make", "-f", s]
             sh(cmd, d, env, log)
@@ -223,25 +235,73 @@ def defined_symbols(objs, target):
     return {line.split()[-1].lstrip("_") for line in r.stdout.splitlines() if len(line.split()) >= 3}
 
 
-def link_web(fid, r, final, target, shims, log):
-    d = SRC / fid
-    cc, cflags_t, lflags_t = target_cc(target)
-    work = CAT / "obj" / target / fid
-    t = (d / r["entry"]).read_text(errors="replace")
-    m = re.search(r"web_master\s*\(\s*uint32_t\s+\w+\s*\)[^}]*?(\d{3,5})u?", t)
+# ---- the dialect: what the entry's exports take and the page's panel tables (index.html / worklet.js), as -D
+
+WIRE_BTN = ("OCT-", "OCT+", "FX", "SEL", "ENV", "LFO", "EDIT", "GLO", "HOME", "SAVE", "ARP", "SEQ", "PLAY", "REC")
+WIRE_ENC = ("SELECT", "ALGO", "K1", "K2", "K3", "K4", "PRESET")
+BTN_ALIAS = {"SCL": "SEL", "SCALE": "SEL", "OCTDN": "OCT-", "OCTUP": "OCT+", "OCT_DN": "OCT-", "OCT_UP": "OCT+"}
+ENC_ALIAS = {"ALGORITHM": "ALGO", "PRESETS": "PRESET", "KNOB1": "K1", "KNOB2": "K2", "KNOB3": "K3", "KNOB4": "K4"}
+JS_PAIR = re.compile(r"""["']?([A-Z][A-Z0-9+\-_]*)["']?\s*:\s*(\d+)""")
+
+
+def page_tables(d, entry):
+    """the page's label -> bit table for web_buttons and label -> index for web_enc (`{FX: 0, SEL: 1, ...}`), from
+    the scripts beside the entry; None where there is none (the X0X lineage's orders are the adapter's default)"""
+    btn = enc = None
+    for p in sorted((d / entry).parent.glob("*")):
+        if p.suffix not in (".html", ".js", ".mjs"):
+            continue
+        for m in re.finditer(r"\{[^{}]{10,600}\}", p.read_text(errors="replace")):
+            kv = {k: int(v) for k, v in JS_PAIR.findall(m.group(0))}
+            b = {BTN_ALIAS.get(k, k): v for k, v in kv.items()}
+            e = {ENC_ALIAS.get(k, k): v for k, v in kv.items()}
+            if btn is None and all(w in b for w in WIRE_BTN) and sorted(b[w] for w in WIRE_BTN) == list(range(14)):
+                btn = [b[w] for w in WIRE_BTN]
+            if enc is None and all(w in e for w in WIRE_ENC) and sorted(e[w] for w in WIRE_ENC) == list(range(7)):
+                enc = [e[w] for w in WIRE_ENC]
+    return btn, enc
+
+
+def n_params(t, name):
+    """how many parameters the entry's definition of `name` takes (None: not defined there)"""
+    m = re.search(r"\b%s\s*\(([^()]*)\)\s*(?:/\*.*?\*/\s*|//[^\n]*\s*)*\{" % name, t, re.S)
+    if not m:
+        return None
+    a = m.group(1).strip()
+    return 0 if a in ("", "void") else a.count(",") + 1
+
+
+def dialect(d, entry):
+    t = (d / entry).read_text(errors="replace")
     defs = []
+    m = re.search(r"web_master\s*\(\s*uint32_t\s+\w+\s*\)[^}]*?(\d{3,5})u?", t)
     if m:
         defs.append(f"-DWEB_MASTER_MAX={m.group(1)}u")
     elif "plat_host.c" in t:
         defs.append("-DWEB_MASTER_MAX=4096u")
+    if n_params(t, "web_boot"):
+        defs.append("-DWEB_BOOT_MASTER=1")              # (Melodee's: the MASTER knob at power on)
+    if n_params(t, "web_midi_in") == 3:
+        defs.append("-DWEB_MIDI_IN_3=1")                # (status, data1, data2 rather than port, USB packet)
+    btn, enc = page_tables(d, entry)
+    if btn:
+        defs.append("-DWEB_BTN_MAP=" + ",".join(map(str, btn)))
+    if enc:
+        defs.append("-DWEB_ENC_MAP=" + ",".join(map(str, enc)))
+    return defs
+
+
+def link_web(fid, r, final, target, shims, log):
+    d = SRC / fid
+    cc, cflags_t, lflags_t = target_cc(target)
+    work = CAT / "obj" / target / fid
+    defs = dialect(d, r["entry"])
     defs += [f"-DWEB_HAS_{s}=1" for s in sorted(defined_symbols(final["objs"], target)) if s.startswith("web_")]
     adapter = work / "adapter_web.o"
     if sh([*cc, "-fPIC", "-O2", "-Wall", "-Wno-unused-function", *cflags_t, *defs, "-c",
            str(HERE / "adapters/web.c"), "-o", str(adapter)], ROOT, log=log):
         return None
     return link(fid, target, [str(adapter), *final["objs"]], final["cpp"], log)
-
-
 
 
 

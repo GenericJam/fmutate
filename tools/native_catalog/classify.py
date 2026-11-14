@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SRC = ROOT / "native/build/catalog/src"
-OUT = ROOT / "native/build/catalog/classify.json"
+CAT = Path(os.environ.get("FM1_CATALOG_DIR") or ROOT / "native/build/catalog")
+SRC = CAT / "src"
+OUT = CAT / "classify.json"
 PINS = json.loads((Path(__file__).resolve().parent / "pins.json").read_text())
 
 C_EXT = {".c", ".h", ".S", ".s", ".cpp", ".cc", ".hpp", ".inc"}

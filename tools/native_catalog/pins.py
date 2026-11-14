@@ -62,7 +62,7 @@ def main():
     todo = []
     pins = {}
     for fw in cat["firmwares"]:
-        entry = {"repo": fw["repo"], "version": str(fw.get("version")), "pkg": fw.get("pkg"),
+        entry = {"name": fw.get("name") or fw["id"], "repo": fw["repo"], "version": str(fw.get("version")), "pkg": fw.get("pkg"),
                  "sha256": fw.get("sha256"), "lic": fw.get("lic"), "tag": fw.get("tag")}
         prev = old.get(fw["id"])
         if prev and prev["version"] == entry["version"] and prev["repo"] == entry["repo"] and prev.get("commit"):

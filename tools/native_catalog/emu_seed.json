@@ -1,0 +1,8 @@
+{
+ "melodee": {
+  "url": "https://github.com/keremimo/melodee/releases/download/v1.6.1/melodee-1.6.1-res.bin",
+  "sha256": "a952ed33d3abf49d2cfe354f9f75390a8cd014fc29285668d8f756efd7f3fff6",
+  "at": 831488,
+  "why": "the Hub package has no factory sounds (res.c at 0xCB000); Melodee's installer writes them"
+ }
+}
