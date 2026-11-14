@@ -1,10 +1,11 @@
 defmodule FMutate.LibraryScreen do
   @moduledoc """
   The firmware library (HANDOFF §9, board `Flat-Library`): the now-running card (▶ back to the
-  instrument), search, tag filter, and a card per firmware with its status and one action — Switch,
-  Download, Why?, Run anyway — plus Delete for a package on the phone. Switching is one tap and stays
-  here, with a toast "Your <old> saves and layout are kept" and Undo. Import `.fwsc` sits in the footer;
-  stock M-VAVE firmware is bring-your-own (import only).
+  instrument), search, tag filter, and a card per firmware with its status, how it runs (Native /
+  Emulated), "New" for a native build the player hasn't seen, and one action — Switch, Download, Why?, Run
+  anyway — plus Delete for a package or cartridge on the phone and Update for a newer native build. Switching
+  is one tap and stays here, with a toast "Your <old> saves and layout are kept" and Undo. Import `.fwsc`
+  sits in the footer; stock M-VAVE firmware is bring-your-own (import only).
   """
 
   use Mob.Screen
@@ -28,17 +29,25 @@ defmodule FMutate.LibraryScreen do
         query: "",
         tag: nil,
         why: nil,
-        toast: nil
+        toast: nil,
+        # native builds shown as New on this visit (the library has marked them seen)
+        fresh: MapSet.new()
       )
 
     {:ok, load(socket)}
   end
 
   # the catalogue, quarantine and library state, re-read on every change; a server restarting under
-  # it leaves the last state (its resubscription reloads)
+  # it leaves the last state (its resubscription reloads). New native builds stay New for this visit and
+  # are seen from now on.
   defp load(socket) do
+    firmwares = Firmware.all()
+    new = for fw <- firmwares, fw.new, do: fw.id
+    if new != [], do: Library.mark_seen(new)
+
     Mob.Socket.assign(socket,
-      firmwares: Firmware.all(),
+      firmwares: firmwares,
+      fresh: MapSet.union(socket.assigns[:fresh] || MapSet.new(), MapSet.new(new)),
       quarantined: Instance.quarantined(@instance),
       info: Library.info(),
       emu?: Library.emu?()
@@ -101,7 +110,7 @@ defmodule FMutate.LibraryScreen do
           </Column>
           <Column id="hub" padding_left={20} padding_right={20} padding_top={16} padding_bottom={16} gap={10}>
             <Text text={status_line} text_size={12} text_color="#A9A3B8" />
-            <Button text="Check the Hub for updates" on_tap={refresh} background="#221F2B" text_color="#F3EFF8" text_size={13} />
+            <Button text="Check for updates" on_tap={refresh} background="#221F2B" text_color="#F3EFF8" text_size={13} />
             <Text text="Firmware list: The Firmware Hub – https://thefirmwarehub.com (CC-BY-4.0). Card texts belong to their makers. Not affiliated with M-VAVE." text_size={11} text_color="#6B6580" />
           </Column>
         </LazyList>
@@ -179,10 +188,15 @@ defmodule FMutate.LibraryScreen do
     has_desc = desc != ""
     tags = Enum.map(Enum.take(fw.tags, 3), &tag_chip/1)
     action = action(fw, status, assigns.info.downloads)
+    update = update_button(fw, assigns.info.downloads)
     delete = delete_button(fw, status)
     why = if assigns.why == fw.id and status == :not_yet, do: why_text(), else: nil
     repo = fw.repo || ""
     has_repo = repo != ""
+    is_new = fw.new or MapSet.member?(assigns.fresh, fw.id)
+    {backend, backend_fg} = if fw.backend == :native, do: {"Native", "#C6F24E"}, else: {"Emulated", "#C9C3D6"}
+    # iOS runs only the native cartridges linked into the app
+    ios_note = fw.backend == :emu and fw.native != nil
 
     # one LazyList row: the list has no padding or gap of its own, so the row carries them
     ~MOB"""
@@ -191,11 +205,20 @@ defmodule FMutate.LibraryScreen do
         <Column gap={4}>
           <Row gap={8} align={:center}>
             <Text text={name} text_size={16} text_color="#F3EFF8" font_weight="bold" weight={1} max_lines={1} />
+            <Box background="#C6F24E" corner_radius={8} padding={6} fill_width={false} :if={is_new}>
+              <Text text="New" text_size={11} text_color="#14121A" font_weight="bold" />
+            </Box>
             <Box background={badge_bg} corner_radius={8} padding={6} fill_width={false}>
               <Text text={badge} text_size={11} text_color={badge_fg} font_weight="bold" />
             </Box>
           </Row>
-          <Text text={meta} text_size={11} text_color="#A9A3B8" max_lines={1} />
+          <Row gap={6} align={:center}>
+            <Box background="#2A2636" corner_radius={6} padding={4} fill_width={false}>
+              <Text text={backend} text_size={11} text_color={backend_fg} font_weight="bold" />
+            </Box>
+            <Text text={meta} text_size={11} text_color="#A9A3B8" max_lines={1} weight={1} />
+          </Row>
+          <Text text="Plays emulated on iPhone until the next app update" text_size={12} text_color="#FFB547" :if={ios_note} />
           <Text text={desc} text_size={13} text_color="#D6D0E0" max_lines={2} :if={has_desc} />
           <Text text={repo} text_size={11} text_color="#6B6580" max_lines={1} :if={has_repo} />
           {why}
@@ -203,6 +226,7 @@ defmodule FMutate.LibraryScreen do
             {tags}
             <Spacer />
             {delete}
+            {update}
             {action}
           </Row>
         </Column>
@@ -215,6 +239,11 @@ defmodule FMutate.LibraryScreen do
   defp color(hex), do: hex
 
   defp meta(%{source: :imported} = fw), do: "imported · #{fw.version} · #{size(fw.size)}"
+
+  defp meta(%{backend: :native, native: %{} = n} = fw) do
+    commit = if is_binary(n.commit), do: " · " <> String.slice(n.commit, 0, 7), else: ""
+    "#{fw.author} · v#{n.version}#{commit} · #{fw.license}"
+  end
 
   defp meta(fw) do
     base = "#{fw.author} · v#{fw.version} · #{fw.license}"
@@ -241,7 +270,7 @@ defmodule FMutate.LibraryScreen do
   defp action(fw, status, downloads) do
     case {status, downloads[fw.id]} do
       {:available, {got, total}} -> pill("Downloading #{percent(got, total)}", nil, :raised_hi, :text_2)
-      {:available, nil} -> pill("Download", {:download, fw.id}, :raised_hi, :text)
+      {:available, nil} -> pill(download_label(fw), {:download, fw.id}, :raised_hi, :text)
       {:on_phone, _} -> pill("Switch", {:switch, fw.id}, :fm, :ink)
       {:not_yet, _} -> pill("Why?", {:why, fw.id}, :surface, "#E4DFEE")
       {:quarantined, _} -> pill("Run anyway", {:run_anyway, fw.id}, :surface, :danger_text)
@@ -252,8 +281,24 @@ defmodule FMutate.LibraryScreen do
   defp percent(_got, nil), do: "…"
   defp percent(got, total), do: "#{div(got * 100, max(total, 1))}%"
 
+  defp download_label(%{size: size}) when is_integer(size), do: "Download · " <> size(size)
+  defp download_label(_fw), do: "Download"
+
+  # a newer native build than the downloaded one: the old one keeps running until this one is in
+  defp update_button(fw, downloads) do
+    case {Catalog.update?(fw), downloads[fw.id]} do
+      {true, {got, total}} -> pill("Updating #{percent(got, total)}", nil, :raised_hi, :text_2)
+      {true, nil} -> pill("Update · " <> size(fw.size), {:download, fw.id}, :raised_hi, :text)
+      _ -> nil
+    end
+  end
+
   defp delete_button(%{source: s, package: p} = fw, status)
        when s in [:hub, :imported] and is_binary(p) and status != :running,
+       do: pill("Delete", {:delete, fw.id}, :surface, :muted)
+
+  defp delete_button(%{backend: :native, source: :hub, cart: c, native: %{bundled: nil}} = fw, status)
+       when is_binary(c) and status != :running,
        do: pill("Delete", {:delete, fw.id}, :surface, :muted)
 
   defp delete_button(_fw, _status), do: nil
@@ -302,12 +347,23 @@ defmodule FMutate.LibraryScreen do
   end
 
   defp status_line(info) do
-    cond do
-      info.error -> info.error
-      info.refreshing -> "Reading the Hub's catalogue…"
-      info.updated -> Enum.join(["Hub catalogue of #{info.updated}." | List.wrap(check_note(info))], " ")
-      true -> "No Hub catalogue yet: connect to the internet."
-    end
+    hub =
+      cond do
+        info.error -> info.error
+        info.refreshing -> "Reading the Hub's catalogue…"
+        info.updated -> Enum.join(["Hub catalogue of #{info.updated}." | List.wrap(check_note(info))], " ")
+        true -> "No Hub catalogue yet: connect to the internet."
+      end
+
+    natives =
+      cond do
+        info.index_error -> info.index_error
+        info.index_refreshing -> "Checking for native builds…"
+        info.index_generated -> "Native builds of #{String.slice(info.index_generated, 0, 10)}."
+        true -> nil
+      end
+
+    Enum.join([hub | List.wrap(natives)], " ")
   end
 
   # "Checked today · next check after 14:05" while a check would be refused (the Hub's once a day)
@@ -350,14 +406,13 @@ defmodule FMutate.LibraryScreen do
     {:noreply, Mob.Socket.assign(socket, :why, why)}
   end
 
+  # the native builds' list is read on every tap; the Hub's catalogue only once a day (Library.refresh/0)
   def handle_info({:tap, :refresh}, socket) do
-    case check_note(socket.assigns.info) do
-      nil ->
-        Library.refresh()
-        {:noreply, socket}
+    Library.refresh()
 
-      note ->
-        {:noreply, show_toast(socket, "The Hub is read once a day", note <> ".", nil)}
+    case check_note(socket.assigns.info) do
+      nil -> {:noreply, socket}
+      note -> {:noreply, show_toast(socket, "The Hub is read once a day", note <> ". Checking for native builds.", nil)}
     end
   end
 

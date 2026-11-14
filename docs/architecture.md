@@ -12,7 +12,7 @@ flowchart LR
     SUP[FMutate.Supervisor] --> REG[Registry]
     SUP --> AUD["FMutate.Audio (owns fm1audio NIF: AAudio mixer, master clock)"]
     SUP --> INST["FMutate.Instance &quot;a&quot; (firmware, engine lifecycle, inputs, quarantine)"]
-    SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + packages on the phone)"]
+    SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + native builds + packages on the phone)"]
     SUP --> BG["FMutate.Background (mob_background keep-alive while a firmware plays)"]
     SCR["FMutate.InstrumentScreen (Mob.Screen)"] --> VIEW["FMutate.InstrumentView (Mob.Component)"]
     VIEW <--> KT["Kotlin InstrumentView: layout, multitouch, drawing"]
@@ -42,6 +42,28 @@ flowchart LR
   be compared. Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out.
   A package "doesn't run here yet" while the build has no `libfm1emu.so`; with it, a package on the phone is
   "On phone" and runs (`FMutate.Firmware.runnable/1` → `%{engine, file, backend}`).
+- **Native builds of Hub firmwares** (`FMutate.Cartridges`): [fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges)
+  builds Hub firmwares as cartridges per platform in CI and publishes a signed index (`:cartridges` `index_url`
+  in `config/config.exs`; `index.json` + `index.json.sig`, Ed25519 by the key in `public_key`). FMutate keeps
+  only the engine and this loader, so new native firmwares appear without an app update. The index has no
+  daily limit: it is read at start and on every "Check for updates", with `If-None-Match`, and cached in
+  `<data>/cartridges/` (`index.json`, `index.json.sig`, `etag`); an index whose signature doesn't verify, or
+  of another schema or engine ABI than 1, is refused and the last good one stays. A Hub firmware with an asset
+  for this phone (`android-arm64-v8a`, `android-x86_64`, `android-armeabi-v7a` from the BEAM's architecture)
+  becomes `backend: :native` ("Native" on its card, with the build's version and short commit); its Hub package
+  stays listed as `hub:<id>`. Download fetches the cartridge (`<data>/cartridges/libcart_<id>-<version>-<platform>.so`,
+  kept only when size, SHA-256 and its own signature check out; the id's older version is deleted then); until
+  then it is "Available". A newer build than the downloaded one shows Update while the old one keeps running.
+  A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
+  downloaded native code: an entry with an iOS asset runs natively only when linked into the app, otherwise
+  emulated with "Plays emulated on iPhone until the next app update". When an id turns native, its emulator
+  flash `emu/<id>.bin` moves to `emu/hub:<id>.bin` (once, never over an existing file; at the next start for
+  an instance that was running it), so the emulated saves stay with the Hub package and the native one starts
+  fresh. Builds new or updated since the player last opened the library are "New" (`cartridges/seen.term`;
+  nothing is new on the first index ever loaded); a fetch that finds some sends `{:library, {:new_natives,
+  ids}}`, and with the persisted opt-in `Library.set_notify/1` calls `Library.notify_new_natives/1`, which
+  only logs: mob_notify isn't a dependency (its local notifications need a screen's socket; on Android it
+  brings Firebase, which needs host Gradle wiring).
 - **Flash per backend**: `flash/<instance>/<id>.bin` (native image) and `flash/<instance>/emu/<id>.bin`
   (fm1-emu's changed sectors), so no id shares a flash file across backends.
 - **Subscriptions survive restarts**: the screens subscribe through `FMutate.Subscription`, which monitors the
@@ -55,7 +77,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
