@@ -464,9 +464,10 @@ defmodule FMutate.Dist do
   end
 
   # Paired names are MobPair.Pairings' (with their own cookies), never the sibling cookie's. Written whole (a
-  # temporary file, synced, renamed), so a crash keeps the old list or the new one. Fails closed: when it
-  # can't be written the file is deleted (a disconnected app mustn't come back at the next start; the allowed
-  # ones need Allow again then), the state is kept here and the write retried every few seconds.
+  # temporary file, synced, renamed), so a crash keeps the old list or the new one. Fails closed as far as it
+  # can: when it can't be written the file is deleted (a disconnected app mustn't come back at the next start;
+  # the allowed ones need Allow again then; if the delete fails too, a restart before the retry works can bring
+  # the old list back), the state is kept here and the write retried every few seconds.
   defp save_allowed(state) do
     names =
       for node <- Access.allowed(state.access),
@@ -479,7 +480,15 @@ defmodule FMutate.Dist do
 
       {:error, reason} ->
         Logger.error("dist: allowed apps not saved (#{inspect(reason)}); retrying")
-        File.rm(allowed_path())
+
+        case File.rm(allowed_path()) do
+          result when result in [:ok, {:error, :enoent}] ->
+            :ok
+
+          {:error, why} ->
+            Logger.error("dist: the old allowed.term can't be deleted either: #{inspect(why)}")
+        end
+
         if not state.unsaved, do: Process.send_after(self(), :save_allowed, @save_retry_ms)
         %{state | unsaved: true}
     end

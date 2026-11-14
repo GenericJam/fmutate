@@ -120,9 +120,10 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
   (`Node.set_cookie/2`) and adds it to the allow list; until then its handshakes are refused (this node's
   default cookie isn't the sibling cookie). Allow is kept across restarts. Disconnect gives the node a
   throwaway cookie and cuts the connection; it has to register and be allowed again. If the list of allowed
-  apps can't be saved, Disconnect says so (`{:error, :not_saved}`), the app stays cut off, the file is
-  deleted (every sibling needs Allow again after a restart) and the save is retried until it works. The state
-  machine is `FMutate.Dist.Access`.
+  apps can't be saved, Disconnect says so (`{:error, :not_saved}`, and I/O shows that a change isn't saved
+  yet), the app stays cut off, the file is deleted if it can be (every sibling then needs Allow again after a
+  restart; if it can't be deleted either, a restart before the retried save works can bring the old list
+  back) and the save is retried until it works. The state machine is `FMutate.Dist.Access`.
 - **Facade.** `FMutate.Remote`, registered as `:fmutate_instance` (and globally as `{:fmutate, "a"}`; global
   names don't reach hidden nodes, so use the local name). §2 inputs, §3 subscribe/unsubscribe with `:status`,
   `:leds`, `:screen`; §4 `list_firmware`, `list_layouts`, `get_layout`.

@@ -66,16 +66,29 @@ defmodule FMutate.PairScreenTest do
     File.chmod!(path, 0o000)
   end
 
-  # a certificate and the key of another one: both decode (a copy in mismatched.json, for the test)
-  defp write_cert(dir, :mismatched) do
-    {cert, other} = {Cert.self_signed("FMutate"), Cert.self_signed("FMutate")}
+  # Both decode, the key isn't the certificate's: the key of another certificate, or its own key with one bit
+  # of the private scalar flipped (the key file's copy of the public point still matches). A copy in
+  # broken.json, for the test.
+  defp write_cert(dir, kind) when kind in [:mismatched, :flipped_scalar] do
+    cert = Cert.self_signed("FMutate")
+    key = if kind == :mismatched, do: Cert.self_signed("FMutate").key, else: flip_scalar(cert.key)
     encode = &Base.url_encode64(&1, padding: false)
-    json = JSON.encode!(%{"cert" => encode.(cert.cert), "key" => encode.(other.key)})
+    json = JSON.encode!(%{"cert" => encode.(cert.cert), "key" => encode.(key)})
     File.write!(Path.join(dir, "pair_cert.json"), json)
-    File.write!(Path.join(dir, "mismatched.json"), json)
+    File.write!(Path.join(dir, "broken.json"), json)
   end
 
   defp write_cert(dir, contents), do: File.write!(Path.join(dir, "pair_cert.json"), contents)
+
+  defp flip_scalar(key) do
+    {:ECPrivateKey, version, <<b, rest::binary>>, params, public, attributes} =
+      :public_key.der_decode(:ECPrivateKey, key)
+
+    record =
+      {:ECPrivateKey, version, <<Bitwise.bxor(b, 1), rest::binary>>, params, public, attributes}
+
+    :public_key.der_encode(:ECPrivateKey, record)
+  end
 
   # what the Host gives MobPair.Pairings.add/1 on Allow
   defp pairing(node) do
@@ -436,17 +449,22 @@ defmodule FMutate.PairScreenTest do
     assert Pairings.list() == []
   end
 
-  @tag cert: :mismatched
-  test "a certificate whose key isn't its own is replaced", %{dir: dir} do
-    path = Path.join(dir, "pair_cert.json")
-    {:ok, %{"cert" => old}} = Path.join(dir, "mismatched.json") |> File.read!() |> JSON.decode()
-    view = mount_screen(PairScreen)
-    assert find(view, :canvas, id: "pair_qr")
+  for {kind, what} <- [
+        mismatched: "another certificate's key",
+        flipped_scalar: "a bit-flipped key"
+      ] do
+    @tag cert: kind
+    test "a certificate with #{what} is replaced", %{dir: dir} do
+      path = Path.join(dir, "pair_cert.json")
+      {:ok, %{"cert" => old}} = Path.join(dir, "broken.json") |> File.read!() |> JSON.decode()
+      view = mount_screen(PairScreen)
+      assert find(view, :canvas, id: "pair_qr")
 
-    {:ok, %{"cert" => new}} = path |> File.read!() |> JSON.decode()
-    assert new != old
-    {:ok, link} = Link.parse(assigns(view).info.link)
-    assert link.fp == new |> Base.url_decode64!(padding: false) |> Cert.fingerprint()
+      {:ok, %{"cert" => new}} = path |> File.read!() |> JSON.decode()
+      assert new != old
+      {:ok, link} = Link.parse(assigns(view).info.link)
+      assert link.fp == new |> Base.url_decode64!(padding: false) |> Cert.fingerprint()
+    end
   end
 
   @tag allowed: []

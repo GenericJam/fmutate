@@ -641,7 +641,7 @@ defmodule FMutate.IOScreen do
         do: [
           ~MOB"""
           <Text
-            text="A change to these apps couldn't be saved yet (retrying). It holds now; if FMutate restarts first, apps need Allow or pairing again."
+            text="A change to these apps couldn't be saved yet (retrying). It holds while FMutate runs."
             text_size={11}
             text_color={hex(:warn)}
           />

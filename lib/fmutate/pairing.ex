@@ -429,17 +429,22 @@ defmodule FMutate.Pairing do
     end
   end
 
-  # the DER certificate and EC private key decode, and the key's public point is the certificate's
+  # The DER certificate and EC private key decode, and the public point derived from the private scalar is the
+  # certificate's (the key file's own copy of the public point says nothing about the scalar).
   defp key_of_cert?(cert, key) do
-    {:ECPrivateKey, _version, _private, _params, public, _attributes} =
+    {:ECPrivateKey, _version, private, _params, _public, _attributes} =
       :public_key.der_decode(:ECPrivateKey, key)
+
+    {derived, _} = :crypto.generate_key(:ecdh, :secp256r1, private)
 
     # OTPCertificate → OTPTBSCertificate → subjectPublicKeyInfo (the 7th field)
     tbs = cert |> :public_key.pkix_decode_cert(:otp) |> elem(1)
     {:OTPSubjectPublicKeyInfo, _algorithm, {:ECPoint, point}} = elem(tbs, 7)
-    point == public
+    point == derived
   rescue
     _undecodable in [MatchError, ErlangError, ArgumentError] -> false
+  catch
+    :exit, _undecodable -> false
   end
 
   defp new_cert(path) do
