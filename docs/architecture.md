@@ -203,7 +203,7 @@ Over `tools/rpc.exs <udid>` (see its header), native OberVave, the built-in spea
 | Engine ring fill (Auto) | 550–1010 frames at 44.1 kHz (12–23 ms) while playing at the 1024 default; iOS's default is now ~700 (`Audio.engine_fill/0`): 330–700 |
 | Input → sound in the mixer (`tools/input_latency.exs`: `Instance.input` key down until the mixer's peak > 1000, the audio NIF polled in a loop; 12 notes + 2–3 after 2–10 s of silence) | fill 1024: 25–30 ms, median 27 ms; after silence 20–26 ms. Fill 704: 15.5–24.7 ms, median ~19 ms; after silence 16–26 ms (1 min of chords: 0 underruns). Tap to sound ≈ that + 16.5 ms output + the touch panel: ~35–45 ms |
 | (The first measurement, 59–75 ms and 97–120 ms after a pause, polled `Audio.stats/0`: a snapshot the Audio server takes every 100 ms, so it measured when the next snapshot came. Nothing was unexplained: no wake-up, scheduling or audio-session cost shows) | |
-| 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns |
+| 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns; again at iOS's new default fill 697 (input → mixer 15.2–23.6 ms, median ~17 ms; the fill stayed at 697) |
 | App CPU (Instruments Activity Monitor, % of one core) | idle with OberVave loaded 10.6–11.2 %; playing those chords 24.6–28.0 %; footprint 76–82 MiB |
 | Emulator, interpreted, `EngineNif.bench` | per package in the decision doc: 0.38–0.76x real time at 240 MHz (FMini 1.42x), 0.66–1.40x at 120 |
 
