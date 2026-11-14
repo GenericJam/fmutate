@@ -145,6 +145,14 @@ private const val ARROW_DP = 36f
 private const val FIRMWARE_BEND_ST = 2f
 /** How long after an engine runs its firmware takes to listen (OberVave's package ~2 s, the cartridge ~1.5 s). */
 private const val FIRMWARE_BOOT_MS = 2000L
+/** A motion tile's grab on its corner "stay on" box (not a hold of the tile). */
+private const val STAY_GRAB = -3
+
+/** A motion tile's corner "stay on" box (dp): top right, a quarter of the tile's short side, 18..28 dp. */
+private fun stayBox(r: Grid.Rect): Grid.Rect {
+    val s = (min(r.w, r.h) * 0.25f).coerceIn(18f, 28f)
+    return Grid.Rect(r.x + r.w - s - 4f, r.y + 4f, s, s)
+}
 
 /** What one finger is doing: it belongs to the control it first touched until it lifts (rule 1). */
 private class Grab(
@@ -187,6 +195,7 @@ private class SurfaceState {
     var leds = Triple(0, 0, 0)                             // replaced only when an LED changes
     var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn by mutableStateOf(false)                    // the surface's BEND toggle: keyboard strips bend
+    val stayOn = mutableStateMapOf<String, Boolean>()      // motion tiles switched on with their corner box
 }
 
 /**
@@ -525,10 +534,15 @@ private fun InstrumentSurface(
     fun motionOff(id: String) {
         motion.disengage(id)
         state.pressed.remove(id)
+        state.stayOn.remove(id)
     }
     fun motionAllOff() = motionIds.forEach { if (motion.isEngaged(it)) motionOff(it) }
-    // a page change (or a new layout) lets go of motion controls no longer shown
-    LaunchedEffect(motionIds) { motion.retain(motionIds) }
+    // a page change (or a new layout) lets go of motion controls no longer shown, "stay on" included
+    LaunchedEffect(motionIds) {
+        val gone = state.stayOn.keys.filter { it !in motionIds }
+        motion.retain(motionIds)
+        gone.forEach { state.stayOn.remove(it); state.pressed.remove(it) }
+    }
     // and the app going to the background lets go of all of them (a latch would keep the sensors on)
     DisposableEffect(state) {
         val lifecycle = (context.findActivity() as? androidx.lifecycle.LifecycleOwner)?.lifecycle
@@ -704,8 +718,19 @@ private fun InstrumentSurface(
                 val i = ((p.x - r.x) / r.w * n).toInt().coerceIn(0, n - 1)
                 goPage(layout.pages[i].id)
             }
-            // a motion control: hold engages while the finger is on it, latch toggles on a tap
-            "motion" -> if (c.motionLatch) { if (motion.isEngaged(c.id)) motionOff(c.id) else motionOn(c) } else motionOn(c)
+            // a motion control: its corner box switches "stay on" (engaged until switched off); otherwise hold engages
+            // while the finger is on it, latch toggles on a tap, and a tile that stays on ignores its body
+            "motion" -> when {
+                stayBox(r).contains(p.x, p.y) -> {
+                    g.sub = STAY_GRAB
+                    haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+                    if (state.stayOn[c.id] == true) motionOff(c.id)
+                    else { if (!motion.isEngaged(c.id)) motionOn(c); state.stayOn[c.id] = true }
+                }
+                state.stayOn[c.id] == true -> {}
+                c.motionLatch -> if (motion.isEngaged(c.id)) motionOff(c.id) else motionOn(c)
+                else -> motionOn(c)
+            }
             "knob", "slider", "xy_pad" -> {
                 state.pressed[c.id] = true
                 state.encoderTurns[c.id] = 0
@@ -817,7 +842,7 @@ private fun InstrumentSurface(
                     }
                 }
             }
-            "motion" -> if (!c.motionLatch) motionOff(c.id)
+            "motion" -> if (!c.motionLatch && g.sub != STAY_GRAB && state.stayOn[c.id] != true) motionOff(c.id)
             "screen" -> if (!g.moved && phaseNow == "safe_mode") { haptic(HapticFeedbackConstants.VIRTUAL_KEY); emit("run_anyway") }
             else -> {}
         }
@@ -1158,6 +1183,7 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
     /** A motion control's ring (its tilt dot is on the motion layer, [motionDot]): lime while engaged. */
     fun motion(c: Control, r: Grid.Rect, st: SurfaceState, sensor: Boolean) {
         val active = st.pressed[c.id] == true
+        val stay = st.stayOn[c.id] == true
         rr(r.x, r.y, r.w, r.h, 12f, if (active) C.fmTint else C.raised)
         val cx = r.cx
         val cy = ringY(r)
@@ -1168,6 +1194,20 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         val label = if (!sensor) "no sensor" else c.label
         text(label, r.cx, r.y + r.h - 9, 10f, if (active) C.fm else if (sensor) C.muted else C.faint, mono = true)
         if (c.motionLatch && r.h >= 80f) text("LATCH", r.x + 22, r.y + 10, 8f, if (active) C.fm else C.faint, mono = true)
+        // the corner "stay on" box: lime with a tick while the tile stays on
+        if (sensor) {
+            val b = stayBox(r)
+            if (stay) {
+                rr(b.x, b.y, b.w, b.h, 6f, C.fm)
+                s.drawLine(C.ink, off(b.x + b.w * 0.25f, b.y + b.h * 0.52f), off(b.x + b.w * 0.43f, b.y + b.h * 0.7f), 2f.px())
+                s.drawLine(C.ink, off(b.x + b.w * 0.43f, b.y + b.h * 0.7f), off(b.x + b.w * 0.76f, b.y + b.h * 0.32f), 2f.px())
+            } else {
+                s.drawRoundRect(
+                    C.lineSoft, off(b.x, b.y), sz(b.w, b.h), androidx.compose.ui.geometry.CornerRadius(6f.px()),
+                    style = Stroke(1.5f.px()),
+                )
+            }
+        }
     }
 
     // a motion control's ring inside its cells (dp), above the label

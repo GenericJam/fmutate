@@ -131,7 +131,10 @@ flowchart LR
   bound like an XY pad and a button: `x` tilt X (roll, right edge down = up), `y` tilt Y (pitch, top edge up = up),
   `twist` (gyroscope, clockwise = up) drive values (encoders, MASTER, MIDI CC, MIDI pitch bend); `shake` (a jolt
   beyond 0.6 / 1.2 / 2 g, then 250 ms deaf) and `near` (proximity) are presses (momentary or toggle). Engage `hold`
-  (only while a finger is on the tile) or `latch` (a tap on, a tap off); values move relative to how the phone was
+  (only while a finger is on the tile) or `latch` (a tap on, a tap off); whatever the engage mode, the tile's corner
+  box switches it **stay on** (engaged with no finger on it until the box is tapped again; the tile's body is then
+  ignored; a page change, a new layout, edit mode or the app going to the background switch it off; not saved);
+  values move relative to how the phone was
   held at engage, 2° dead zone, `range` degrees (15–90, default 45) for a value's whole span (a 200 pt knob drag of
   clicks for an encoder; pitch bend reaches either end in half of it), and on release they stay or spring back as
   the XY pad's. Absolute targets go through rule 7 as any control's and are sent only when they move by 1/128.
