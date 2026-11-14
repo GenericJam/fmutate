@@ -108,8 +108,11 @@ defmodule FMutate.Instance do
   def subscribe(id, opts \\ []),
     do: GenServer.call(via(id), {:subscribe, self(), Keyword.get(opts, :status, false)})
 
-  @doc "Debug: crash, hang or kill -9 the running engine."
-  def debug(id, what) when what in [:crash, :hang, :kill9],
+  @doc """
+  Debug: crash, hang or kill -9 the running engine. Native cartridges also take `:segv` (a real fault: in-process
+  it ends the app, the crash marker's test) and `:stall` (4 s of firmware code that no stop reaches).
+  """
+  def debug(id, what) when what in [:crash, :hang, :kill9, :segv, :stall],
     do: GenServer.cast(via(id), {:debug, what})
 
   @doc """
