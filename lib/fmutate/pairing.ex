@@ -441,16 +441,22 @@ defmodule FMutate.Pairing do
   @doc """
   Whether putting the secret on the clipboard is safe enough to offer Copy code / Copy link: false on
   Android 9 and older (API < 29), where any app in the background can listen for clipboard changes and
-  read the secret the moment it is copied; true on Android 10+, and off Android (no `getprop`).
+  read the secret the moment it is copied; true on Android 10+, and off Android (no `getprop`). On
+  Android, an answer that can't be read counts as unsafe.
   """
-  def copy_safe? do
-    with true <- File.exists?(@getprop),
-         {sdk, 0} <- System.cmd(@getprop, ["ro.build.version.sdk"]),
+  def copy_safe?(getprop \\ @getprop) do
+    not File.exists?(getprop) or android_10_or_later?(getprop)
+  end
+
+  defp android_10_or_later?(getprop) do
+    with {sdk, 0} <- System.cmd(getprop, ["ro.build.version.sdk"], stderr_to_stdout: true),
          {level, ""} <- sdk |> String.trim() |> Integer.parse() do
       level >= 29
     else
-      _ -> true
+      _ -> false
     end
+  rescue
+    _ -> false
   end
 
   defp hostname do

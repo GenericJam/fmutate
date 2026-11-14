@@ -147,6 +147,26 @@ defmodule FMutate.PairScreenTest do
     assert assigns(view).copied == nil
   end
 
+  test "Copy is offered off Android and from Android 10, and not when the Android version can't be read" do
+    dir = Path.join(System.tmp_dir!(), "getprop_#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    on_exit(fn -> File.rm_rf(dir) end)
+
+    getprop = fn name, script ->
+      path = Path.join(dir, name)
+      File.write!(path, "#!/bin/sh\n" <> script <> "\n")
+      File.chmod!(path, 0o755)
+      path
+    end
+
+    assert FMutate.Pairing.copy_safe?(Path.join(dir, "none"))
+    assert FMutate.Pairing.copy_safe?(getprop.("q", "echo 29"))
+    refute FMutate.Pairing.copy_safe?(getprop.("p", "echo 28"))
+    refute FMutate.Pairing.copy_safe?(getprop.("broken", "exit 1"))
+    refute FMutate.Pairing.copy_safe?(getprop.("garbled", "echo unknown"))
+    refute FMutate.Pairing.copy_safe?(Path.join(dir, "notexec") |> tap(&File.write!(&1, "x")))
+  end
+
   test "Allow pairs the app on this phone: plain distribution to FMutate's loopback node, its own cookie" do
     view = mount_screen(PairScreen)
     {task, view} = ask(view)
