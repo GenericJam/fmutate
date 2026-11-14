@@ -57,7 +57,7 @@ defmodule FMutate.InstrumentView do
   # what the screen area says under "Too slow" (or alone: dropouts), from FMutate.Instance.Health.advice/1
   defp hint(:lowering, mhz), do: "Slowing the emulated CPU · #{mhz} MHz…"
   defp hint(:lower_in_io, mhz), do: "Lower the emulated CPU in I/O (#{mhz} MHz)"
-  defp hint(:limit, _mhz), do: "This phone can't run it in real time"
+  defp hint(:limit, _mhz), do: "This phone can't run it at full speed"
   defp hint(:raise_buffer, _mhz), do: "Raise the buffer in I/O"
   defp hint(_advice, _mhz), do: ""
 
