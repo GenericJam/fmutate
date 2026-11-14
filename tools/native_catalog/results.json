@@ -138,21 +138,17 @@
   "loc": 69371,
   "recipe": "web",
   "build": "clean",
-  "size": 1828512,
-  "check": "diverges",
-  "why": [
-   "screen boot 48.8",
-   "screen chord 48.7",
-   "screen play 23.2"
-  ],
-  "native_chord_db": -16.2,
+  "size": 1828544,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -16.1,
   "compare": {
    "window": "chord",
-   "level_diff_db": 0.0,
-   "spectrum_corr": 0.942,
-   "screen_diff_boot": 48.8,
-   "screen_diff_chord": 48.7,
-   "screen_diff_play": 23.2
+   "level_diff_db": 0.2,
+   "spectrum_corr": 1.0,
+   "screen_diff_boot": 0.1,
+   "screen_diff_chord": 0.1,
+   "screen_diff_play": 1.7
   },
   "boot_ms": {
    "native_first_screen": 250,
@@ -456,7 +452,7 @@
   "loc": 15077,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 315952,
+  "size": 315984,
   "check": "match",
   "why": [],
   "native_chord_db": -26.7,
@@ -493,7 +489,7 @@
   "loc": 15096,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 298528,
+  "size": 298576,
   "check": "match",
   "why": [],
   "native_chord_db": -24.6,
@@ -530,7 +526,7 @@
   "loc": 7866,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 85888,
+  "size": 85920,
   "check": "match",
   "why": [],
   "native_chord_db": -9.5,
@@ -567,7 +563,7 @@
   "loc": 7930,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 86168,
+  "size": 86200,
   "check": "silent",
   "why": [
    "no sound from a chord or PLAY in either"
@@ -971,25 +967,10 @@
   "lineage": "other",
   "dual_core": true,
   "loc": 27061,
-  "recipe": "web",
-  "build": "shims",
-  "size": 373904,
-  "check": "broken",
-  "why": [
-   "native silent, the emulator sounds"
-  ],
-  "native_chord_db": -240.0,
-  "compare": {
-   "window": "chord",
-   "level_diff_db": -198.8,
-   "screen_diff_boot": 0.0,
-   "screen_diff_chord": 0.6,
-   "screen_diff_play": 0.0
-  },
-  "boot_ms": {
-   "native_first_screen": 50,
-   "emu_first_screen": 200
-  },
+  "recipe": "dinghy",
+  "build": "failed",
+  "stage": "compile",
+  "cause": "fm106/tree/firmware/src/fm106_sysex.h:834:49: error: use of undeclared identifier 'fm1_crash'",
   "bench": {
    "rt": 1766.39,
    "cpu_rt": 1766.39,
@@ -1048,8 +1029,8 @@
   "loc": 63194,
   "recipe": "web",
   "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "stage": "compile",
+  "cause": "FileNotFoundError: [Errno 2] No such file or directory: 'duell/docs/MIDI_MAP_DEFAULTS.csv'"
  },
  "skiff": {
   "id": "skiff",
@@ -1204,9 +1185,8 @@
   "dual_core": true,
   "loc": 10150,
   "recipe": "dinghy",
-  "build": "failed",
-  "stage": "compile",
-  "cause": "/Users/kevin/code/fmutate-worktrees/native-catalog/tools/native_catalog/adapters/dinghy.c:61:5: error: call to undeclared function 'app_main'; ISO C99 and later"
+  "build": "clean",
+  "size": 123872
  },
  "hyp1": {
   "id": "hyp1",
@@ -1629,10 +1609,9 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 43678,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "dinghy",
+  "build": "clean",
+  "size": 746464
  },
  "fomajam": {
   "id": "fomajam",
@@ -1704,10 +1683,9 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 28907,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 782528
  },
  "cutador": {
   "id": "cutador",
@@ -1802,9 +1780,8 @@
   "dual_core": true,
   "loc": 40484,
   "recipe": "web",
-  "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "build": "clean",
+  "size": 1111472
  },
  "opn1": {
   "id": "opn1",
@@ -1818,7 +1795,7 @@
   "loc": 9673,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 172592,
+  "size": 172624,
   "check": "match",
   "why": [],
   "native_chord_db": -38.8,
@@ -1855,7 +1832,7 @@
   "loc": 9336,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 153936,
+  "size": 154064,
   "check": "match",
   "why": [],
   "native_chord_db": -18.4,
@@ -1928,9 +1905,8 @@
   "dual_core": false,
   "loc": 20142,
   "recipe": "dinghy",
-  "build": "failed",
-  "stage": "compile",
-  "cause": "morpheus/tree/firmware/src/gfx.c:20:54: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and sec"
+  "build": "shims",
+  "size": 376048
  },
  "fmini": {
   "id": "fmini",
@@ -2018,7 +1994,7 @@
   "loc": 32223,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 657328,
+  "size": 657360,
   "check": "match",
   "why": [],
   "native_chord_db": -17.1,
@@ -2288,9 +2264,8 @@
   "dual_core": true,
   "loc": 39174,
   "recipe": "web",
-  "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "build": "clean",
+  "size": 1077104
  },
  "chipbox": {
   "id": "chipbox",
@@ -2303,9 +2278,8 @@
   "dual_core": false,
   "loc": 28792,
   "recipe": "dinghy",
-  "build": "failed",
-  "stage": "compile",
-  "cause": "chipbox/tree/firmware/src/fx.c:24:56: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and secti"
+  "build": "shims",
+  "size": 930064
  },
  "loom": {
   "id": "loom",
@@ -2438,7 +2412,7 @@
   "loc": 8546,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 154536,
+  "size": 154568,
   "check": "diverges",
   "why": [
    "screen chord 15.5",
@@ -2477,10 +2451,10 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 29926,
-  "recipe": null,
+  "recipe": "dinghy",
   "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "stage": "compile",
+  "cause": "hera/tree/firmware/src/gfx.c:20:54: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and section"
  },
  "frasil": {
   "id": "frasil",
@@ -2736,7 +2710,7 @@
   "loc": 13535,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 387072,
+  "size": 387104,
   "check": "match",
   "why": [],
   "native_chord_db": -23.4,
@@ -2877,7 +2851,7 @@
   "loc": 34254,
   "recipe": "dinghy",
   "build": "clean",
-  "size": 684824,
+  "size": 685528,
   "check": "match",
   "why": [],
   "native_chord_db": -24.2,
@@ -2912,10 +2886,9 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 23435,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 520912
  },
  "s1vave": {
   "id": "s1vave",
@@ -2929,7 +2902,7 @@
   "loc": 14887,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 247504,
+  "size": 247536,
   "check": "match",
   "why": [],
   "native_chord_db": -45.2,
@@ -2980,9 +2953,8 @@
   "dual_core": true,
   "loc": 40660,
   "recipe": "web",
-  "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "build": "clean",
+  "size": 1042576
  },
  "perf1": {
   "id": "perf1",
@@ -3031,10 +3003,24 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 0,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "fm1base",
+  "build": "clean",
+  "size": 244304,
+  "check": "match",
+  "why": [],
+  "native_chord_db": -19.9,
+  "compare": {
+   "window": "chord",
+   "level_diff_db": 0.5,
+   "spectrum_corr": 0.995,
+   "screen_diff_boot": 0.3,
+   "screen_diff_chord": 0.6,
+   "screen_diff_play": 0.3
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 300
+  }
  },
  "guitchordi": {
   "id": "guitchordi",
@@ -3444,9 +3430,8 @@
   "dual_core": false,
   "loc": 20228,
   "recipe": "dinghy",
-  "build": "failed",
-  "stage": "compile",
-  "cause": "smileyface/tree/firmware/src/bfx.c:29:65: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and s"
+  "build": "shims",
+  "size": 242024
  },
  "vesper": {
   "id": "vesper",
@@ -3693,7 +3678,7 @@
   "recipe": "dinghy",
   "build": "failed",
   "stage": "compile",
-  "cause": "fm1dock/tree/firmware/src/gfx.c:20:54: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and sect"
+  "cause": "fm1dock/tree/firmware/src/dock.c:255:5: error: call to undeclared function 'str_cpy'; ISO C99 and later do not support implicit function declarations [-Wimplici"
  },
  "scintilla": {
   "id": "scintilla",
@@ -3705,10 +3690,10 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 7894,
-  "recipe": null,
+  "recipe": "dinghy",
   "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "stage": "link",
+  "cause": "Undefined symbols for architecture arm64:"
  },
  "fm1sid": {
   "id": "fm1sid",
@@ -3789,7 +3774,7 @@
   "loc": 22027,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 544096,
+  "size": 544160,
   "check": "match",
   "why": [],
   "native_chord_db": -17.7,
@@ -3920,7 +3905,7 @@
   "loc": 11369,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 290048,
+  "size": 290080,
   "check": "diverges",
   "why": [
    "spectrum r=0.64 (chord)"
@@ -4114,7 +4099,7 @@
   "loc": 8970,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 138240,
+  "size": 138272,
   "check": "match",
   "why": [],
   "native_chord_db": -23.4,
@@ -4238,10 +4223,9 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 29358,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 782368
  },
  "artihive": {
   "id": "artihive",
@@ -4255,7 +4239,7 @@
   "loc": 13533,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 272304,
+  "size": 272336,
   "check": "diverges",
   "why": [
    "level +12.6 dB (play)",
@@ -4295,7 +4279,7 @@
   "loc": 15086,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 325408,
+  "size": 325440,
   "check": "match",
   "why": [],
   "native_chord_db": -18.7,
@@ -4402,10 +4386,27 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 0,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "fm1base",
+  "build": "clean",
+  "size": 525960,
+  "check": "diverges",
+  "why": [
+   "screen boot 47.5",
+   "screen chord 16.1",
+   "screen play 47.4"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "window": "chord",
+   "level_diff_db": 0.0,
+   "screen_diff_boot": 47.5,
+   "screen_diff_chord": 16.1,
+   "screen_diff_play": 47.4
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  }
  },
  "drumlab": {
   "id": "drumlab",
@@ -4420,7 +4421,7 @@
   "recipe": "dinghy",
   "build": "failed",
   "stage": "compile",
-  "cause": "drumlab/tree/firmware/src/fx.c:22:56: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and secti"
+  "cause": "drumlab/tree/firmware/src/fx.c:17:38: error: argument to 'section' attribute is not valid for this target: mach-o section specifier requires a segment and secti"
  },
  "mvance": {
   "id": "mvance",
@@ -4434,7 +4435,7 @@
   "loc": 20515,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 347440,
+  "size": 347472,
   "check": "match",
   "why": [],
   "native_chord_db": -19.2,
@@ -4714,7 +4715,7 @@
   "loc": 13538,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 272080,
+  "size": 272128,
   "check": "match",
   "why": [],
   "native_chord_db": -40.4,
@@ -4932,9 +4933,8 @@
   "dual_core": true,
   "loc": 46555,
   "recipe": "web",
-  "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "build": "clean",
+  "size": 1213888
  },
  "playa": {
   "id": "playa",
@@ -4947,25 +4947,9 @@
   "dual_core": true,
   "loc": 207917,
   "recipe": "web",
-  "build": "clean",
-  "size": 212192,
-  "check": "broken",
-  "why": [
-   "native screen dark",
-   "native silent, the emulator sounds"
-  ],
-  "native_chord_db": -240.0,
-  "compare": {
-   "window": "chord",
-   "level_diff_db": -214.4,
-   "screen_diff_boot": 128.5,
-   "screen_diff_chord": 128.7,
-   "screen_diff_play": 128.5
-  },
-  "boot_ms": {
-   "native_first_screen": null,
-   "emu_first_screen": 250
-  },
+  "build": "failed",
+  "stage": "record",
+  "cause": "build: conf_gen gen_optimist.py failed",
   "bench": {
    "rt": 7200.72,
    "cpu_rt": 7207.21,
@@ -5212,7 +5196,7 @@
   "loc": 15050,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 305464,
+  "size": 305704,
   "check": "match",
   "why": [],
   "native_chord_db": -39.3,
@@ -5483,10 +5467,9 @@
   "lineage": "other",
   "dual_core": false,
   "loc": 9592,
-  "recipe": null,
-  "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "recipe": "dinghy",
+  "build": "shims",
+  "size": 121056
  },
  "clavioline": {
   "id": "clavioline",
@@ -5500,7 +5483,7 @@
   "loc": 18320,
   "recipe": "dinghy",
   "build": "shims",
-  "size": 500200,
+  "size": 500232,
   "check": "match",
   "why": [],
   "native_chord_db": -28.2,
@@ -5535,10 +5518,10 @@
   "lineage": "other",
   "dual_core": true,
   "loc": 18901,
-  "recipe": null,
+  "recipe": "dinghy",
   "build": "failed",
-  "stage": "recipe",
-  "cause": ""
+  "stage": "compile",
+  "cause": "rhytmsec1/tree/firmware/src/dock.c:255:5: error: call to undeclared function 'str_cpy'; ISO C99 and later do not support implicit function declarations [-Wimpli"
  },
  "rakt": {
   "id": "rakt",
@@ -5592,8 +5575,8 @@
   "loc": 61818,
   "recipe": "web",
   "build": "failed",
-  "stage": "record",
-  "cause": ""
+  "stage": "compile",
+  "cause": "FileNotFoundError: [Errno 2] No such file or directory: 'lrry/docs/MIDI_MAP_DEFAULTS.csv'"
  },
  "manta": {
   "id": "manta",
@@ -5705,9 +5688,24 @@
   "dual_core": true,
   "loc": 26081,
   "recipe": "dinghy",
-  "build": "failed",
-  "stage": "compile",
-  "cause": "drumtonic/tree/firmware/src/app_fm1.c:662:9: error: call to undeclared function 'platform_poll'; ISO C99 and later do not support implicit function declarations",
+  "build": "clean",
+  "size": 490728,
+  "check": "no-ref",
+  "why": [
+   "emulator silent in the chord and PLAY"
+  ],
+  "native_chord_db": -240.0,
+  "compare": {
+   "window": "play",
+   "level_diff_db": 215.7,
+   "screen_diff_boot": 1.0,
+   "screen_diff_chord": 11.8,
+   "screen_diff_play": 9.1
+  },
+  "boot_ms": {
+   "native_first_screen": 50,
+   "emu_first_screen": 150
+  },
   "bench": {
    "rt": 145.52,
    "cpu_rt": 152.81,

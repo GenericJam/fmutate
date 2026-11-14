@@ -10,9 +10,10 @@
  *
  * tools/native_catalog/recipes/foma.py compiles platform/web.c and the app natively (the build's own flags) and
  * links this in front: the fm1c_* calls of native/engine/live.c. The panel's order is the engine's already.
- * Storage: one blob, [settings length: i32][settings: SETTINGS_MAX][the store's flash]. */
+ * Storage: one blob, [settings length: i32][settings: SETTINGS_MAX][the store's flash, if it has one]. */
 #include <signal.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "fm1.h"
@@ -35,9 +36,15 @@ uint8_t *web_store(void);
 int32_t web_store_len(void);
 void web_store_set_len(int32_t n);
 uint32_t web_store_gen(void);
+#if FOMA_HAS_FLASH                                  /* (-DFOMA_HAS_FLASH=1: the emulator has the store's flash) */
 uint8_t *web_flash(void);
 uint32_t web_flash_len(void);
 uint32_t web_flash_gen(void);
+#else
+static uint8_t *web_flash(void) { return 0; }
+static uint32_t web_flash_len(void) { return 0; }
+static uint32_t web_flash_gen(void) { return 0; }
+#endif
 uint32_t web_now(void);
 
 static uint32_t edge_now(void) { return web_now(); }
@@ -66,7 +73,7 @@ static void blob_setup(void)
         memcpy(blob, &len, 4);
     }
     memcpy(blob + 4, web_store(), SETTINGS_MAX);
-    memcpy(blob + 4 + SETTINGS_MAX, web_flash(), web_flash_len());
+    if (web_flash_len()) memcpy(blob + 4 + SETTINGS_MAX, web_flash(), web_flash_len());
 }
 EXPORT uint32_t fm1c_blob_count(void) { return 1u; }
 EXPORT uint32_t fm1c_blob_size(void) { blob_setup(); return blob_sz; }
@@ -81,7 +88,7 @@ EXPORT uint32_t fm1c_store_hash(void)
         memcpy(blob, &len, 4);
         memcpy(blob + 4, web_store(), SETTINGS_MAX);
     }
-    if (web_flash_gen() != seen_flash) {
+    if (web_flash_len() && web_flash_gen() != seen_flash) {
         seen_flash = web_flash_gen();
         memcpy(blob + 4 + SETTINGS_MAX, web_flash(), web_flash_len());
     }
@@ -98,7 +105,7 @@ EXPORT int fm1c_init(void)
         memcpy(&len, blob, 4);
         web_store_set_len(len >= 0 && len <= (int32_t)SETTINGS_MAX ? len : -1);
         memcpy(web_store(), blob + 4, SETTINGS_MAX);
-        memcpy(web_flash(), blob + 4 + SETTINGS_MAX, web_flash_len());
+        if (web_flash_len()) memcpy(web_flash(), blob + 4 + SETTINGS_MAX, web_flash_len());
     }
     edges_init();
     web_master(1023u);                              /* (MASTER up until the engine sets it, as live.c) */

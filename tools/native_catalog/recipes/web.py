@@ -89,13 +89,18 @@ def gen_env(rec_log):
     if sys.platform == "darwin" and Path("/opt/homebrew/lib/libfribidi.dylib").exists():
         # Pillow's libraqm needs FriBiDi, which Homebrew keeps where dyld doesn't look; macOS drops DYLD_* when a
         # script runs python through /bin/sh, so python3 on PATH is a wrapper that sets it again
+        # (written to a file of this process's own and renamed into place: builds run in parallel)
         wrap = CAT / "bin/python3"
         wrap.parent.mkdir(parents=True, exist_ok=True)
-        wrap.write_text(f"#!{sys.executable}\nimport os, sys\nos.environ['DYLD_LIBRARY_PATH'] = '/opt/homebrew/lib'\n"
-                        f"os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[1:])\n")
-        wrap.chmod(0o755)
-        (wrap.parent / "python").unlink(missing_ok=True)
-        (wrap.parent / "python").symlink_to("python3")
+        tmp = wrap.with_name(f".python3.{os.getpid()}")
+        tmp.write_text(f"#!{sys.executable}\nimport os, sys\nos.environ['DYLD_LIBRARY_PATH'] = '/opt/homebrew/lib'\n"
+                       f"os.execv({sys.executable!r}, [{sys.executable!r}] + sys.argv[1:])\n")
+        tmp.chmod(0o755)
+        os.replace(tmp, wrap)
+        link = wrap.with_name(f".python.{os.getpid()}")
+        link.unlink(missing_ok=True)
+        link.symlink_to("python3")
+        os.replace(link, wrap.parent / "python")
         path = f"{wrap.parent}:{path}"
         env["DYLD_LIBRARY_PATH"] = "/opt/homebrew/lib"
     env["PATH"] = path

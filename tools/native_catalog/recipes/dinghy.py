@@ -265,20 +265,37 @@ def build_dinghy(fid, r, target, shims, log):
         argv = shlex.split(line)
     except ValueError:
         argv = line.split()
-    incs, own = [], []
+    def at(rel):
+        """a path of the host build: in the tree copy (copied in when the copy lacks it), or, outside the
+        firmware's tree (scintilla's ../engine), where it is"""
+        p = (d / rel).resolve()
+        if p != d.resolve() and d.resolve() not in p.parents:
+            return p
+        t = tree / p.relative_to(d.resolve())
+        if not t.exists() and p.is_dir():
+            shutil.copytree(p, t, symlinks=True)
+        elif not t.exists() and p.exists():
+            t.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(p, t)
+        return t
+    incs, own, units = [], [], []
     for i, a in enumerate(argv):
         v = a[2:] or (argv[i + 1] if i + 1 < len(argv) else "")
         if a.startswith("-I") and v and not v.startswith("/"):
-            if not (tree / v).exists() and (d / v).is_dir():
-                shutil.copytree(d / v, tree / v, symlinks=True)
-            incs += ["-I", str(tree / v)]
+            incs += ["-I", str(at(v))]
         elif a.startswith("-D") and v and not re.match(r"(%s|APP_VER|__attribute__)\b" % r["macro"], v):
             own.append("-D" + v)
-    _, included = _apps(d / "firmware/src")
-    run_host = d / "tests/run_host.sh"
-    named = set(re.findall(r"firmware/src/[\w/]+\.c", " ".join([line] + ([run_host.read_text(errors="replace")]
-                                                                         if run_host.exists() else []))))
-    extras = sorted(x for x in named if x != r["app"] and x.rsplit("/", 1)[1] not in included and (d / x).exists())
+        elif a.endswith(".c") and not a.startswith("-") and argv[i - 1] != "-o":
+            units.append(a)
+    apps, included = _apps(d / "firmware/src")
+    run_host = d / "tests/run_host.sh"           # (and the units its variables name: opn1's EXTRA)
+    units += re.findall(r"firmware/src/[\w/]+\.c", run_host.read_text(errors="replace")) if run_host.exists() else []
+    extras = []
+    for x in units:
+        p = at(x)
+        if (p.exists() and p.name != app_name and p not in extras and not (p.parent == tree / "firmware/src" and (
+                p.name in included or p.name in apps or p.name == "platform.c"))):
+            extras.append(p)
     fallback = [f for p in sorted((tree / "firmware").iterdir()) if p.is_dir() for f in ("-idirafter", str(p))]
     version = PINS[fid]["version"]
     shimflags = ["-I", str(SHIM_INC), "-include", str(SHIM_INC / "fm1_native_shims.h")] if shims else []
@@ -292,7 +309,7 @@ def build_dinghy(fid, r, target, shims, log):
     objs = [str(o)]
     for i, x in enumerate(extras):                      # (opn1's opn2.c, psg.c ...; mvance's mv_dsp.c)
         xo = work / f"extra{i}.o"
-        if sh([*common, "-c", str(tree / x), "-o", str(xo)], ROOT, log=log):
+        if sh([*common, "-c", str(x), "-o", str(xo)], ROOT, log=log):
             return None, "compile"
         objs.append(str(xo))
     out = link(fid, target, objs, False, log)

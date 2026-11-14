@@ -9,7 +9,14 @@
 #ifndef FM1_UCONTEXT_THREADS_H
 #define FM1_UCONTEXT_THREADS_H
 #include <pthread.h>
+#include <signal.h>
 #include <stddef.h>
+#include <stdlib.h>
+/* (the C library's own ucontext_t, which <signal.h> may define, stays as it is: these are other names) */
+#define ucontext_t fm1_ucontext_t
+#define getcontext fm1_getcontext
+#define makecontext fm1_makecontext
+#define swapcontext fm1_swapcontext
 
 typedef struct fm1_uctx {
     struct { void *ss_sp; size_t ss_size; int ss_flags; } uc_stack;
