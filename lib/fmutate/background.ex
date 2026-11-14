@@ -13,9 +13,11 @@ defmodule FMutate.Background do
   again when the app returns to the foreground. The first start asks for the notification permission
   (Android 13+), without which the notification shows only in the system's running-apps list.
 
-  iOS keeps an app running in the background while its audio session plays (`UIBackgroundModes` `audio`), which
-  FMutate's own output does whenever an engine runs; mob_background's iOS keep-alive (a silent audio engine)
-  would be a second one, so the keep-alive does nothing there.
+  iOS keeps an app running in the background while its audio session plays (`UIBackgroundModes` `audio`), so
+  there the keep-alive is FMutate's own output (mob_background's iOS keep-alive, a silent audio engine, would be
+  a second one): it starts with the app (`on: true`), and when nothing plays it stops, releasing the audio
+  session (other apps' audio is no longer mixed with a silent FMutate, and iOS may suspend the app in the
+  background); something playing again starts it.
   """
 
   use GenServer
@@ -28,12 +30,14 @@ defmodule FMutate.Background do
 
   defmodule Native do
     @moduledoc false
-    # The device side: mob_background's keep-alive and Mob's permission request (Android); nothing on iOS.
+    # The device side: mob_background's keep-alive and Mob's permission request (Android); the audio output (iOS).
     def keep_alive do
-      if ios?(), do: :ok, else: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+      if ios?(),
+        do: FMutate.AudioNif.start(),
+        else: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
     end
 
-    def stop, do: if(ios?(), do: :ok, else: MobBackground.stop())
+    def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: MobBackground.stop())
     def request_notifications, do: unless(ios?(), do: :mob_nif.request_permission(:notifications))
 
     defp ios?, do: :mob_nif.platform() == :ios
@@ -53,7 +57,8 @@ defmodule FMutate.Background do
     state = %{
       backend: Keyword.get(opts, :backend, Native),
       phases: Map.new(instances, &{&1, nil}),
-      on: false,
+      # (iOS: the output, the keep-alive there, started with the app)
+      on: Keyword.get(opts, :on, false),
       asked: false,
       last_error: nil
     }

@@ -35,7 +35,7 @@ defmodule FMutate.Supervisor do
         end) ++
         [
           # keeps the app running in the background while a firmware plays (mob_background)
-          {FMutate.Background, instances: instances}
+          {FMutate.Background, instances: instances, on: FMutate.Paths.inproc?()}
         ]
 
     # an audio restart invalidates every slot, so the instances restart with it

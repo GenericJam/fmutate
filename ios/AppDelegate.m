@@ -27,6 +27,9 @@ extern void mob_notify_window_connected(void);
 // (UIInterfaceOrientationMaskAll when unlocked).
 extern UIInterfaceOrientationMask mob_locked_orientation_mask(void);
 
+// Exported by ios/FMutateOrientation.swift: the frame the instrument holds while it is on screen (0 when none).
+extern NSUInteger fmutate_orientation_mask(void);
+
 static void* beam_thread(void* arg) {
     mob_start_beam((const char*)arg);
     return NULL;
@@ -90,9 +93,11 @@ static void mob_boot_runtime(void) {
 // preference to the root view controller's -supportedInterfaceOrientations, so
 // the rotation Mob.Device.lock_orientation/1 requests via requestGeometryUpdate
 // actually sticks (and unlock_orientation/0 returns ...MaskAll = follow sensor).
+// The instrument's own frame (FMOrientation) comes first.
 - (UIInterfaceOrientationMask)application:(UIApplication*)app
     supportedInterfaceOrientationsForWindow:(UIWindow*)window {
-    return mob_locked_orientation_mask();
+    NSUInteger held = fmutate_orientation_mask();
+    return held ? (UIInterfaceOrientationMask)held : mob_locked_orientation_mask();
 }
 
 - (void)application:(UIApplication*)app

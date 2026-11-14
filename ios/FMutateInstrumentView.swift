@@ -478,8 +478,15 @@ final class FMInstrumentSurface: UIView {
     private let haptics = FMHaptics()
     private var toast = ""
     private var toastGen = 0
+    private let edit = FMEditMode()
+    private var addMenu: FMAddMenu?
     private var phaseGen = 0
     private var disposed = false
+    // motion controls (FMutateMotionControl.swift); values the page doesn't show wait in heldBack (motionValue)
+    private lazy var motion = FMMotionControls(sink: self)
+    private let motionView = FMLayerView()
+    private var motionShownKeys: Set<String> = []
+    private var motionHeldBack: [String: Float] = [:]
 
     private var shm: FMFirmwareShm?
     private let screenScaler = FMScreenScaler()
@@ -507,8 +514,10 @@ final class FMInstrumentSurface: UIView {
     private let keysView = FMLayerView()
     private let screenPixelsView = UIView()
     private let screenMsgView = FMLayerView()
-    private let menuView = FMLayerView()
+    private let menuView = FMOplingView()
     private let overlayView = FMLayerView()
+    private let editUnderView = FMLayerView()   // edit mode's grid, under the controls
+    private let editOverView = FMLayerView()    // edit mode's selection, drag, pill, menu and the toast, over everything
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -521,9 +530,16 @@ final class FMInstrumentSurface: UIView {
         controlsView.paint = { [unowned self] g, r in self.drawControls(g, r) }
         keysView.paint = { [unowned self] g, r in self.drawPlaying(g, r) }
         screenMsgView.paint = { [unowned self] g, r in self.drawScreenMessages(g, r) }
-        menuView.paint = { [unowned self] g, r in self.drawMenu(g, r) }
+        menuView.pressed = { [unowned self] in
+            self.controls.first(where: { $0.type == "menu" }).map { self.state.pressed[$0.id] == true } ?? false
+        }
         overlayView.paint = { [unowned self] g, r in self.drawOverlay(g, r) }
+        insertSubview(editUnderView, at: 0)
+        addSubview(editOverView)
+        editUnderView.paint = { [unowned self] g, r in self.drawEditUnder(g, r) }
+        editOverView.paint = { [unowned self] g, r in self.drawEditOver(g, r) }
         r7.ownerChanged = { [weak self] in self?.controlsView.setNeedsDisplay() }
+        setUpMotion()
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
@@ -548,6 +564,7 @@ final class FMInstrumentSurface: UIView {
         if lj != layoutJson {
             layoutJson = lj
             layoutJsonChanged = true
+            edit.layoutChanged()
             let next = lj.flatMap(FMLayout.parse)
             if next?.id != layout?.id || next == nil {
                 if layout != nil { disposeState() }
@@ -582,13 +599,14 @@ final class FMInstrumentSurface: UIView {
         }
         let phaseChanged = first || newPhase != phase
         phase = newPhase; restarts = newRestarts; slow = newSlow; speed = newSpeed; hint = newHint
-        if newQuarantined != quarantined { quarantined = newQuarantined; menuView.setNeedsDisplay() }
-        if screenText { menuView.setNeedsDisplay() }
+        quarantined = newQuarantined
+        menuView.inputs(phase, quarantined, restarts, slow)
         let editingChanged = first || newEditing != editing
         if newEditing != editing { editing = newEditing; structure = true }
+        if editingChanged && !editing { edit.reset() }
         let pageChanged = newPageProp != pageProp
         pageProp = newPageProp
-        if newAddMenu != addMenuJson { addMenuJson = newAddMenu }
+        if newAddMenu != addMenuJson { addMenuJson = newAddMenu; addMenu = FMAddMenu.parse(newAddMenu); editOverView.setNeedsDisplay() }
         let toastChanged = first || newToastSeq != toastSeq
         toastSeq = newToastSeq
         toastText = newToast
@@ -609,13 +627,14 @@ final class FMInstrumentSurface: UIView {
         }
         if toastChanged {
             toast = toastText
+            if edit.layoutChanged() { structure = true } // a refused edit comes back as a toast: drop its proposal
             toastGen += 1
             let gen = toastGen
-            overlayView.setNeedsDisplay()
+            editOverView.setNeedsDisplay()
             fmAfter(2500) { [weak self] in
                 guard let self, self.toastGen == gen else { return }
                 self.toast = ""
-                self.overlayView.setNeedsDisplay()
+                self.editOverView.setNeedsDisplay()
             }
         }
 
@@ -649,6 +668,7 @@ final class FMInstrumentSurface: UIView {
         // controls stop sending input in edit mode: lift whatever was held when it began
         if editingChanged && editing {
             for id in Array(grabs.keys) { letGo(id) }
+            motionAllOff()
         }
 
         if phaseChanged { phaseEffect() }
@@ -690,6 +710,7 @@ final class FMInstrumentSurface: UIView {
         if disposed { return }
         disposeState()
         disposed = true
+        FMOrientation.hold(nil, window)
         displayLink?.invalidate()
         displayLink = nil
         shm = nil
@@ -699,6 +720,7 @@ final class FMInstrumentSurface: UIView {
         // fingers still down when the surface goes (a sheet over it, another screen): let go of what they hold
         for id in Array(grabs.keys) { letGo(id) }
         for t in toggled() { fire(t, false) }
+        motion.close()
         // a swell leaves the firmware's volume where the last finger was: full again
         if hasVelocityStrip { input(["t": "midi", "bytes": [0xB0, 7, 127]]) }
     }
@@ -707,7 +729,7 @@ final class FMInstrumentSurface: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        for v in [controlsView, keysView, screenPixelsView, screenMsgView, overlayView] { v.frame = bounds }
+        for v in [controlsView, keysView, screenPixelsView, screenMsgView, overlayView, editUnderView, editOverView] { v.frame = bounds }
         if bounds.size != sizeDp {
             sizeDp = bounds.size
             structureChanged()
@@ -718,6 +740,7 @@ final class FMInstrumentSurface: UIView {
         super.didMoveToWindow()
         updateDisplayLink()
         if window != nil { haptics.prepare() }
+        FMOrientation.hold(window != nil && !disposed ? layout?.landscape : nil, window)
     }
 
     private func structureChanged() {
@@ -729,8 +752,9 @@ final class FMInstrumentSurface: UIView {
         let p = layout.pages[fmClamp(state.page, 0, layout.pages.count - 1)]
         page = p
         controls = layout.dock + p.controls
+        if window != nil && !disposed { FMOrientation.hold(layout.landscape, window) }
         let w = sizeDp.width, h = sizeDp.height
-        fitted = w <= 0 ? nil : fmFit(layout, p, w, h)
+        fitted = w <= 0 ? nil : (editing ? fmEditFit(layout, p, w, h) : fmFit(layout, p, w, h))
         // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
         restKeyLeds = controls.contains { c in !PLAYING_TYPES.contains(c.type) && c.bindings.contains { $0.to.isKey } }
         // velocity strips on this layout (they play MIDI notes, so the firmware's OCT doesn't reach them: they keep
@@ -751,15 +775,19 @@ final class FMInstrumentSurface: UIView {
         } else {
             menuView.isHidden = true
         }
+        motionStructureChanged()
         invalidateAll()
     }
 
     private func invalidateAll() {
-        for v in [controlsView, keysView, screenMsgView, menuView, overlayView] { v.setNeedsDisplay() }
+        for v in [controlsView, keysView, screenMsgView, menuView, overlayView, editUnderView, editOverView] { v.setNeedsDisplay() }
     }
 
+    /// A control's rect: in edit mode its proposed cell (FMEditMode.override), and none while it is being dragged
+    /// (Kotlin skips `edit.hidden` controls in every layer; here a nil rect does that for every layer at once).
     func rectOf(_ c: FMControl) -> FMGrid.Rect? {
-        guard let f = fitted, let cell = f.placement.cells[c.id] else { return nil }
+        if edit.hidden(c.id) { return nil }
+        guard let f = fitted, let cell = edit.override(c.id) ?? f.placement.cells[c.id] else { return nil }
         return f.grid.rect(cell)
     }
 
@@ -795,8 +823,8 @@ final class FMInstrumentSurface: UIView {
         heldChanged()
     }
 
-    /// Notes held changed: the Opling bobs (M2 hooks the creature here).
-    private func heldChanged() {}
+    /// Notes held changed: the Opling bobs.
+    private func heldChanged() { menuView.notes(state.held.count) }
 
     private func putValue(_ key: String, _ v: Float) {
         state.values[key] = v
@@ -1150,6 +1178,9 @@ final class FMInstrumentSurface: UIView {
             let n = layout.pages.count
             let i = fmClamp(Int((p.x - r.x) / r.w * CGFloat(n)), 0, n - 1)
             goPage(layout.pages[i].id)
+        // a motion control: hold engages while the finger is on it, latch toggles on a tap
+        case "motion":
+            if c.motionLatch && motion.isEngaged(c.id) { motionOff(c.id) } else { motionOn(c) }
         case "knob", "slider", "xy_pad":
             setPressed(c.id, true)
             setEncoderTurns(c.id, 0)
@@ -1260,6 +1291,8 @@ final class FMInstrumentSurface: UIView {
                     }
                 }
             }
+        case "motion":
+            if !c.motionLatch { motionOff(c.id) }
         case "screen":
             if !g.moved && phase == "safe_mode" { haptic(.virtualKey); emit("run_anyway") }
         default: break
@@ -1287,6 +1320,18 @@ final class FMInstrumentSurface: UIView {
         for t in touches {
             let id = ObjectIdentifier(t)
             let p = t.location(in: self)
+            // edit mode takes the touches; a cancelled finger lifts there (Compose reports it as an up)
+            if editing {
+                if let ctx = editCtx() {
+                    switch t.phase {
+                    case .began: edit.down(ctx, id, p)
+                    case .moved: edit.move(ctx, id, p, now)
+                    case .ended, .cancelled: edit.up(ctx, id, p)
+                    default: break
+                    }
+                }
+                continue
+            }
             switch t.phase {
             case .began: down(id, p, now)
             case .moved: move(id, p)
@@ -1361,7 +1406,8 @@ final class FMInstrumentSurface: UIView {
                 screenLayers[c.id] = l
                 return l
             }()
-            guard let r = rectOf(c) else { l.isHidden = true; continue }
+            // no rect (being dragged in edit mode): drop the layer, since updateScreenContents shows every layer
+            guard let r = rectOf(c) else { l.removeFromSuperlayer(); screenLayers[c.id] = nil; screenFactor[c.id] = nil; continue }
             let b = FMDraw.screenBox(r, c.screenScale, d)
             l.frame = CGRect(x: (b.x * d).rounded() / d, y: (b.y * d).rounded() / d,
                              width: CGFloat(b.sidePx) / d, height: CGFloat(b.sidePx) / d)
@@ -1406,6 +1452,7 @@ final class FMInstrumentSurface: UIView {
             case "knob": dr.knob(c, r, state)
             case "slider": dr.slider(c, r, state)
             case "xy_pad": dr.xy(c, r, state)
+            case "motion": dr.motion(c, r, state, motion.hasAccel)
             case "screen": dr.screenBezel(r, c.screenScale)
             case "label": dr.label(c, r)
             case "page_switcher": dr.switcher(c, r, layout, state.page)
@@ -1444,29 +1491,116 @@ final class FMInstrumentSurface: UIView {
         }
     }
 
-    /// The menu button (M1: a plain circle; the Opling replaces it).
-    private func drawMenu(_ g: CGContext, _ dirty: CGRect) {
-        guard let m = controls.first(where: { $0.type == "menu" }) else { return }
-        let b = menuView.bounds
-        let down = state.pressed[m.id] == true
-        let side = min(48, min(b.width, b.height))
-        fmFillCircle(g, b.width / 2, b.height / 2 + (down ? 2 : 0), side / 2, down ? FMC.selected : FMC.raised)
-    }
-
     /// Fingers, value bubbles and the banner: redrawn on every finger move without touching the controls.
     private func drawOverlay(_ g: CGContext, _ dirty: CGRect) {
-        guard let f = fitted else { drawToast(g); return }
+        guard let f = fitted else { return }
         let dr = FMDraw(g: g, d: displayScale, ink: ink)
         for (id, t) in state.bubbles {
             if let c = controls.first(where: { $0.id == id }), let r = rectOf(c) { dr.bubbleFor(c, r, t) }
         }
         for (_, p) in state.fingers { dr.finger(p) }
         if !f.placement.fits && !editing { dr.banner("Doesn't fit this phone · tap for Classic", bounds.width) }
-        drawToast(g)
     }
 
-    private func drawToast(_ g: CGContext) {
-        // M2: the edit-mode toast (EditMode.kt drawToast)
+    // MARK: edit mode (FMutateEditMode.swift)
+
+    private func editCtx() -> FMEditCtx? {
+        guard let layout, let page, let f = fitted else { return nil }
+        return FMEditCtx(
+            layout: layout, page: page, pageIndex: layout.pages.firstIndex { $0.id == page.id } ?? -1, grid: f.grid,
+            wDp: sizeDp.width, hDp: sizeDp.height, addMenu: addMenu,
+            emit: { [weak self] e, p in self?.emit(e, p) },
+            setPage: { [weak self] i in self?.goPage(layout.pages[i].id) },
+            haptic: { [weak self] k in self?.haptic(k) },
+            frame: { [weak self] in self?.editOverView.setNeedsDisplay() },
+            placed: { [weak self] in self?.structureChanged() }
+        )
+    }
+
+    private func drawEditUnder(_ g: CGContext, _ dirty: CGRect) {
+        if editing, let ctx = editCtx() { edit.drawUnder(g, ctx, editUnderView.bounds) }
+    }
+
+    private func drawEditOver(_ g: CGContext, _ dirty: CGRect) {
+        if editing, let ctx = editCtx() { edit.drawOver(g, ctx) }
+        fmDrawToast(g, ink, toast, bounds.width, bounds.height)
+    }
+}
+
+// MARK: - motion controls (FMutateMotionControl.swift): sensors only while one is engaged; sends go the usual ways
+
+extension FMInstrumentSurface: FMMotionSink {
+    /// The dots' layer, just above the firmware screen's (Kotlin's motion Canvas), redrawn per reading.
+    private func setUpMotion() {
+        insertSubview(motionView, aboveSubview: screenMsgView)
+        motionView.paint = { [unowned self] g, r in self.drawMotion(g, r) }
+        motion.onFrame = { [weak self] in self?.dirtyMotion() }
+        // the app going to the background lets go of all of them (a latch would keep the sensors on)
+        NotificationCenter.default.addObserver(self, selector: #selector(motionBackground),
+                                               name: UIApplication.didEnterBackgroundNotification, object: nil)
+    }
+
+    @objc private func motionBackground() { motionAllOff() }
+
+    /// From structureChanged: a page change (or a new layout) lets go of motion controls no longer shown.
+    private func motionStructureChanged() {
+        motionView.frame = bounds
+        // values a knob or slider on this page shows go into the surface's state as they move (that layer must
+        // show them); the others (a pitch bend, a CC nothing here shows) wait in motionHeldBack until the motion
+        // control lets go, or every reading would redraw the controls layer
+        motionShownKeys = Set(controls.filter { $0.type == "knob" || $0.type == "slider" }.flatMap { $0.bindings.compactMap(\.to.absoluteKey) })
+        let ids = Set(controls.filter { $0.type == "motion" }.map(\.id))
+        // Kotlin's retain(ids), plus the pressed look, which Kotlin leaves on
+        for id in motion.engagedIds where !ids.contains(id) { motionOff(id) }
+        motionView.setNeedsDisplay()
+    }
+
+    private func motionOn(_ c: FMControl) {
+        setPressed(c.id, true)
+        motion.engage(c, fmDisplayRotation(self))
+    }
+
+    private func motionOff(_ id: String) {
+        motion.disengage(id)
+        setPressed(id, false)
+    }
+
+    private func motionAllOff() {
+        for c in controls where c.type == "motion" && motion.isEngaged(c.id) { motionOff(c.id) }
+    }
+
+    private func dirtyMotion() {
+        for c in controls where c.type == "motion" {
+            if let r = rectOf(c) { motionView.setNeedsDisplay(r.cg.insetBy(dx: -4, dy: -4)) }
+        }
+    }
+
+    private func drawMotion(_ g: CGContext, _ dirty: CGRect) {
+        guard fitted != nil else { return }
+        let dr = FMDraw(g: g, d: displayScale, ink: ink)
+        for c in controls where c.type == "motion" {
+            guard let r = rectOf(c), r.cg.insetBy(dx: -4, dy: -4).intersects(dirty) else { continue }
+            dr.motionDot(r, motion.dotX(c.id), motion.dotY(c.id), motion.isEngaged(c.id))
+        }
+    }
+
+    func motionValue(_ c: FMControl, _ t: FMTarget, _ v: Float) -> Bool {
+        guard let key = t.absoluteKey else { return false }
+        if !r7.accept(key, c.id, v, motionHeldBack[key] ?? state.values[key]) { return false }
+        if motionShownKeys.contains(key) { putValue(key, v) } else { motionHeldBack[key] = v }
+        sendValue(c, t, v)
+        return true
+    }
+
+    func motionClicks(_ c: FMControl, _ id: String, _ n: Int) {
+        input(["t": "encoder", "id": id, "clicks": n, "c": c.id])
+    }
+
+    func motionCurrent(_ key: String) -> Float { motionHeldBack[key] ?? state.values[key] ?? 0.5 }
+
+    func motionSettle() {
+        for (k, v) in motionHeldBack { putValue(k, v) }
+        motionHeldBack.removeAll()
     }
 }
 

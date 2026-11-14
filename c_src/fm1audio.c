@@ -480,6 +480,9 @@ static ERL_NIF_TERM nif_stop(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     pthread_mutex_lock(&lock);
     atomic_store(&want_running, 0);
     close_stream_locked();
+#ifdef __APPLE__
+    fm1_session_deactivate();                 /* (nothing plays: other apps' audio gets the session back) */
+#endif
     pthread_mutex_unlock(&lock);
     return atom(env, "ok");
 }

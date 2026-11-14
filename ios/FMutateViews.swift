@@ -11,4 +11,6 @@ public func fmutate_register_views() {
     MobNativeViewRegistry.shared.register("FMutate_InstrumentView") { props, send in
         AnyView(FMInstrumentRepresentable(props: props, send: send))
     }
+    // the I/O screen's audio output (FMutate.RoutePicker, ios/FMutateRoutePicker.swift)
+    MobNativeViewRegistry.shared.register("FMutate_RoutePicker") { _, _ in AnyView(FMRoutePicker()) }
 }
