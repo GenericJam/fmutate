@@ -2,7 +2,9 @@ defmodule FMutate.Library.HTTP do
   @moduledoc """
   HTTPS GETs for the library over OTP's `:httpc` and `:ssl` (both in the Mob release). Android has no
   CA bundle where `:public_key` looks, so on a device the trust store is read from the system's
-  certificates (`/system/etc/security/cacerts`, one PEM per authority); on a host, the OS bundle.
+  certificates (`/system/etc/security/cacerts`, one PEM per authority); on a host, the OS bundle. iOS has none
+  OTP can read, so the app carries Mozilla's (`priv/cacerts.pem`, curl's export of it; refresh it from
+  https://curl.se/ca/cacert.pem).
   """
 
   @android_certs "/system/etc/security/cacerts"
@@ -112,21 +114,23 @@ defmodule FMutate.Library.HTTP do
   end
 
   defp load_cacerts do
-    if File.dir?(@android_certs) do
-      for file <- File.ls!(@android_certs),
-          {:ok, pem} = File.read(Path.join(@android_certs, file)),
-          {:Certificate, der, _} <- :public_key.pem_decode(pem),
-          do: der
-    else
-      :public_key.cacerts_get()
-    end
+    if File.dir?(@android_certs),
+      do: Enum.flat_map(File.ls!(@android_certs), &pem_certs(Path.join(@android_certs, &1))),
+      else: os_cacerts()
   rescue
-    # iOS: OTP finds no system trust store there (pubkey_os_cacerts: eopnotsupp). Requests then fail their TLS
-    # check instead of crashing the library's task (and the app's start with it); a bundled CA file is phase 3
-    # of docs/decisions/2026-11-13-ios-port.md.
+    # (requests then fail their TLS check instead of crashing the library's task, and the app's start with it)
     e ->
       require Logger
       Logger.warning("library: no CA certificates (#{Exception.message(e)}): HTTPS requests will fail")
       []
   end
+
+  # iOS: OTP finds no system trust store there (pubkey_os_cacerts: eopnotsupp)
+  defp os_cacerts do
+    :public_key.cacerts_get()
+  rescue
+    _ -> pem_certs(FMutate.Paths.priv("cacerts.pem"))
+  end
+
+  defp pem_certs(path), do: for({:Certificate, der, _} <- :public_key.pem_decode(File.read!(path)), do: der)
 end

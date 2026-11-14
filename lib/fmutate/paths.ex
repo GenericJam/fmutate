@@ -19,6 +19,14 @@ defmodule FMutate.Paths do
       Path.join(System.tmp_dir!(), "fmutate")
   end
 
+  @doc "A file or directory of the app's `priv/` (on a device Mob pushes priv/ next to the BEAMs)."
+  def priv(name) do
+    case System.get_env("MOB_BEAMS_DIR") do
+      nil -> Path.join(to_string(:code.priv_dir(:fmutate_app)), name)
+      dir -> Path.join([dir, "priv", name])
+    end
+  end
+
   @doc "True when engines run on threads of the app (iOS) instead of as executables of their own."
   def inproc?, do: FMutate.EngineNif.available?()
 
