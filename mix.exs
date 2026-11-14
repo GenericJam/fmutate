@@ -35,8 +35,8 @@ defmodule FmutateApp.MixProject do
       # updates (FMutate.Updates): the Elixir code over the air from GitHub Pages (static endpoints, mob_deliver#6),
       # and the APK from GitHub Releases
       {:mob_deliver, github: "GenericJam/mob_deliver", ref: "c461e5b"},
-      {:mob_app_update, path: "../../mob_app_update"},
-      # tools/ota_publish.exs: builds and signs the OTA publish (dating after the replaced one: mob_deliver_server#2)
+      {:mob_app_update, github: "GenericJam/mob_app_update", ref: "9a1b98113039150872944764c36fb1c3c2b50a31"},
+      # tools/release.exs ota: builds and signs the OTA publish (dating after the replaced one: mob_deliver_server#2)
       {:mob_deliver_server, github: "GenericJam/mob_deliver_server", ref: "31256f2", only: :dev, runtime: false},
       # Code quality — Credo + ex_slop (catches AI-generated patterns
       # like blanket rescue, narrator docs, redundant Enum chains, etc).
