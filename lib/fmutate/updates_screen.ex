@@ -89,12 +89,15 @@ defmodule FMutate.UpdatesScreen do
   defp mb(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
 
   defp error_label({:transport, _}), do: "no connection to GitHub."
-  defp error_label({:http_status, 403}), do: "GitHub's rate limit; try again in an hour."
+  defp error_label({:rate_limited, _reset}), do: "GitHub's rate limit; try again in an hour."
   defp error_label({:sha256_mismatch, _, _}), do: "the download was damaged (checksum mismatch); try again."
-  defp error_label({:signature_mismatch, _}), do: "that APK isn't signed with FMutate's key; not installed."
-  defp error_label({:not_an_update, _}), do: "that APK isn't newer than this one."
+  defp error_label({:size_mismatch, _, _}), do: "the download was cut short; try again."
+  defp error_label({:signature_mismatch, _, _}), do: "that APK isn't signed with FMutate's key; not installed."
+  defp error_label({:not_an_update, _, _}), do: "that APK isn't newer than this one."
   defp error_label({:install_failed, _status, message}), do: "Android didn't install it (#{message})."
-  defp error_label(:no_update_metadata), do: "the latest release has no update information."
+  defp error_label(reason) when reason in [:no_release, :no_update_metadata],
+    do: "the latest release has no update information."
+
   defp error_label(reason), do: inspect(reason)
 
   ## A newer release: notes and Install
