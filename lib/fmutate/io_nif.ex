@@ -34,4 +34,10 @@ defmodule FMutate.IONif do
 
   @doc "A JSON command to the Kotlin side (`FMutateIO.call`): `{:ok, json_reply}` or `{:error, reason}`."
   def call(_json), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  What learned MIDI controls show on the instrument surface (`FMutateIO.surface`): text lines as
+  `FMutate.MIDI.Controls.surface_text/1` makes them; `:ok` or `{:error, reason}`.
+  """
+  def surface(_text), do: :erlang.nif_error(:nif_not_loaded)
 end

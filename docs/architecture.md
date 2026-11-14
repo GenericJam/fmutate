@@ -150,6 +150,27 @@ flowchart LR
   binding sheet with the reason and "Add here" greys the control on a phone without an accelerometer. Its streams
   deliver each reading as a message to an Elixir process, which is the wrong place for 50 readings a second that
   only the surface needs.
+- **MIDI learn** (a layout control's `midi_in`, per gesture, schema-validated, saved with the layout so per
+  firmware). The binding sheet's "Learn from MIDI" arms `FMutate.MIDI.learn/2`; the next suitable message (from
+  any source, not played) is stored with its type, channel, number and device ("From any device" drops the
+  device). A CC is listened to for a short window so an endless encoder's coding is recognised (absolute, 64 ± n,
+  two's complement, sign bit; changeable in the sheet). At play time `FMutate.MIDI.Controls` (pure) drives the
+  control's bindings as a touch would: presses momentary or toggle, absolute values through rule 7 with the
+  hardware control as its own participant (pickup), encoders get clicks from the change (a full sweep = a 200 pt
+  drag, 33 clicks at 6 pt per click). A learned message skips its default path, so a learned pad stops playing
+  its note; matches include the channel, so keys on another channel still play. I/O lists a device's learned
+  controls on the current layout with Clear.
+- **Automap** (`FMutate.MIDI.Automap`, pure; device-wide, every layout, on by default per device and off for the
+  virtual port). Known controllers by name (MPK mini mk3: knobs CC 70–77 ch 1, pads ch 10 notes 36–51; MPK mini
+  mk2: knobs CC 1–8); any other controller by first touch (first CC moved = knob 1, …; first note on channel 10 =
+  pad 1, …), kept per device name until Reset in I/O. Knobs 1–4 → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO
+  (clicks), 8 → MASTER (rule 7 pickup); pads 1–14 → FX, SEL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY,
+  REC, OCT−, OCT+ (momentary); pads 15–16 play notes. Learned beats automap beats the default path. A source's
+  channel filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned.
+- **What MIDI-driven controls show** never goes through the instrument screen's process: `FMutate.MIDI` sends text
+  lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
+  display frame. iOS has no such channel yet: there the inputs reach the firmware but the on-screen control
+  doesn't move; the Swift surface needs the same queue (`FMutate.MIDI`'s `:surface` option takes the function).
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
@@ -265,7 +286,8 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.IO` | MIDI devices (list, hot-plug, open/close, reopen by name), Bluetooth MIDI scan/connect, the virtual ports' clients, audio outputs (one per app) |
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
-| `FMutate.MIDI` (+ `FMutate.MIDI.Map`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, notes → keys, bend if `caps.pitch_bend`), clock follow/send/off |
+| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, the rule 7 arbiter, clock follow/send/off |
+| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` | what learned and automapped controls show on the surface, queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
 

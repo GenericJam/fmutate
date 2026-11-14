@@ -71,7 +71,10 @@ defmodule FMutate.Layouts do
   @doc "Whether the player has a saved layout for this firmware (else the instrument shows classic)."
   def saved?(instance, firmware_id), do: File.exists?(Paths.layout(instance, firmware_id))
 
-  @doc "Validate and save the current layout of an instance for a firmware."
+  @doc """
+  Validate and save the current layout of an instance for a firmware. The instance's `FMutate.MIDI` takes
+  its learned MIDI controls from it.
+  """
   @spec save(String.t(), String.t(), layout) :: :ok | {:error, [String.t()]}
   def save(instance, firmware_id, layout) do
     layout = for_this(layout, firmware_id)
@@ -81,13 +84,16 @@ defmodule FMutate.Layouts do
       tmp = path <> ".tmp"
       File.write!(tmp, encode(layout))
       File.rename!(tmp, path)
+      FMutate.MIDI.layout_saved(instance, firmware_id, layout)
     end
   end
 
   @doc "Forget the saved layout: the classic one again. Returns it."
   def reset(instance, firmware_id) do
     _ = File.rm(Paths.layout(instance, firmware_id))
-    current(instance, firmware_id)
+    layout = current(instance, firmware_id)
+    FMutate.MIDI.layout_saved(instance, firmware_id, layout)
+    layout
   end
 
   @doc "A copy of a preset for a firmware, ready to be the current layout."

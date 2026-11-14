@@ -8,12 +8,15 @@ defmodule FMutate.LayoutEdit do
     * positions are whole cells of the layout's own grid (`grid.cols` × `grid.rows`) and stay inside it;
     * nothing overlaps: page controls not each other nor the dock (the dock is on every page);
     * no control is smaller than its minimum (`min_size/1`), resizing included;
-    * exactly one `menu` (the creature), in the dock, 1×1: movable, never deleted or resized.
+    * exactly one `menu` (the creature), in the dock, 1×1: movable, never deleted or resized;
+    * learned MIDI inputs (`midi_in`, `FMutate.MIDI.Learn`): one per gesture the control has, and no two
+      in the layout take the same messages (one hardware control drives one layout control).
 
   Edits return `{:ok, layout}` or `{:error, message}`; the message is for the player (a toast).
   """
 
   alias FMutate.Inputs
+  alias FMutate.MIDI.Learn
 
   @type layout :: map()
   @type cell :: %{required(String.t()) => non_neg_integer()}
@@ -374,6 +377,129 @@ defmodule FMutate.LayoutEdit do
   def default_on(%{"type" => type}) when type in ["xy_pad", "motion"], do: "x"
   def default_on(_), do: "press"
 
+  ## Learned MIDI inputs (MIDI learn)
+
+  @doc """
+  The gestures a control (or pad `sub` of a pad grid) can learn a MIDI input for: `["value"]` (knob,
+  slider), `["x", "y"]` (XY pad), `["press"]` (button, key, label, a pad), else none.
+  """
+  def gestures(%{"type" => "pad_grid"}, sub) when is_integer(sub), do: ["press"]
+  def gestures(%{"type" => t}, _sub) when t in ["knob", "slider"], do: ["value"]
+  def gestures(%{"type" => "xy_pad"}, _sub), do: ["x", "y"]
+  def gestures(%{"type" => t}, _sub) when t in ["button", "key", "label"], do: ["press"]
+  def gestures(_c, _sub), do: []
+
+  @doc "The learned MIDI inputs of a control (or of pad `sub`)."
+  def midi_in(layout, id, sub \\ nil) do
+    case find(layout, id) do
+      {_, c} -> c |> midi_lists() |> Map.get(sub, [])
+      nil -> []
+    end
+  end
+
+  @doc "Every learned MIDI input of a layout as `{control, sub, midi_in}` (`sub`: a pad's index or nil)."
+  def midi_ins(layout) do
+    for c <- all_controls(layout), {sub, list} <- Enum.sort(midi_lists(c)), m <- list, do: {c, sub, m}
+  end
+
+  @doc """
+  The controls (and pads) other than `id`/`sub` whose learned inputs `midi_in` would take over, as
+  `{control, sub, their_midi_in}`.
+  """
+  def midi_holders(layout, id, sub, midi_in) do
+    for {c, s, m} <- midi_ins(layout), Learn.overlap?(m, midi_in), not (c["id"] == id and s == sub), do: {c, s, m}
+  end
+
+  @doc """
+  Learn `midi_in` for its gesture on a control (or pad `sub`): it replaces that gesture's input, and is
+  taken away from every other control, pad or gesture that had the same messages.
+  """
+  @spec set_midi_in(layout, String.t(), integer | nil, map) :: result
+  def set_midi_in(layout, id, sub, midi_in) do
+    with {:ok, _where, c} <- fetch(layout, id) do
+      if midi_in["on"] in gestures(c, sub) do
+        layout = map_midi(layout, fn _c, _s, list -> Enum.reject(list, &Learn.overlap?(&1, midi_in)) end)
+
+        {:ok,
+         map_midi(layout, fn c, s, list ->
+           if c["id"] == id and s == sub, do: Enum.reject(list, &(&1["on"] == midi_in["on"])) ++ [midi_in], else: list
+         end)}
+      else
+        {:error, "This control can't learn that"}
+      end
+    end
+  end
+
+  @doc "Forget the learned input of one gesture of a control (or pad `sub`)."
+  @spec clear_midi_in(layout, String.t(), integer | nil, String.t()) :: result
+  def clear_midi_in(layout, id, sub, on) do
+    with {:ok, _where, _c} <- fetch(layout, id) do
+      {:ok,
+       map_midi(layout, fn c, s, list ->
+         if c["id"] == id and s == sub, do: Enum.reject(list, &(&1["on"] == on)), else: list
+       end)}
+    end
+  end
+
+  @doc "Forget every input learned from one device (by name; any-device inputs stay)."
+  @spec clear_midi_device(layout, String.t()) :: {:ok, layout}
+  def clear_midi_device(layout, device),
+    do: {:ok, map_midi(layout, fn _c, _s, list -> Enum.reject(list, &(&1["device"] == device)) end)}
+
+  # %{nil => control's list, pad index => pad's list}, only those present
+  defp midi_lists(%{"type" => "pad_grid"} = c) do
+    pads = get_in(c, ["pad_grid", "pads"]) || []
+    own = if c["midi_in"], do: %{nil => c["midi_in"]}, else: %{}
+
+    pads
+    |> Enum.with_index()
+    |> Enum.reduce(own, fn {p, i}, acc -> if p["midi_in"], do: Map.put(acc, i, p["midi_in"]), else: acc end)
+  end
+
+  defp midi_lists(c), do: if(c["midi_in"], do: %{nil => c["midi_in"]}, else: %{})
+
+  # fun.(control, sub, list) → new list for every control and pad; an empty list drops the key
+  defp map_midi(layout, fun) do
+    put_list = fn obj, list -> if list == [], do: Map.delete(obj, "midi_in"), else: Map.put(obj, "midi_in", list) end
+
+    each = fn c ->
+      c = put_list.(c, fun.(c, nil, c["midi_in"] || []))
+
+      case {c["type"], get_in(c, ["pad_grid", "pads"])} do
+        {"pad_grid", pads} when is_list(pads) ->
+          pads = pads |> Enum.with_index() |> Enum.map(fn {p, i} -> put_list.(p, fun.(c, i, p["midi_in"] || [])) end)
+          put_in(c, ["pad_grid", "pads"], pads)
+
+        _ ->
+          c
+      end
+    end
+
+    layout
+    |> Map.put("dock", Enum.map(dock(layout), each))
+    |> Map.update!("pages", fn pages -> Enum.map(pages, &Map.update(&1, "controls", [], fn cs -> Enum.map(cs, each) end)) end)
+  end
+
+  defp all_controls(layout), do: dock(layout) ++ Enum.flat_map(layout["pages"], &(&1["controls"] || []))
+
+  defp midi_errors(layout) do
+    ins = midi_ins(layout)
+
+    wrong =
+      for {c, sub, m} <- ins, m["on"] not in gestures(c, sub),
+          do: "#{c["id"]}#{if sub, do: " pad #{sub}"} can't learn MIDI for #{m["on"]}"
+
+    twice =
+      for {{id, sub, on}, n} <- Enum.frequencies(for {c, s, m} <- ins, do: {c["id"], s, m["on"]}), n > 1,
+          do: "#{id}#{if sub, do: " pad #{sub}"} has two MIDI inputs for #{on}"
+
+    shared =
+      for {{a, sa, ma}, i} <- Enum.with_index(ins), {b, sb, mb} <- Enum.drop(ins, i + 1), Learn.overlap?(ma, mb),
+          do: "#{Learn.message(ma)} drives both #{a["id"]}#{if sa, do: " pad #{sa}"} and #{b["id"]}#{if sb, do: " pad #{sb}"}"
+
+    wrong ++ twice ++ shared
+  end
+
   ## Pages
 
   @doc "Append an empty page; returns `{:ok, layout, page_id}`."
@@ -408,11 +534,20 @@ defmodule FMutate.LayoutEdit do
 
         case fit_in(acc, page["id"], c, scale(c["at"], sx, sy)) do
           nil -> {acc, dropped + 1}
-          at -> {insert(acc, page["id"], %{c | "id" => id, "at" => at}), dropped}
+          at -> {insert(acc, page["id"], %{c | "id" => id, "at" => at}) |> free_midi(id), dropped}
         end
       end)
 
     {:ok, layout, page["id"], dropped}
+  end
+
+  # a pasted control keeps a learned MIDI input only if no other control of the layout already has it
+  defp free_midi(layout, id) do
+    {_, c} = find(layout, id)
+
+    for {sub, list} <- midi_lists(c), m <- list, midi_holders(layout, id, sub, m) != [], reduce: layout do
+      acc -> elem(clear_midi_in(acc, id, sub, m["on"]), 1)
+    end
   end
 
   defp fit_in(layout, page_id, c, at) do
@@ -599,7 +734,7 @@ defmodule FMutate.LayoutEdit do
         size ++ outside ++ overlap
       end)
 
-    Enum.uniq(menu_errors ++ dup_errors ++ page_errors)
+    Enum.uniq(menu_errors ++ dup_errors ++ page_errors ++ midi_errors(layout))
   end
 
   ## Helpers
