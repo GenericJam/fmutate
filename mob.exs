@@ -48,12 +48,15 @@ config :mob_dev,
 # here to deactivate a plugin without removing the dep; remove both to drop it
 # entirely (the native build shrinks and a clean rebuild prunes its artifacts).
 # mob_sensors (a signed Hex release): the editor's list of motion sensors on this phone (motion controls).
-config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors]
+# mob_deliver and mob_app_update: FMutate.Updates (the code over the air, the APK from GitHub Releases;
+# mob_app_update adds REQUEST_INSTALL_PACKAGES, and installs only after the user confirms Android's dialog).
+config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors, :mob_deliver, :mob_app_update]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
-# Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text). A git
-# checkout has no signature (CI signs releases), so they are acknowledged here.
-config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_background]
+# Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text);
+# mob_deliver for static endpoints (mob_deliver#6); mob_app_update has no release yet. A git checkout has no
+# signature (CI signs releases), so they are acknowledged here.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_background, :mob_deliver, :mob_app_update]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an
