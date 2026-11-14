@@ -34,7 +34,7 @@ defmodule FmutateApp.MixProject do
       {:mob_background, github: "GenericJam/mob_background", ref: "497e915b1d4f0887fc10c9a5130655b95f0f977e"},
       # pairing sibling apps (Humdinger, Magpie) by QR code or typed code, and their TLS distribution
       # (FMutate.Pairing, the Pair screen); pure Elixir, no native code
-      {:mob_pair, github: "GenericJam/mob_pair", ref: "9cad4c97a354c05f55b7784d96054c7310543045"},
+      {:mob_pair, github: "GenericJam/mob_pair", ref: "c44aede8009c85c490caddf1972f456aff95c7ae"},
       # the Pair screen's QR code (pure Elixir)
       {:eqrcode, "~> 0.2.1"},
       # Code quality — Credo + ex_slop (catches AI-generated patterns
