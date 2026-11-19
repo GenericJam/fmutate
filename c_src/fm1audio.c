@@ -33,7 +33,10 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifdef __APPLE__
+/* The backend: RemoteIO on Apple, AAudio elsewhere. FM1AUDIO_AAUDIO builds the AAudio side on a Mac (the tests:
+ * test/fmutate/audio_nif_test.exs). */
+#if defined(__APPLE__) && !defined(FM1AUDIO_AAUDIO)
+#define FM1AUDIO_REMOTEIO 1
 #include <AudioToolbox/AudioToolbox.h>
 #else
 #include <aaudio/AAudio.h>
@@ -175,37 +178,50 @@ static void stream_info_locked(struct out_info *o);
 static const char *result_text(int res);
 static int load_backend(void);
 
-/* Close the stream and, for a reopen, open it again if wanted, 100 ms later on a helper thread. Only the latest
- * request acts (an interruption's close must not land after its end's reopen). arg: generation * 2 + reopen.
- * pending_close: the latest request is a close not yet done (nif_start does it first, then opens). */
-static _Atomic intptr_t helper_gen;
-static _Atomic int pending_close;
+/* Close the stream and, for a reopen, open it again if wanted, 100 ms later, on one helper thread that runs for
+ * the app's life (started at the first request, tried again at the next if it couldn't start). Requests don't
+ * queue: the latest one replaces any not yet done, so an interruption's close never lands after its end's reopen.
+ * nif_start does a request still waiting (close, then open) before it opens. */
+enum { REQ_NONE, REQ_CLOSE, REQ_REOPEN };
+static _Atomic int pending_req;               /* set under helper_lock; taken (exchanged) under lock */
+static pthread_mutex_t helper_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t helper_cond = PTHREAD_COND_INITIALIZER;
+static int helper_up;                         /* (helper_lock) */
 
-static void *reopen_thread(void *arg)
+static void *helper_main(void *arg)
 {
-    intptr_t a = (intptr_t)arg;
-    usleep(100000);
-    pthread_mutex_lock(&lock);
-    if (a / 2 == atomic_load(&helper_gen)) {
-        atomic_store(&pending_close, 0);
-        close_stream_locked();
-        if ((a & 1) && atomic_load(&want_running)) open_stream_locked();
+    (void)arg;
+    for (;;) {
+        int req;
+        pthread_mutex_lock(&helper_lock);
+        while (atomic_load(&pending_req) == REQ_NONE) pthread_cond_wait(&helper_cond, &helper_lock);
+        pthread_mutex_unlock(&helper_lock);
+        usleep(100000);                       /* (a burst of events settles: the latest acts) */
+        pthread_mutex_lock(&lock);
+        req = atomic_exchange(&pending_req, REQ_NONE);
+        if (req != REQ_NONE) close_stream_locked();
+        if (req == REQ_REOPEN && atomic_load(&want_running)) open_stream_locked();
+        pthread_mutex_unlock(&lock);
     }
-    pthread_mutex_unlock(&lock);
     return NULL;
 }
 
-static void on_helper_thread(int reopen)
+static void request(int req)
 {
-    pthread_t t;
-    intptr_t gen = atomic_fetch_add(&helper_gen, 1) + 1;
-    atomic_store(&pending_close, !reopen);
-    if (pthread_create(&t, NULL, reopen_thread, (void *)(gen * 2 + (reopen ? 1 : 0))) == 0) pthread_detach(t);
+    pthread_mutex_lock(&helper_lock);
+    atomic_store(&pending_req, req);
+    if (!helper_up) {
+        pthread_t t;
+        helper_up = pthread_create(&t, NULL, helper_main, NULL) == 0;
+        if (helper_up) pthread_detach(t);
+    }
+    pthread_cond_signal(&helper_cond);
+    pthread_mutex_unlock(&helper_lock);
 }
 
-static void reopen_later(void) { on_helper_thread(1); }
+static void reopen_later(void) { request(REQ_REOPEN); }
 
-#ifdef __APPLE__
+#ifdef FM1AUDIO_REMOTEIO
 /* ---- iOS: RemoteIO, the session in ios/FMutateAudioSession.swift */
 
 /* event kinds the session reports: 1 an interruption began, 2 it ended, 3 the route changed the rate, 4 the media
@@ -225,7 +241,7 @@ static void on_session_event(int32_t kind)
     /* An interruption stops the unit: close it, so that a later start (FMutate.Background when the app comes back,
      * since iOS doesn't always report an interruption's end) opens it again. Its end, a new rate, a reset reopen
      * it. want_running stays as it is. */
-    on_helper_thread(kind != 1);
+    request(kind == 1 ? REQ_CLOSE : REQ_REOPEN);
 }
 
 static OSStatus on_render(void *ref, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus,
@@ -247,6 +263,7 @@ static int load_backend(void) { return 0; }
 
 static int stream_open(void) { return unit != NULL; }
 
+/* (any failure once the session is active undoes all of it: nothing plays, so other apps' audio gets it back) */
 static int open_stream_locked(void)
 {
     AudioComponentDescription d = {kAudioUnitType_Output, kAudioUnitSubType_RemoteIO, kAudioUnitManufacturer_Apple, 0, 0};
@@ -256,9 +273,10 @@ static int open_stream_locked(void)
     UInt32 max_frames = 4096;                 /* (iOS renders 4096 frames at a time with the screen locked) */
     double rate = 48000, io_s = 0;
     OSStatus res;
+    int initialized = 0;
     if (fm1_session_activate(&rate, &io_s, on_session_event)) return -1;
-    if (!(comp = AudioComponentFindNext(NULL, &d))) return -2;
-    if ((res = AudioComponentInstanceNew(comp, &unit))) { unit = NULL; return (int)res; }
+    if (!(comp = AudioComponentFindNext(NULL, &d))) { res = -2; goto fail; }
+    if ((res = AudioComponentInstanceNew(comp, &unit))) { unit = NULL; goto fail; }
     memset(&f, 0, sizeof f);
     f.mSampleRate = rate;                     /* the hardware's own rate: no resampling in the unit */
     f.mFormatID = kAudioFormatLinearPCM;
@@ -273,23 +291,25 @@ static int open_stream_locked(void)
                                     &max_frames, sizeof max_frames)) ||
         (res = AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb,
                                     sizeof cb)) ||
-        (res = AudioUnitInitialize(unit))) {
-        AudioComponentInstanceDispose(unit);
-        unit = NULL;
-        return (int)res;
-    }
+        (res = AudioUnitInitialize(unit)))
+        goto fail;
+    initialized = 1;
     dev_rate = (int32_t)lround(rate);
     rs_pos = 0;
     rs_prev[0] = rs_prev[1] = 0;
     last_sample_time = -1;
     atomic_store(&burst_frames, (int)lround(io_s * rate));
-    if ((res = AudioOutputUnitStart(unit))) {
-        AudioUnitUninitialize(unit);
+    if ((res = AudioOutputUnitStart(unit))) goto fail;
+    return 0;
+
+fail:
+    if (unit) {
+        if (initialized) AudioUnitUninitialize(unit);
         AudioComponentInstanceDispose(unit);
         unit = NULL;
-        return (int)res;
     }
-    return 0;
+    fm1_session_deactivate();
+    return (int)res;
 }
 
 static void close_stream_locked(void)
@@ -319,8 +339,8 @@ static const char *result_text(int res)
 
 #else
 /* ---- Android: AAudio, loaded at runtime */
-static struct {
-    void *h;
+static struct aaudio_api {
+    void *h;                                  /* (set only with every function below: the API is all there) */
     aaudio_result_t (*createStreamBuilder)(AAudioStreamBuilder **);
     void (*setFormat)(AAudioStreamBuilder *, aaudio_format_t);
     void (*setChannelCount)(AAudioStreamBuilder *, int32_t);
@@ -350,12 +370,13 @@ static struct {
 
 static AAudioStream *stream;
 
+/* (lock held) */
 static int load_backend(void)
 {
+    struct aaudio_api a;
     if (A.h) return 0;
-    A.h = dlopen("libaaudio.so", RTLD_NOW);
-    if (!A.h) return -1;
-#define S(f, n) if (!(*(void **)&A.f = dlsym(A.h, n))) return -1
+    if (!(a.h = dlopen("libaaudio.so", RTLD_NOW))) return -1;
+#define S(f, n) if (!(*(void **)&a.f = dlsym(a.h, n))) goto fail
     S(createStreamBuilder, "AAudio_createStreamBuilder");
     S(setFormat, "AAudioStreamBuilder_setFormat");
     S(setChannelCount, "AAudioStreamBuilder_setChannelCount");
@@ -382,7 +403,11 @@ static int load_backend(void)
     S(getDeviceId, "AAudioStream_getDeviceId");
     S(convertResultToText, "AAudio_convertResultToText");
 #undef S
+    A = a;
     return 0;
+fail:                                         /* (a library without one of them: as if there were none) */
+    dlclose(a.h);
+    return -1;
 }
 
 static aaudio_data_callback_result_t on_data(AAudioStream *st, void *user, void *audio, int32_t n)
@@ -481,13 +506,14 @@ static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
 {
     int res = 0;
     (void)argc; (void)argv;
-    if (load_backend()) return error_text(env, "libaaudio.so not available", 0);
     pthread_mutex_lock(&lock);
-    atomic_store(&want_running, 1);
-    if (atomic_exchange(&pending_close, 0)) { /* (an interruption's close still queued: do it now, then open) */
-        atomic_fetch_add(&helper_gen, 1);
-        close_stream_locked();
+    if (load_backend()) {
+        pthread_mutex_unlock(&lock);
+        return error_text(env, "libaaudio.so not available", 0);
     }
+    atomic_store(&want_running, 1);
+    if (atomic_exchange(&pending_req, REQ_NONE) != REQ_NONE)   /* (a request still waiting: its close now, then open) */
+        close_stream_locked();
     if (!stream_open()) res = open_stream_locked();
     pthread_mutex_unlock(&lock);
     return res == 0 ? atom(env, "ok") : error_text(env, "open failed", res);
@@ -499,7 +525,7 @@ static ERL_NIF_TERM nif_stop(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     pthread_mutex_lock(&lock);
     atomic_store(&want_running, 0);
     close_stream_locked();
-#ifdef __APPLE__
+#ifdef FM1AUDIO_REMOTEIO
     fm1_session_deactivate();                 /* (nothing plays: other apps' audio gets the session back) */
 #endif
     pthread_mutex_unlock(&lock);

@@ -12,30 +12,52 @@ import Foundation
 
 public typealias FM1SessionEvent = @convention(c) (Int32) -> Void
 
+// Activation runs on the mixer's threads (a NIF, its helper), notifications arrive on the poster's thread: the
+// state is read and written under `lock`, and the callback is called outside it (it may activate again).
 private final class FM1Session {
     static let shared = FM1Session()
-    var onEvent: FM1SessionEvent?
-    var observing = false
-    var rate: Double = 0
+    private let lock = NSLock()
+    private var onEvent: FM1SessionEvent?
+    private var observing = false
+    private var rate: Double = 0
 
-    func observe() {
-        guard !observing else { return }
+    func activated(rate: Double, onEvent: FM1SessionEvent?) {
+        lock.lock()
+        self.onEvent = onEvent
+        self.rate = rate
+        let first = !observing
         observing = true
+        lock.unlock()
+        if first { observe() }
+    }
+
+    private func snapshot() -> (FM1SessionEvent?, Double) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (onEvent, rate)
+    }
+
+    private func send(_ kind: Int32) {
+        if let f = snapshot().0 { f(kind) }
+    }
+
+    private func observe() {
         let nc = NotificationCenter.default
         let session = AVAudioSession.sharedInstance()
         nc.addObserver(forName: AVAudioSession.interruptionNotification, object: session, queue: nil) { [weak self] n in
             guard let raw = n.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: raw) else { return }
-            self?.onEvent?(type == .began ? 1 : 2)
+            self?.send(type == .began ? 1 : 2)
         }
         nc.addObserver(forName: AVAudioSession.routeChangeNotification, object: session, queue: nil) { [weak self] _ in
             guard let self else { return }
             // (the unit converts from its rate to the hardware's itself; a new rate only costs latency, so it is
             // reopened at the new one)
-            if AVAudioSession.sharedInstance().sampleRate != self.rate { self.onEvent?(3) }
+            let (f, rate) = self.snapshot()
+            if AVAudioSession.sharedInstance().sampleRate != rate { f?(3) }
         }
         nc.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: session, queue: nil) { [weak self] _ in
-            self?.onEvent?(4)
+            self?.send(4)
         }
     }
 }
@@ -53,10 +75,7 @@ public func fm1_session_activate(_ rate: UnsafeMutablePointer<Double>, _ ioBuffe
         NSLog("[fm1audio] audio session: \(error)")
         return -1
     }
-    let session = FM1Session.shared
-    session.onEvent = onEvent
-    session.rate = s.sampleRate
-    session.observe()
+    FM1Session.shared.activated(rate: s.sampleRate, onEvent: onEvent)
     rate.pointee = s.sampleRate
     ioBuffer.pointee = s.ioBufferDuration
     NSLog("[fm1audio] session: %.0f Hz, IO buffer %.1f ms, output latency %.1f ms",
