@@ -8,7 +8,8 @@ defmodule FMutate.PairScreen do
   name is only a claim (any app can send any name), so the sheet says so: "An app on this phone says it is
   Humdinger" / "An app on another phone says it is Humdinger". A second app asking while the sheet shows is
   refused at once, so Allow answers the app the sheet names. Allow pairs it (`FMutate.Pairing`,
-  `FMutate.Dist`): it connects and shows up in I/O, where Disconnect unpairs it.
+  `FMutate.Dist`): it connects and shows up in I/O, where Disconnect unpairs it. The screen says so only once
+  the pairing is saved (`{:pairing, {:paired, _}}`); without that within 5 s it says the app isn't paired.
 
   Copy code and Copy link (the link to 127.0.0.1, for an app on this phone) put the secret on the clipboard,
   which other apps can read. On Android 9 and older any app in the background can watch the clipboard, so
@@ -27,6 +28,7 @@ defmodule FMutate.PairScreen do
   alias FMutate.{Pairing, Style}
 
   @tick_ms 1_000
+  @pair_result_ms 5_000
   # QR: the largest whole module size that fits, and the quiet zone (4 modules, ISO 18004)
   @qr_target 232
   @quiet 4
@@ -38,7 +40,13 @@ defmodule FMutate.PairScreen do
 
     {:ok,
      socket
-     |> Mob.Socket.assign(request: nil, note: nil, clipboard: clipboard, copied: nil)
+     |> Mob.Socket.assign(
+       request: nil,
+       awaiting: nil,
+       note: nil,
+       clipboard: clipboard,
+       copied: nil
+     )
      |> open()}
   end
 
@@ -343,15 +351,36 @@ defmodule FMutate.PairScreen do
     {:noreply, socket |> copy(info.local_link) |> Mob.Socket.assign(:note, note)}
   end
 
-  def handle_info({:tap, {:decide, decision}}, %{assigns: %{request: {ref, request}}} = socket) do
-    _ = Pairing.decide(ref, decision)
+  # Success is shown only when `{:pairing, {:paired, _}}` arrives: MobPair.Pairings sends it after the pairing
+  # is saved. Its ETS table holds the pairing (or the one it replaces) while the save runs, so it can't say.
+  def handle_info({:tap, {:decide, :allow}}, %{assigns: %{request: {ref, request}}} = socket) do
+    case Pairing.decide(ref, :allow) do
+      :ok ->
+        token = make_ref()
+        Process.send_after(self(), {:pair_result_timeout, token}, @pair_result_ms)
 
-    note =
-      if decision == :allow,
-        do: {:ok, "#{request.app_name} is paired. It connects now; Disconnect it in I/O."},
-        else: {:warn, "#{request.app_name} wasn't allowed."}
+        {:noreply,
+         Mob.Socket.assign(socket,
+           request: nil,
+           awaiting: {token, request.node, request.app_name},
+           note: {:warn, "Pairing #{request.app_name}…"}
+         )}
 
-    {:noreply, socket |> Mob.Socket.assign(request: nil, note: note) |> refresh()}
+      {:error, _} ->
+        {:noreply,
+         socket
+         |> Mob.Socket.assign(request: nil, note: unconfirmed_note(request.app_name))
+         |> refresh()}
+    end
+  end
+
+  def handle_info({:tap, {:decide, :deny}}, %{assigns: %{request: {ref, request}}} = socket) do
+    _ = Pairing.decide(ref, :deny)
+
+    {:noreply,
+     socket
+     |> Mob.Socket.assign(request: nil, note: {:warn, "#{request.app_name} wasn't allowed."})
+     |> refresh()}
   end
 
   # the sheet swiped away: the same as Don't allow, so the app isn't left waiting
@@ -360,6 +389,38 @@ defmodule FMutate.PairScreen do
 
     {:noreply,
      Mob.Socket.assign(socket, request: nil, note: {:warn, "#{request.app_name} wasn't allowed."})}
+  end
+
+  # saved: the app awaited, or one whose save outlasted the wait (it said "isn't paired yet")
+  def handle_info({:pairing, {:paired, %{node: node, app_name: name}}}, socket) do
+    awaiting =
+      if match?({_, ^node, _}, socket.assigns.awaiting), do: nil, else: socket.assigns.awaiting
+
+    {:noreply,
+     socket
+     |> Mob.Socket.assign(awaiting: awaiting, note: paired_note(name))
+     |> refresh()}
+  end
+
+  # No saved pairing yet: the save failed (the app was told `busy`), the app hung up, or the save is still
+  # running. None of these is a pairing, so the screen stops waiting without claiming one.
+  def handle_info(
+        {:pair_result_timeout, token},
+        %{assigns: %{awaiting: {token, _, name}}} = socket
+      ),
+      do:
+        {:noreply,
+         socket |> Mob.Socket.assign(awaiting: nil, note: unconfirmed_note(name)) |> refresh()}
+
+  def handle_info({:pair_result_timeout, _token}, socket), do: {:noreply, socket}
+
+  # Wait for the current Allow to become durable before deciding another request.
+  def handle_info(
+        {:pairing, {:request, ref, _request}},
+        %{assigns: %{awaiting: {_token, _node, _name}}} = socket
+      ) do
+    _ = Pairing.decide(ref, :deny)
+    {:noreply, socket}
   end
 
   # one request at a time: Allow answers the app the sheet names, so another one asking meanwhile is refused
@@ -380,6 +441,11 @@ defmodule FMutate.PairScreen do
        )}
 
   def handle_info({:pairing, {:secret, _status}}, socket), do: {:noreply, refresh(socket)}
+
+  def handle_info({:pairing, :restarted}, %{assigns: %{awaiting: {_token, _node, name}}} = socket) do
+    {:noreply,
+     socket |> Mob.Socket.assign(awaiting: nil, note: unconfirmed_note(name)) |> refresh()}
+  end
 
   # a new address, a new endpoint: the request on the sheet went with the old one
   def handle_info({:pairing, :restarted}, %{assigns: %{request: {_ref, request}}} = socket) do
@@ -415,6 +481,12 @@ defmodule FMutate.PairScreen do
     socket.assigns.clipboard.put(socket, secret)
     Mob.Socket.assign(socket, :copied, secret)
   end
+
+  defp paired_note(name),
+    do: {:ok, "#{name} is paired. It connects now; Disconnect it in I/O."}
+
+  defp unconfirmed_note(name),
+    do: {:warn, "#{name} isn't paired. If it doesn't show in I/O, ask it to try again."}
 
   # the copied secret no longer pairs: used, expired, too many tries, or replaced (New code, a new address)
   defp forget_spent(%{assigns: %{copied: copied, info: info}} = socket) do
@@ -489,11 +561,13 @@ defmodule FMutate.PairScreen do
     at = fn i -> (i + @quiet) * module end
 
     across =
-      for {row, y} <- Enum.with_index(rows), {x, len} <- runs(row),
+      for {row, y} <- Enum.with_index(rows),
+          {x, len} <- runs(row),
           do: Mob.Canvas.rect(at.(x), at.(y), len * module, module, color: ink, fill: true)
 
     down =
-      for {column, x} <- rows |> Enum.zip_with(& &1) |> Enum.with_index(), {y, len} <- runs(column),
+      for {column, x} <- rows |> Enum.zip_with(& &1) |> Enum.with_index(),
+          {y, len} <- runs(column),
           do: Mob.Canvas.rect(at.(x), at.(y), module, len * module, color: ink, fill: true)
 
     background = Mob.Canvas.rect(0, 0, size, size, color: Style.color(:paper), fill: true)

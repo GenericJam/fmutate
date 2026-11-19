@@ -23,18 +23,35 @@ defmodule FMutate.PairScreenTest do
     end
   end
 
+  defmodule HeldStore do
+    # MobPair.Pairings' store, held by the test: each save waits for the test's {:saved, result}
+    @behaviour MobPair.Pairings.Store
+    def load(_opts), do: {:ok, []}
+    def delete(_opts), do: :ok
+
+    def save(_pairings, opts) do
+      send(opts[:test], {:saving, self()})
+
+      receive do
+        {:saved, result} -> result
+      end
+    end
+  end
+
   # Tags: `host_opts` (more MobPair.Host options), `wifi` (the Wi-Fi address FMutate.Pairing sees at first),
   # `cert` (pair_cert.json before FMutate.Pairing starts: its contents, :unreadable or :mismatched),
   # `paired` (an app paired before FMutate.Pairing starts), `allowed` (node names FMutate.Dist allowed with
   # the sibling cookie in an earlier run: starts FMutate.Dist), `copy_safe` (FMutate.Pairing's option;
-  # without it, this machine's answer: no getprop, so true)
+  # without it, this machine's answer: no getprop, so true), `store: :held` (MobPair.Pairings saves through
+  # HeldStore)
   setup context do
     dir = Path.join(System.tmp_dir!(), "fmutate_pair_#{System.unique_integer([:positive])}")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
     write_cert(dir, context[:cert])
 
-    start_supervised!({Pairings, default_cookie: :keep, allow_list: false})
+    store = if context[:store] == :held, do: [store: {HeldStore, test: self()}], else: []
+    start_supervised!({Pairings, [default_cookie: :keep, allow_list: false] ++ store})
     if context[:paired], do: {:ok, _} = Pairings.add(pairing("humdinger_old@127.0.0.1"))
     if allowed = context[:allowed], do: start_dist(allowed)
 
@@ -225,19 +242,59 @@ defmodule FMutate.PairScreenTest do
     assert text(view) =~ "this phone · on moto e"
 
     view = render_info(view, {:tap, {:decide, :allow}})
+    assert text(view) =~ "Pairing Humdinger"
+    refute text(view) =~ "Humdinger is paired"
     assert {:ok, record} = Task.await(task)
     assert {record.dist_proto, record.host, record.dist_port} == {:inet_tcp, "127.0.0.1", 9150}
     assert record.node == "fmutate_a@127.0.0.1"
     assert %{app_name: "Humdinger", cookie: cookie} = Pairings.get(record.self_node)
     assert cookie == record.cookie
-    # the screen hears of the pairing, without its cookie
-    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"} = paired}}, 1_000
+    # the screen confirms success only after the durable pairing notification, without its cookie
+    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"} = paired}} = msg, 1_000
     refute Map.has_key?(paired, :cookie)
+    view = render_info(view, msg)
 
     refute find(view, :sheet, id: "pair_request")
     assert text(view) =~ "Humdinger is paired"
     # the code is used up: the screen offers a new one
     assert text(view) =~ "This code was used"
+  end
+
+  # MobPair.Pairings shows the pairing in its table while the save runs; only the saved one is a pairing
+  @tag store: :held
+  test "Allow says paired only once the pairing is saved: a failed save is no pairing" do
+    view = mount_screen(PairScreen)
+    {task, view} = ask(view)
+    view = render_info(view, {:tap, {:decide, :allow}})
+    assert_receive {:saving, store}, 5_000
+    {token, node, "Humdinger"} = assigns(view).awaiting
+    assert %{app_name: "Humdinger"} = Pairings.get(node)
+
+    view = render_info(view, {:pair_result_timeout, token})
+    refute text(view) =~ "Humdinger is paired"
+    assert text(view) =~ "Humdinger isn't paired"
+
+    send(store, {:saved, {:error, :enospc}})
+    assert {:error, _} = Task.await(task)
+    assert Pairings.get(node) == nil
+    refute_receive {:pairing, {:paired, _}}, 200
+  end
+
+  @tag store: :held
+  test "a save that outlasts the wait still ends in paired once it is saved" do
+    view = mount_screen(PairScreen)
+    {task, view} = ask(view)
+    view = render_info(view, {:tap, {:decide, :allow}})
+    assert_receive {:saving, store}, 5_000
+    {token, _node, "Humdinger"} = assigns(view).awaiting
+    view = render_info(view, {:pair_result_timeout, token})
+    refute text(view) =~ "Humdinger is paired"
+
+    send(store, {:saved, :ok})
+    assert {:ok, _record} = Task.await(task)
+    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"}}} = msg, 1_000
+    view = render_info(view, msg)
+    assert text(view) =~ "Humdinger is paired"
   end
 
   test "Don't allow (or swiping the sheet away) refuses the app and pairs nothing" do
@@ -380,7 +437,10 @@ defmodule FMutate.PairScreenTest do
     refute text(view) =~ "says it is Magpie"
 
     view = render_info(view, {:tap, {:decide, :allow}})
+    assert text(view) =~ "Pairing Humdinger"
     assert {:ok, _record} = Task.await(first)
+    assert_receive {:pairing, {:paired, %{app_name: "Humdinger"}}} = msg, 1_000
+    view = render_info(view, msg)
     assert [%{app_name: "Humdinger"}] = Pairings.list()
     assert text(view) =~ "Humdinger is paired"
   end
@@ -431,7 +491,10 @@ defmodule FMutate.PairScreenTest do
     {magpie, view} = ask(view, "Magpie")
     assert text(view) =~ "says it is Magpie"
     view = render_info(view, {:tap, {:decide, :allow}})
+    assert text(view) =~ "Pairing Magpie"
     assert {:ok, _record} = Task.await(magpie)
+    assert_receive {:pairing, {:paired, %{app_name: "Magpie"}}} = msg, 1_000
+    view = render_info(view, msg)
     assert [%{app_name: "Magpie"}] = Pairings.list()
     assert text(view) =~ "Magpie is paired"
   end

@@ -173,13 +173,16 @@ byte for byte; the link adds `app=fmutate`.
   connects from: "An app on this phone says it is Humdinger · this phone · on moto e" (loopback) or "An app on
   another phone says it is Humdinger · Wi-Fi 192.168.1.40 · on Pixel 7"; "Replaces …" when an app is already
   paired under the same node name. Don't allow, swiping the sheet away and the sibling hanging up all refuse.
-  One request at a time: another app asking while the sheet shows is refused at once. A node name that a
-  sibling-cookie app has (allowed, connected or disconnected in I/O; a merely registered, pending one doesn't
-  count) is refused before the sheet (`bad_node`), so pairing can't take it over.
+  One request at a time: another app asking while the sheet shows or an Allow is still being saved is refused
+  at once. A node name that a sibling-cookie app has (allowed, connected or disconnected in I/O; a merely
+  registered, pending one doesn't count) is refused before the sheet (`bad_node`), so pairing can't take it
+  over.
 - **Grant.** `MobPair.Pairings` makes a per-app cookie (32 random bytes) for exactly the node name the sibling
   declared, adds the name to the allow list and pins its client certificate; `FMutate.Dist` follows it and
-  allows the node at once (no registering). If the pairing can't be saved it isn't made: the sibling gets
-  `busy` and can ask again.
+  allows the node at once (no registering). The Pair screen says the app is paired only when `MobPair.Pairings`
+  reports the pairing saved (its table holds the pairing while the save runs). If the pairing can't be saved it
+  isn't made: the sibling gets `busy`, and after 5 s the screen says the app isn't paired, without claiming
+  success (a save that finishes later still shows it paired). The sibling can ask again.
   A sibling on this phone gets `dist_host 127.0.0.1`, `dist_port 9150`, `inet_tcp` (the existing node). A
   sibling on another phone gets the Wi-Fi address, `dist_port 9250` (instance b: 9251), `inet_tls`.
 - **TLS front.** FMutate's node starts at runtime on plain `inet_tcp` (`-proto_dist` is a boot argument), so
