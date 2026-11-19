@@ -16,7 +16,9 @@ cd "$(dirname "$0")"
 HERE=$(pwd)
 ROOT=$(cd .. && pwd)
 NDK=${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}
-TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+[ -d "$NDK" ] || NDK=$HOME/Library/Android/sdk/ndk/27.2.12479018     # (macOS's SDK location)
+case $(uname -s) in Darwin) HOST=darwin-x86_64 ;; *) HOST=linux-x86_64 ;; esac
+TC=$NDK/toolchains/llvm/prebuilt/$HOST/bin
 API=28                                          # minSdk (android/app/build.gradle)
 ABIS=${ABIS:-"arm64-v8a armeabi-v7a x86_64"}
 CFLAGS="-O2 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
