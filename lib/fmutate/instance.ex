@@ -241,20 +241,10 @@ defmodule FMutate.Instance do
       state.live != nil and fw == state.live.firmware ->
         # back to the firmware still playing before the switch away from it finished: keep it (in-process a
         # cartridge can't run twice) and drop the one booting
-        state = if state.next, do: drop_engine(state, :next), else: state
-        state = %{state | firmware: fw, restarts: 0, failures: []}
-        save_state(state)
-        {:reply, :ok, publish(state)}
+        {:reply, :ok, switch(state, fw, :keep_live)}
 
       true ->
-        state = if state.next, do: drop_engine(state, :next), else: state
-        state = %{state | firmware: fw, restarts: 0, failures: []}
-
-        state =
-          if state.live, do: start_engine(state, :next, fw), else: start_engine(state, :live, fw)
-
-        save_state(state)
-        {:reply, :ok, publish(state)}
+        {:reply, :ok, switch(state, fw, :start)}
     end
   end
 
@@ -441,6 +431,23 @@ defmodule FMutate.Instance do
         Logger.error("instance #{state.id}: cannot start #{fw}: #{inspect(reason)}")
         %{state | phase: :crashed}
     end
+  end
+
+  # the engine booting for an earlier switch goes; :keep_live stays on the live engine (it runs `fw`), :start
+  # boots `fw` (beside a live engine, as the next one)
+  defp switch(state, fw, how) do
+    state = if state.next, do: drop_engine(state, :next), else: state
+    state = %{state | firmware: fw, restarts: 0, failures: []}
+
+    state =
+      case how do
+        :keep_live -> state
+        :start when state.live != nil -> start_engine(state, :next, fw)
+        :start -> start_engine(state, :live, fw)
+      end
+
+    save_state(state)
+    publish(state)
   end
 
   # Engines being stopped (after a switch, or a superseded `next`) stay in `stopping` until they exit;
