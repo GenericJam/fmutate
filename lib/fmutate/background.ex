@@ -39,9 +39,11 @@ defmodule FMutate.Background do
     end
 
     def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: MobBackground.stop())
+
     # whether the keep-alive is already held when this process starts: on iOS (in-process engines) the output's
     # own state; elsewhere not
     def on?, do: FMutate.Paths.inproc?() and FMutate.AudioNif.stats().running
+
     # back in the foreground with the keep-alive held: on iOS reopen the output if an interruption closed it and
     # never reported its end (AudioNif.start leaves a running output alone); elsewhere nothing
     def resume, do: if(ios?(), do: FMutate.AudioNif.start(), else: :ok)

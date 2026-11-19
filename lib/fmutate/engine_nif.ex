@@ -50,7 +50,8 @@ defmodule FMutate.EngineNif do
   ended within 3 s; `{:error, :hung}`: one of its engines hung in firmware code, so it can't boot again until the
   app restarts.
   """
-  def start(_ref, _kind, _file, _prefix, _flash, _fill, _mhz), do: :erlang.nif_error(:nif_not_loaded)
+  def start(_ref, _kind, _file, _prefix, _flash, _fill, _mhz),
+    do: :erlang.nif_error(:nif_not_loaded)
 
   @doc "One port message (`FMutate.Engine.Wire.encode/1`). `{:error, :closed}` after `close/1`."
   def command(_handle, _message), do: :erlang.nif_error(:nif_not_loaded)

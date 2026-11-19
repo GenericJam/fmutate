@@ -29,7 +29,10 @@ defmodule FMutate.IosArchiveTest do
   defp archive(dir) do
     out = Path.join(dir, "libx.a")
     env = [{"PATH", Path.join(dir, "bin") <> ":" <> System.get_env("PATH")}]
-    {text, status} = System.cmd("sh", [@script, "iphoneos", out, "a.o"], env: env, stderr_to_stdout: true)
+
+    {text, status} =
+      System.cmd("sh", [@script, "iphoneos", out, "a.o"], env: env, stderr_to_stdout: true)
+
     {text, status, out}
   end
 
