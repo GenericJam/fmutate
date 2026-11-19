@@ -75,39 +75,50 @@ defmodule FMutate.Updates do
     saved = load(config)
     installed = installed()
 
+    # what the last check found, while it's still newer than this app (not once it's installed): offered again
+    # at launch without asking GitHub before the interval is up
+    release = newer(saved[:release], installed)
+
     state = %{
       config: config,
       subscribers: %{},
       installed: installed,
-      app: :idle,
-      # what the last check found, while it's still newer than this app (not once it's installed)
-      release: newer(saved[:release], installed),
+      app: if(release, do: {:available, release}, else: :idle),
+      release: release,
       checked_at: saved[:checked_at],
       # the app version this launch replaced, when it differs from the last one that ran
       updated_from: updated_from(saved[:version_code], installed),
-      code: code_state(),
+      # the outcome of the last code check this server asked for (mob_deliver also checks by itself)
+      code_check: nil,
       apk: nil,
       task: nil
     }
 
+    state = refresh_code(state)
     persist(state)
     if launch_check?(state), do: send(self(), :launch_check)
     {:ok, state}
   end
 
   @impl true
-  def handle_call(:state, _from, state), do: {:reply, public(state), state}
+  def handle_call(:state, _from, state) do
+    state = refresh_code(state)
+    {:reply, public(state), state}
+  end
 
   def handle_call({:subscribe, pid}, _from, state) do
     ref = Process.monitor(pid)
+    state = refresh_code(state)
     {:reply, {:ok, public(state)}, %{state | subscribers: Map.put(state.subscribers, ref, pid)}}
   end
 
   @impl true
   def handle_cast(:check, state), do: {:noreply, start_check(state, :both)}
 
-  def handle_cast(:install, %{app: {:available, release}} = state), do: {:noreply, start_install(state, release)}
-  def handle_cast(:install, %{app: {:needs_permission, release}} = state), do: {:noreply, start_install(state, release)}
+  # Install again from :confirm too: Android's dialog can be lost (the activity went away) without an outcome
+  def handle_cast(:install, %{app: {status, release}} = state) when status in [:available, :needs_permission, :confirm],
+    do: {:noreply, start_install(state, release)}
+
   def handle_cast(:install, %{app: {:error, _}, release: %{} = release} = state), do: {:noreply, start_install(state, release)}
   def handle_cast(:install, state), do: {:noreply, state}
 
@@ -118,11 +129,6 @@ defmodule FMutate.Updates do
   def handle_info({ref, result}, %{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     {:noreply, state |> Map.put(:task, nil) |> finished(result) |> changed()}
-  end
-
-  def handle_info({:DOWN, ref, :process, _pid, reason}, %{task: %Task{ref: ref}} = state) do
-    Logger.error("updates: #{inspect(reason)}")
-    {:noreply, changed(%{state | task: nil, app: {:error, {:crashed, reason}}})}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, state),
@@ -159,7 +165,7 @@ defmodule FMutate.Updates do
   defp check_opts(config), do: Keyword.take(config, [:repo, :prerelease, :metadata_asset])
 
   defp finished(state, {:checked, code, app}) do
-    state = %{state | code: code_state(code)}
+    state = refresh_code(%{state | code_check: code})
 
     case app do
       {:ok, :available, release} ->
@@ -169,12 +175,24 @@ defmodule FMutate.Updates do
       {:ok, :up_to_date, _} ->
         persist(%{state | app: :up_to_date, release: nil, apk: nil, checked_at: now()})
 
+      # GitHub's answer that there's nothing to offer: a release seen before was withdrawn
+      {:error, reason} when reason in [:no_release, :no_update_metadata, :not_found] ->
+        persist(%{state | app: {:error, reason}, release: nil, apk: nil})
+
+      {:error, {:package_mismatch, _, _} = reason} ->
+        persist(%{state | app: {:error, reason}, release: nil, apk: nil})
+
       {:error, reason} ->
         %{state | app: {:error, reason}}
     end
   end
 
-  defp finished(state, {:installing, {:ok, path}, :ok}), do: %{state | apk: path, app: {:confirm, state.release}}
+  # The session started. Android's outcome can arrive before this result (it's sent from the installer's own
+  # thread): then it stands, and the APK it was about is gone.
+  defp finished(%{app: {:downloading, _, _}} = state, {:installing, {:ok, path}, :ok}),
+    do: %{state | apk: path, app: {:confirm, state.release}}
+
+  defp finished(state, {:installing, {:ok, _path}, :ok}), do: state
 
   defp finished(state, {:installing, {:ok, path}, {:error, :install_permission_required}}),
     do: %{state | apk: path, app: {:needs_permission, state.release}}
@@ -238,12 +256,10 @@ defmodule FMutate.Updates do
     state
   end
 
-  defp code_state(check \\ nil) do
-    %{
-      state: MobDeliver.state(),
-      check: check,
-      channel: Application.get_env(:mob_deliver, :channel)
-    }
+  # mob_deliver's state now (it checks at boot and on its own interval too), with this server's last code check
+  defp refresh_code(state) do
+    code = %{state: MobDeliver.state(), check: state.code_check, channel: Application.get_env(:mob_deliver, :channel)}
+    Map.put(state, :code, code)
   end
 
   defp installed do
@@ -294,11 +310,13 @@ defmodule FMutate.Updates do
       version_code: state.installed && state.installed.version_code
     }
 
+    # a failed save costs a check too many at the next launch; it mustn't take the server (or its supervisor) down
     path = file(state.config)
-    File.mkdir_p!(Path.dirname(path))
 
-    case File.write(path, :erlang.term_to_binary(saved)) do
-      :ok -> :ok
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, :erlang.term_to_binary(saved)) do
+      :ok
+    else
       {:error, reason} -> Logger.warning("updates: couldn't save #{path}: #{inspect(reason)}")
     end
 

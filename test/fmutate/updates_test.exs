@@ -41,6 +41,9 @@ defmodule FMutate.UpdatesTest do
     apk: %{name: "fmutate-0.1.1.apk", url: "https://example.test/a.apk", size: 100, sha256: "00"}
   }
 
+  # what mob_app_update returns with no network (:httpc's reason, passed through)
+  @offline {:failed_connect, [{:to_address, {~c"api.github.com", 443}}, {:inet, [:inet], :nxdomain}]}
+
   setup %{tmp_dir: tmp} do
     Application.put_env(:fmutate_app, :app_update_client, FakeClient)
     on_exit(fn -> Application.delete_env(:fmutate_app, :app_update_client) end)
@@ -114,12 +117,12 @@ defmodule FMutate.UpdatesTest do
     stop_supervised!(Updates)
     relaunched = start(ctx)
     refute_receive {:called, :check, _}, 200
-    # what the last check found is kept for the screen
-    assert relaunched.release == @release
+    # what the last check found is still offered, without asking GitHub again
+    assert relaunched.app == {:available, @release}
   end
 
   test "a failed check isn't remembered as a check: the next launch tries again", ctx do
-    script(%{check: {:error, {:transport, :nxdomain}}})
+    script(%{check: {:error, @offline}})
     start(ctx)
     assert_receive {:called, :check, _}
     assert await(&match?({:error, _}, &1.app)).checked_at == nil
@@ -243,7 +246,7 @@ defmodule FMutate.UpdatesTest do
     # the release found above is now installed; the next check (within the interval) fails
     script(%{
       installed: {:ok, %{package: "com.genericjam.fmutate", version_code: 2, version_name: "0.1.1"}},
-      check: {:error, {:transport, :nxdomain}}
+      check: {:error, @offline}
     })
     assert start(ctx).release == nil
 
@@ -251,5 +254,55 @@ defmodule FMutate.UpdatesTest do
     await(&match?({:error, _}, &1.app))
     Updates.install()
     refute_receive {:called, :download, _}, 200
+  end
+
+  test "a release withdrawn from GitHub isn't offered any more", ctx do
+    script(%{check: {:ok, :available, @release}})
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+
+    script(%{check: {:error, :no_update_metadata}})
+    Updates.check()
+    assert await(&match?({:error, _}, &1.app)).release == nil
+    Updates.install()
+    refute_receive {:called, :download, _}, 200
+
+    stop_supervised!(Updates)
+    assert start(ctx).release == nil
+  end
+
+  test "Android's outcome arriving before the session's start isn't overwritten; Install works from the dialog", ctx do
+    script(%{
+      check: {:ok, :available, @release},
+      # the installer fails on its own thread before install/2 has returned
+      install: fn _path, opts ->
+        send(opts[:notify], {:mob_app_update, {:install, {:failure, 1, "session failed"}}})
+        :ok
+      end
+    })
+
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+    Updates.install()
+    assert_receive {:called, :install, _}
+    assert {:error, {:install_failed, 1, _}} = await(&match?({:error, _}, &1.app)).app
+    # the task's own result (the session started) came after it
+    refute_receive {:updates, %{app: {:confirm, _}}}, 200
+
+    # Android's dialog went away without an outcome: Install opens it again
+    script(%{check: {:ok, :available, @release}, install: :ok})
+    Updates.install()
+    await(&match?({:confirm, _}, &1.app))
+    Updates.install()
+    assert_receive {:called, :install, _}
+    assert_receive {:called, :install, _}
+  end
+
+  test "the updater runs when its state can't be saved", ctx do
+    script(%{})
+    blocker = Path.join(Path.dirname(ctx.state_file), "not_a_dir")
+    File.write!(blocker, "")
+    start(%{ctx | state_file: Path.join(blocker, "updates.term")})
+    assert await(&(&1.app == :up_to_date))
   end
 end

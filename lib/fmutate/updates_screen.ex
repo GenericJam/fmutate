@@ -91,7 +91,14 @@ defmodule FMutate.UpdatesScreen do
 
   defp mb(bytes), do: "#{Float.round(bytes / 1_048_576, 1)} MB"
 
-  defp error_label({:transport, _}), do: "no connection to GitHub."
+  # mob_app_update passes :httpc's own reasons through: no network, DNS and TLS failures are :failed_connect
+  defp error_label({:failed_connect, _}), do: "no connection to GitHub."
+  defp error_label(reason) when reason in [:socket_closed_remotely, :timeout],
+    do: "the connection to GitHub broke off; try again."
+
+  defp error_label({:http_status, status}), do: "GitHub answered #{status}; try again later."
+  defp error_label(:not_found), do: "that release isn't on GitHub any more."
+  defp error_label({:file, posix}), do: "couldn't save the download (#{posix})."
   defp error_label({:rate_limited, _reset}), do: "GitHub's rate limit; try again in an hour."
   defp error_label({:sha256_mismatch, _, _}), do: "the download was damaged (checksum mismatch); try again."
   defp error_label({:size_mismatch, _, _}), do: "the download was cut short; try again."
@@ -175,6 +182,7 @@ defmodule FMutate.UpdatesScreen do
   defp code_result({:ok, outcome}), do: to_string(outcome)
   defp code_result({:error, {:downgrade, _}}), do: "the server still had an older copy"
   defp code_result({:error, {:http_status, 404}}), do: "nothing published for this version"
+  defp code_result({:error, {:transport, _}}), do: "no connection to GitHub Pages"
   defp code_result({:error, {:floor_not_persisted, _}}), do: "couldn't save it on this phone (storage); retried next check"
   defp code_result({:error, reason}), do: "error #{inspect(reason)}"
   defp code_result(other), do: inspect(other)
