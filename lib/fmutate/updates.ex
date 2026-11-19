@@ -10,11 +10,13 @@ defmodule FMutate.Updates do
     * **the code** (Elixir only): signed BEAMs over the air through `MobDeliver`, on this build's own
       channel (`<track>-<versionCode>`, `config :mob_deliver, :channel`). mob_deliver checks at launch
       and hourly by itself; an install applies at the next launch, and a launch that crashes before its
-      first screen rolls the code back.
+      first screen rolls the code back. The launch after a rollback shows it (the notice is taken at
+      launch, so the next good launch doesn't).
 
   Subscribers (`subscribe/0`) get `{:updates, state}` on every change. State persists in
   `updates.term` (when the app was last checked, the newest release seen, the app version that last
-  ran).
+  ran) as plain data: string keys and no atoms of its own, so a launch reads it before the modules that
+  name a release's fields are loaded (`binary_to_term/2` with `:safe` refuses atoms that don't exist yet).
   """
 
   use GenServer
@@ -77,7 +79,7 @@ defmodule FMutate.Updates do
 
     # what the last check found, while it's still newer than this app (not once it's installed): offered again
     # at launch without asking GitHub before the interval is up
-    release = newer(saved[:release], installed)
+    release = newer(saved.release, installed)
 
     state = %{
       config: config,
@@ -85,11 +87,13 @@ defmodule FMutate.Updates do
       installed: installed,
       app: if(release, do: {:available, release}, else: :idle),
       release: release,
-      checked_at: saved[:checked_at],
+      checked_at: saved.checked_at,
       # the app version this launch replaced, when it differs from the last one that ran
-      updated_from: updated_from(saved[:version_code], installed),
+      updated_from: updated_from(saved.version_code, installed),
       # the outcome of the last code check this server asked for (mob_deliver also checks by itself)
       code_check: nil,
+      # a rollback mob_deliver did at this launch, shown for this launch only (taking it clears it)
+      rollback: code_client().take_rollback_notice(),
       apk: nil,
       task: nil
     }
@@ -158,7 +162,7 @@ defmodule FMutate.Updates do
   end
 
   defp run_check(what, client, opts) do
-    code = if what == :both, do: MobDeliver.check(details: true)
+    code = if what == :both, do: code_client().check(details: true)
     {:checked, code, client.check(opts)}
   end
 
@@ -257,9 +261,31 @@ defmodule FMutate.Updates do
   end
 
   # mob_deliver's state now (it checks at boot and on its own interval too), with this server's last code check
+  # and the rollback this launch took
   defp refresh_code(state) do
-    code = %{state: MobDeliver.state(), check: state.code_check, channel: Application.get_env(:mob_deliver, :channel)}
+    code = %{
+      state: code_client().state(),
+      modules: delivered_modules(),
+      check: state.code_check,
+      rollback: state.rollback,
+      channel: Application.get_env(:mob_deliver, :channel)
+    }
+
     Map.put(state, :code, code)
+  end
+
+  # How many modules the active manifest delivers: 0 for an empty one (published to take devices back to the APK's
+  # own code: mob_deliver still reports it as active), nil while mob_deliver's store isn't up.
+  defp delivered_modules do
+    if Process.whereis(MobDeliver.Store) do
+      case MobDeliver.Store.active(MobDeliver.Store) do
+        {_id, %{modules: modules}} -> map_size(modules)
+        nil -> 0
+      end
+    end
+  rescue
+    # its table went away meanwhile
+    ArgumentError -> nil
   end
 
   defp installed do
@@ -281,19 +307,29 @@ defmodule FMutate.Updates do
   defp updated_from(_code, _installed), do: nil
 
   defp client, do: Application.get_env(:fmutate_app, :app_update_client, MobAppUpdate)
+  defp code_client, do: Application.get_env(:fmutate_app, :code_client, MobDeliver)
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 
   ## Persistence (updates.term)
 
+  # Plain data only (string keys, strings, integers, booleans, nil). The release map's atom keys exist only once
+  # mob_app_update's modules are loaded, which a launch hasn't done yet when it reads this file: with atoms in it,
+  # `binary_to_term(bin, [:safe])` refuses the whole file and the launch forgets everything in it.
+
   defp file(config), do: Keyword.get_lazy(config, :file, fn -> Path.join(Paths.data_dir(), "updates.term") end)
 
+  # an unreadable file, or one from an earlier format, is a first launch
   defp load(config) do
     with {:ok, bin} <- File.read(file(config)),
          {:ok, %{} = saved} <- safe_term(bin) do
-      saved
+      %{
+        checked_at: decode_time(saved["checked_at"]),
+        release: decode_release(saved["release"]),
+        version_code: positive(saved["version_code"])
+      }
     else
-      _ -> %{}
+      _ -> %{checked_at: nil, release: nil, version_code: nil}
     end
   end
 
@@ -305,9 +341,9 @@ defmodule FMutate.Updates do
 
   defp persist(state) do
     saved = %{
-      checked_at: state.checked_at,
-      release: state.release,
-      version_code: state.installed && state.installed.version_code
+      "checked_at" => encode_time(state.checked_at),
+      "release" => encode_release(state.release),
+      "version_code" => state.installed && state.installed.version_code
     }
 
     # a failed save costs a check too many at the next launch; it mustn't take the server (or its supervisor) down
@@ -322,4 +358,68 @@ defmodule FMutate.Updates do
 
     state
   end
+
+  # the release map MobAppUpdate.check/1 returns (MobAppUpdate.Release.t()), field by field
+  defp encode_release(nil), do: nil
+
+  defp encode_release(r) do
+    %{
+      "tag" => r.tag,
+      "name" => r.name,
+      "notes" => r.notes,
+      "published_at" => encode_time(r.published_at),
+      "html_url" => r.html_url,
+      "prerelease" => r.prerelease,
+      "version_code" => r.version_code,
+      "version_name" => r.version_name,
+      "package" => r.package,
+      "apk" => %{"name" => r.apk.name, "url" => r.apk.url, "size" => r.apk.size, "sha256" => r.apk.sha256}
+    }
+  end
+
+  # what download and install need must be there and of the right type, or nothing is offered from the file
+  defp decode_release(%{"tag" => tag, "version_name" => version_name, "package" => package} = r)
+       when is_binary(tag) and is_binary(version_name) and is_binary(package) do
+    with code when is_integer(code) <- positive(r["version_code"]),
+         %{} = apk <- decode_apk(r["apk"]) do
+      %{
+        tag: tag,
+        name: string_or_nil(r["name"]),
+        notes: string_or_nil(r["notes"]) || "",
+        published_at: decode_time(r["published_at"]),
+        html_url: string_or_nil(r["html_url"]),
+        prerelease: r["prerelease"] == true,
+        version_code: code,
+        version_name: version_name,
+        package: package,
+        apk: apk
+      }
+    end
+  end
+
+  defp decode_release(_), do: nil
+
+  defp decode_apk(%{"name" => name, "url" => url, "size" => size, "sha256" => sha256})
+       when is_binary(name) and is_binary(url) and is_integer(size) and size > 0 and is_binary(sha256),
+       do: %{name: name, url: url, size: size, sha256: sha256}
+
+  defp decode_apk(_), do: nil
+
+  defp encode_time(nil), do: nil
+  defp encode_time(%DateTime{} = at), do: DateTime.to_iso8601(at)
+
+  defp decode_time(iso) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, at, _offset} -> at
+      {:error, _} -> nil
+    end
+  end
+
+  defp decode_time(_), do: nil
+
+  defp string_or_nil(value) when is_binary(value), do: value
+  defp string_or_nil(_), do: nil
+
+  defp positive(value) when is_integer(value) and value > 0, do: value
+  defp positive(_), do: nil
 end

@@ -6,7 +6,8 @@
 # apk  A release of the app: builds the release APK (mix mob.release --android, then gradle assembleRelease,
 #      signed with android/keystore.properties), refuses an APK not signed with FMutate's release key, publishes
 #      it as GitHub release v<versionName> with update metadata (mix mob_app_update.publish), then an empty OTA
-#      manifest for the new build's channel. Version: android/version.properties (raise it first, with mix.exs).
+#      manifest for the new build's channel, pushed to gh-pages (the release is public by then, so its channel
+#      is too). Version: android/version.properties (raise it first, with mix.exs).
 # ota  Elixir-only changes over the air to the installed build: compiles the lib/ files changed since the
 #      build's tag (v<versionName>, or --since REF), signs a manifest for channel <track>-<versionCode> and
 #      writes it into the gh-pages worktree's ota/ directory, which GitHub Pages serves. Refuses when anything
@@ -95,8 +96,8 @@ defmodule FMutate.Release do
     Mix.Task.run("mob_app_update.publish", publish)
 
     # the new build's channel starts with an empty manifest (its bundled code): checks find something to verify
-    # rather than a 404, and the floor starts at this release
-    ota(Keyword.merge(opts, since: "HEAD", force: false, from_apk: true))
+    # rather than a 404, and the floor starts at this release. Pushed: the GitHub release is already public.
+    ota(Keyword.merge(opts, since: "HEAD", force: false, from_apk: true, push: true))
   end
 
   # The track is fixed in the build (config/config.exs reads FMUTATE_UPDATE_TRACK, "dev" when unset), and mob.release
@@ -190,6 +191,8 @@ defmodule FMutate.Release do
 
     # the channel comes from android/version.properties: it must be a released build's (from apk: it just was)
     unless opts[:from_apk] do
+      # the build's tag as GitHub has it: a local tag left from a deleted release can name another commit
+      git!(["fetch", "--quiet", "--tags", "--force", "origin"])
       published_from_commit!(opts)
 
       unless release_exists?("v#{version["versionName"]}"),

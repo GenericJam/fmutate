@@ -76,7 +76,7 @@ defmodule FMutate.UpdatesScreen do
   defp status_line({:needs_permission, _r}),
     do:
       "Android needs your OK once: tap Allow installs, turn on \"Allow from this source\" for FMutate, " <>
-        "come back and tap Install again."
+        "come back and tap Download & install again."
 
   defp status_line({:error, reason}), do: "Couldn't update: " <> error_label(reason)
 
@@ -160,25 +160,28 @@ defmodule FMutate.UpdatesScreen do
 
     card([
       label("CODE"),
-      text(active_line(state), :mono),
+      text(active_line(state, code.modules), :mono),
       text("Channel: #{code.channel || "not configured"}", :dim),
       state && state.disabled && text("Code updates are off: #{inspect(state.disabled)}", :bad),
-      state && state.rollback_notice && text("The last code update failed and was rolled back.", :bad),
+      code.rollback && text("The last code update failed and was rolled back.", :bad),
       state && state.restart_required && text("A code update is installed: it applies when FMutate restarts.", :good),
       text("Last code check: #{code_check_label(state)}", :dim)
     ])
   end
 
-  defp active_line(%{active: %{id: id, issued_at: at}}),
+  # an active manifest without modules was published to take devices back to the APK's own code
+  defp active_line(%{active: %{id: id, issued_at: at}}, modules) when modules != 0,
     do: "Delivered code #{String.slice(id, 0, 8)} (published #{date_label(at)})"
 
-  defp active_line(_state), do: "The code this app was built with."
+  defp active_line(_state, _modules), do: "The code this app was built with."
 
   defp code_check_label(%{last_check: %{result: result, at: at}}), do: "#{when_label(at)}: #{code_result(result)}"
   defp code_check_label(_state), do: "not yet"
 
   defp code_result({:ok, :installed}), do: "installed, applies at the next start"
   defp code_result({:ok, :current}), do: "up to date"
+  defp code_result({:ok, :deferred}), do: "waiting until the last code update has started once"
+  defp code_result({:ok, :rejected}), do: "refused: that code update failed here before"
   defp code_result({:ok, outcome}), do: to_string(outcome)
   defp code_result({:error, {:downgrade, _}}), do: "the server still had an older copy"
   defp code_result({:error, {:http_status, 404}}), do: "nothing published for this version"

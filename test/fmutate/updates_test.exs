@@ -28,6 +28,29 @@ defmodule FMutate.UpdatesTest do
     end
   end
 
+  defmodule FakeDeliver do
+    @moduledoc false
+    # MobDeliver's API as FMutate.Updates uses it; a pending rollback notice is in :persistent_term until taken
+    def state,
+      do: %{
+        running: true,
+        disabled: nil,
+        active: nil,
+        last_check: nil,
+        update_status: :ok,
+        restart_required: false,
+        rollback_notice: :persistent_term.get({__MODULE__, :notice}, nil)
+      }
+
+    def check(_opts), do: {:ok, :current}
+
+    def take_rollback_notice do
+      notice = :persistent_term.get({__MODULE__, :notice}, nil)
+      :persistent_term.erase({__MODULE__, :notice})
+      notice
+    end
+  end
+
   @release %{
     tag: "v0.1.1",
     name: "FMutate 0.1.1",
@@ -46,8 +69,11 @@ defmodule FMutate.UpdatesTest do
 
   setup %{tmp_dir: tmp} do
     Application.put_env(:fmutate_app, :app_update_client, FakeClient)
+    Application.put_env(:fmutate_app, :code_client, FakeDeliver)
     on_exit(fn -> Application.delete_env(:fmutate_app, :app_update_client) end)
+    on_exit(fn -> Application.delete_env(:fmutate_app, :code_client) end)
     on_exit(fn -> :persistent_term.erase(FakeClient) end)
+    on_exit(fn -> :persistent_term.erase({FakeDeliver, :notice}) end)
     Process.put(:apk_dir, tmp)
     %{state_file: Path.join(tmp, "updates.term")}
   end
@@ -305,4 +331,43 @@ defmodule FMutate.UpdatesTest do
     start(%{ctx | state_file: Path.join(blocker, "updates.term")})
     assert await(&(&1.app == :up_to_date))
   end
+
+  test "the saved state has no atoms of its own: a launch reads it before mob_app_update's modules load", ctx do
+    script(%{check: {:ok, :available, @release}})
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+
+    # binary_to_term(bin, [:safe]) refuses the whole file for one atom that doesn't exist yet, and at launch the
+    # release map's keys (:notes, :html_url, …) don't: only the atoms that always exist may be in it
+    saved = ctx.state_file |> File.read!() |> :erlang.binary_to_term([:safe])
+    assert saved |> atoms() |> Enum.uniq() |> Kernel.--([true, false, nil]) == []
+  end
+
+  test "a state file from before this format doesn't stop the launch: it's a first launch", ctx do
+    old = %{checked_at: DateTime.utc_now(), release: @release, version_code: 1}
+    File.write!(ctx.state_file, :erlang.term_to_binary(old))
+    script(%{})
+
+    assert start(ctx).release == nil
+    assert_receive {:called, :check, _}
+  end
+
+  test "a rollback is shown for the launch after it, and not after the next launch", ctx do
+    notice = %{rolled_back: "abfc2a1b", at: ~U[2026-11-19 22:16:15Z]}
+    :persistent_term.put({FakeDeliver, :notice}, notice)
+    script(%{})
+
+    assert start(ctx).code.rollback == notice
+    Updates.check()
+    assert await(&(&1.app == :up_to_date)).code.rollback == notice
+
+    stop_supervised!(Updates)
+    assert start(ctx).code.rollback == nil
+  end
+
+  defp atoms(term) when is_atom(term), do: [term]
+  defp atoms(term) when is_map(term), do: Enum.flat_map(term, fn {key, value} -> atoms(key) ++ atoms(value) end)
+  defp atoms(term) when is_list(term), do: Enum.flat_map(term, &atoms/1)
+  defp atoms(term) when is_tuple(term), do: term |> Tuple.to_list() |> atoms()
+  defp atoms(_term), do: []
 end
