@@ -81,7 +81,7 @@ defmodule FMutate.Editor do
   def saved_elsewhere(socket, firmware, layout) do
     if firmware != socket.assigns.firmware or layout == socket.assigns.layout,
       do: socket,
-      else: Mob.Socket.assign(socket, layout: layout, layout_json: surface_json(layout, firmware))
+      else: assign_layout(socket, layout, [])
   end
 
   @doc "What `FMutate.MIDI.learn/2` heard: `{:ok, midi_in}` (stored on the control being learned) or `:timeout`."
@@ -139,7 +139,7 @@ defmodule FMutate.Editor do
 
   def event("use_classic", _p, socket) do
     layout = Layouts.classic() |> Map.put("firmware", %{"id" => socket.assigns.firmware})
-    Mob.Socket.assign(socket, layout: layout, layout_json: surface_json(layout, socket.assigns.firmware), page: hd(layout["pages"])["id"])
+    assign_layout(socket, layout, page: hd(layout["pages"])["id"])
   end
 
   # a press on a note-level toggle (binding target `{"action": "note_level"}`): every strike-position strip
@@ -206,7 +206,7 @@ defmodule FMutate.Editor do
     case Layouts.save(socket.assigns.instance, socket.assigns.firmware, layout) do
       :ok ->
         page = if Enum.any?(layout["pages"], &(&1["id"] == socket.assigns.page)), do: socket.assigns.page, else: hd(layout["pages"])["id"]
-        Mob.Socket.assign(socket, layout: layout, layout_json: surface_json(layout, socket.assigns.firmware), page: page)
+        assign_layout(socket, layout, page: page)
 
       {:error, [msg | _]} ->
         toast(socket, "Not saved: " <> msg)
@@ -215,7 +215,12 @@ defmodule FMutate.Editor do
 
   defp commit(socket, {:error, msg}), do: toast(socket, msg)
 
-  # what the surface plays: the layout with each strip's note level resolved for this firmware
+  # the layout and what the surface plays: each strip's note level resolved for this firmware
+  defp assign_layout(socket, layout, assigns) do
+    json = surface_json(layout, socket.assigns.firmware)
+    Mob.Socket.assign(socket, [layout: layout, layout_json: json] ++ assigns)
+  end
+
   defp surface_json(layout, firmware),
     do: layout |> LayoutEdit.surface(cap?(firmware, :note_pressure)) |> Layouts.encode()
 
@@ -263,7 +268,7 @@ defmodule FMutate.Editor do
     layout = Layouts.reset(socket.assigns.instance, socket.assigns.firmware)
 
     socket
-    |> Mob.Socket.assign(layout: layout, layout_json: surface_json(layout, socket.assigns.firmware), page: hd(layout["pages"])["id"], sheet: nil)
+    |> assign_layout(layout, page: hd(layout["pages"])["id"], sheet: nil)
     |> toast("Back to the classic layout")
   end
 
