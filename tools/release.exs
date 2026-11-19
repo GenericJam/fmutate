@@ -168,7 +168,8 @@ defmodule FMutate.Release do
         ~s|io:format("~s", [proplists:get_value(channel, proplists:get_value(mob_deliver, mob_app_config:config(), []), "")]), halt().|
 
       try do
-        cmd!("erl", ["-noshell", "-pa", dir, "-eval", eval])
+        # stdout only: a warning the VM prints on stderr isn't part of the channel
+        cmd!("erl", ["-noshell", "-pa", dir, "-eval", eval], stderr_to_stdout: false)
       after
         File.rm_rf!(dir)
       end
