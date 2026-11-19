@@ -18,7 +18,10 @@ sealed class Target {
     data class Button(val id: String) : Target()
     data class Midi(val type: String, val channel: Int, val number: Int, val jump: Boolean, val on: Int = 127, val off: Int = 0) : Target()
     data class Page(val ref: String) : Target()
-    /** App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending. */
+    /**
+     * App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending;
+     * "note_level" ([NOTE_LEVEL]) switches note level on the layout's strike-position strips on each press.
+     */
     data class Action(val id: String) : Target()
 
     /** Absolute targets share one value between every control bound to them (HANDOFF §6 rule 7). */
@@ -34,6 +37,9 @@ sealed class Target {
             else -> null
         }
 }
+
+/** The note-level toggle's target: a press asks FMutate.Editor to switch it (saved with the layout). */
+val NOTE_LEVEL = Target.Action("note_level")
 
 data class Binding(val on: String, val to: Target, val mode: String)
 
@@ -64,7 +70,7 @@ data class Control(
     val velMin: Int = 40,
     val velMax: Int = 127,
     val velSwell: Boolean = false,        // position, opt-in: front/back on a held key sets CC7 (every sounding note)
-    val velPressure: Boolean = false,     // position, opt-in: the held note's own level follows the finger (poly aftertouch)
+    val velPressure: Boolean = false,     // position: the held note's own level follows the finger (poly aftertouch); FMutate.LayoutEdit.surface/2 resolves it
     // pad_grid
     val padCols: Int = 1,
     val padRows: Int = 1,
