@@ -19,13 +19,15 @@ defmodule FMutate.Library.HTTP do
 
     with :ok <- start() do
       case :httpc.request(:get, {to_charlist(url), req}, http_opts(url), body_format: :binary) do
-        {:ok, {{_, 200, _}, resp, body}} -> {:ok, body, Map.new(resp, fn {k, v} -> {String.downcase(to_string(k)), to_string(v)} end)}
+        {:ok, {{_, 200, _}, resp, body}} -> {:ok, body, header_map(resp)}
         {:ok, {{_, 304, _}, _, _}} -> :not_modified
         {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
         {:error, reason} -> {:error, reason}
       end
     end
   end
+
+  defp header_map(headers), do: Map.new(headers, fn {k, v} -> {String.downcase(to_string(k)), to_string(v)} end)
 
   @doc """
   GET `url` into the file `dest`, calling `progress.(bytes_so_far, total_or_nil)` as it arrives. With `max`

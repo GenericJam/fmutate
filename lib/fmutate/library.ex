@@ -267,11 +267,16 @@ defmodule FMutate.Library do
 
   defp maybe_refresh(state, force) do
     if force or stale?(state) do
-      task = Task.async(fn -> with {:ok, body, _} <- HTTP.get(Catalog.hub_url() <> "catalog.json"), do: {:ok, body} end)
+      task = Task.async(&get_catalog/0)
       changed(%{state | refreshing: true, error: nil, tasks: Map.put(state.tasks, task.ref, :catalog)})
     else
       state
     end
+  end
+
+  # (in a task) the Hub's catalogue
+  defp get_catalog do
+    with {:ok, body, _headers} <- HTTP.get(Catalog.hub_url() <> "catalog.json"), do: {:ok, body}
   end
 
   defp stale?(%{fetched_at: nil}), do: true
@@ -376,10 +381,16 @@ defmodule FMutate.Library do
     with {:ok, body} <- File.read(index_path()),
          {:ok, sig} <- File.read(index_path() <> ".sig"),
          {:ok, index} <- Cartridges.verify_index(body, sig, Cartridges.public_key()) do
-      etag = with {:ok, e} <- File.read(etag_path()), do: e, else: (_ -> nil)
-      apply_index(%{state | seen: read_term(seen_path()), etag: etag}, index, :boot)
+      apply_index(%{state | seen: read_term(seen_path()), etag: read_etag()}, index, :boot)
     else
       _ -> %{state | seen: read_term(seen_path())}
+    end
+  end
+
+  defp read_etag do
+    case File.read(etag_path()) do
+      {:ok, etag} -> etag
+      _ -> nil
     end
   end
 
@@ -474,12 +485,15 @@ defmodule FMutate.Library do
     flash = Path.join(Paths.data_dir(), "flash")
 
     for {id, n} <- natives(state), Cartridges.native?(n) do
-      skip = if at == :fetch, do: for(i <- instances(flash), current_firmware(i) == id, do: i), else: []
+      skip = if at == :fetch, do: running(flash, id), else: []
 
       for path <- Cartridges.move_emu_flash(flash, id, skip),
           do: Logger.info("library: #{id} runs natively now; its emulator saves are #{Catalog.hub_id(id)}'s (#{path})")
     end
   end
+
+  # the instances whose saved firmware is `id`
+  defp running(flash, id), do: for(i <- instances(flash), current_firmware(i) == id, do: i)
 
   defp instances(flash) do
     case File.ls(flash) do

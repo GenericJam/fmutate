@@ -123,23 +123,7 @@ defmodule FMutate.Library.Catalog do
     static_by_id = Map.new(statics, &{&1.id, &1})
     natives = Map.drop(natives, Map.keys(static_by_id))
 
-    hubs =
-      Enum.flat_map(hub, fn h ->
-        cond do
-          native = static_by_id[h.id] ->
-            [with_package(hub_variant(h, native), dir)]
-
-          (n = natives[h.id]) && Cartridges.native?(n) ->
-            fw = native_firmware(h, n)
-            [fw, with_package(hub_variant(h, fw), dir)]
-
-          n = natives[h.id] ->
-            [with_package(%{h | native: n}, dir)]
-
-          true ->
-            [with_package(h, dir)]
-        end
-      end)
+    hubs = Enum.flat_map(hub, &hub_rows(&1, static_by_id[&1.id], natives[&1.id], dir))
 
     index_only =
       for {id, n} <- Enum.sort(natives), not Map.has_key?(hub_by_id, id), Cartridges.native?(n),
@@ -147,6 +131,19 @@ defmodule FMutate.Library.Catalog do
 
     statics ++ imported(dir) ++ hubs ++ index_only
   end
+
+  # a Hub firmware's rows (`static`: a bundled cartridge of the id; `n`: the index's native build of it, never
+  # both): under one that runs here, its package follows as `hub:<id>`
+  defp hub_rows(h, nil, nil, dir), do: [with_package(h, dir)]
+  defp hub_rows(h, nil, n, dir), do: native_rows(h, n, Cartridges.native?(n), dir)
+  defp hub_rows(h, static, nil, dir), do: [with_package(hub_variant(h, static), dir)]
+
+  defp native_rows(h, n, true, dir) do
+    fw = native_firmware(h, n)
+    [fw, with_package(hub_variant(h, fw), dir)]
+  end
+
+  defp native_rows(h, n, false, dir), do: [with_package(%{h | native: n}, dir)]
 
   defp with_package(h, dir) do
     path = hub_package_path(h, dir)
@@ -273,13 +270,16 @@ defmodule FMutate.Library.Catalog do
     cond do
       fw.id in ctx.quarantined -> :quarantined
       fw.id == ctx.current -> :running
-      fw.backend == :native and fw.source == :hub and fw.cart == nil -> :available
-      fw.backend == :native -> :on_phone
-      fw.package == nil -> :available
-      ctx.emu? -> :on_phone
-      true -> :not_yet
+      true -> on_phone(fw, ctx.emu?)
     end
   end
+
+  # (neither quarantined nor running) a native Hub build without its cartridge is a download, like a package
+  defp on_phone(%{backend: :native, source: :hub, cart: nil}, _emu?), do: :available
+  defp on_phone(%{backend: :native}, _emu?), do: :on_phone
+  defp on_phone(%{package: nil}, _emu?), do: :available
+  defp on_phone(_fw, true), do: :on_phone
+  defp on_phone(_fw, _emu?), do: :not_yet
 
   @doc "Whether a firmware matches a search (name, author, tags, description; case-insensitive)."
   @spec matches?(Firmware.t(), String.t()) :: boolean

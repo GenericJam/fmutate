@@ -53,8 +53,9 @@ defmodule FMutate.Instance do
   use GenServer
   require Logger
 
-  alias FMutate.{Audio, Engine, Firmware, Inputs, Paths}
+  alias FMutate.{Audio, Engine, Firmware, Inputs, Library, Paths}
   alias FMutate.Instance.Health
+  alias FMutate.Library.Catalog
 
   @crossfade_ms 150
   @restart_window_ms 60_000
@@ -325,7 +326,7 @@ defmodule FMutate.Instance do
     do: {:noreply, %{state | fetching: nil} |> fetched(f, result) |> publish()}
 
   def handle_info({:library, :changed}, %{fetching: %{fw: fw} = f} = state) do
-    progress = FMutate.Library.info().downloads[fw]
+    progress = Library.info().downloads[fw]
     {:noreply, publish(%{state | fetching: %{f | progress: progress}})}
   end
 
@@ -385,8 +386,8 @@ defmodule FMutate.Instance do
   # when it's in, `fetched/3`); the live role waits in `:downloading`, a switch keeps the old engine playing
   defp fetch_cart(state, role, fw, carry) do
     with true <- Firmware.needs_cart?(Firmware.get(fw)),
-         :ok <- FMutate.Library.subscribe(),
-         :ok <- FMutate.Library.download(fw) do
+         :ok <- Library.subscribe(),
+         :ok <- Library.download(fw) do
       Logger.info("instance #{state.id}: #{fw} runs natively; downloading its cartridge first")
       phase = if role == :live, do: :downloading, else: state.phase
       %{state | phase: phase, fetching: %{fw: fw, role: role, carry: carry, progress: nil}}
@@ -401,7 +402,7 @@ defmodule FMutate.Instance do
 
   # the download failed: the firmware's Hub package in the emulator, when it's on the phone
   defp fetched(state, %{fw: fw, role: role}, {:error, reason}) do
-    hub = FMutate.Library.Catalog.hub_id(fw)
+    hub = Catalog.hub_id(fw)
 
     if Firmware.runnable(hub) do
       Logger.warning("instance #{state.id}: #{fw}'s cartridge didn't download (#{inspect(reason)}); running #{hub} in the emulator")
