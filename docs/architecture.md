@@ -173,8 +173,8 @@ flowchart LR
   channel filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned.
 - **What MIDI-driven controls show** never goes through the instrument screen's process: `FMutate.MIDI` sends text
   lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
-  display frame. iOS has no such channel yet: there the inputs reach the firmware but the on-screen control
-  doesn't move; the Swift surface needs the same queue (`FMutate.MIDI`'s `:surface` option takes the function).
+  display frame. iOS has the same channel: `fm1surface`'s `surface/1` NIF (`FMutate.SurfaceNif`) into
+  `FMutateMidiSurface.swift`'s queue, drained on the main thread.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
@@ -306,7 +306,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
 | `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, the rule 7 arbiter, clock follow/send/off |
-| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` | what learned and automapped controls show on the surface, queued and applied once per frame |
+| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface, queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
 

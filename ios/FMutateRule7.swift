@@ -32,6 +32,15 @@ final class FMRule7 {
         return ok
     }
 
+    /// A learned MIDI control moved `key` for `control` (FMutate.MIDI arbitrated it): that control owns it now.
+    func take(_ key: String, _ control: String, _ v: Float) {
+        if owner[key] != control {
+            owner[key] = control
+            ownerChanged()
+        }
+        last[key + "|" + control] = v
+    }
+
     /// Whether another control moved one of this control's absolute targets last.
     func stale(_ c: FMControl) -> Bool {
         c.bindings.contains { b in

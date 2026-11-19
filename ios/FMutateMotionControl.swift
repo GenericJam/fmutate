@@ -432,6 +432,17 @@ extension FMDraw {
         let label = !sensor ? "no sensor" : c.label
         text(label, r.cx, r.y + r.h - 9, 10, active ? FMC.fm : sensor ? FMC.muted : FMC.faint, mono: true)
         if c.motionLatch && r.h >= 80 { text("LATCH", r.x + 22, r.y + 10, 8, active ? FMC.fm : FMC.faint, mono: true) }
+        // the corner "stay on" box: lime with a tick while the tile stays on
+        if sensor {
+            let b = fmStayBox(r)
+            if st.stayOn[c.id] == true {
+                fmFillRoundRect(g, b.x, b.y, b.w, b.h, 6, FMC.fm)
+                fmLine(g, b.x + b.w * 0.25, b.y + b.h * 0.52, b.x + b.w * 0.43, b.y + b.h * 0.7, FMC.ink, 2)
+                fmLine(g, b.x + b.w * 0.43, b.y + b.h * 0.7, b.x + b.w * 0.76, b.y + b.h * 0.32, FMC.ink, 2)
+            } else {
+                fmStrokeRoundRect(g, b.x, b.y, b.w, b.h, 6, FMC.lineSoft, 1.5)
+            }
+        }
     }
 
     /// A motion control's tilt: a dot inside its ring, at the edge for a whole range of tilt.

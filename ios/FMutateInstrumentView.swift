@@ -8,7 +8,8 @@
 //            | {t: "midi", bytes: [..]}
 //   send("menu"), send("pages"), send("edit"), send("page", {id}), send("use_classic"), send("toggle", {k, on})
 //
-// The firmware's screen and LEDs come from the engine's shared memory (FMFirmwareShm), not from props.
+// The firmware's screen and LEDs come from the engine's shared memory (FMFirmwareShm), not from props. What
+// learned hardware MIDI controls show (knob values, presses, toggles) comes from FMMidiSurface, on the main thread.
 //
 // Drawing is split into layers so a frame redraws only what changed: the controls (a backing-store view,
 // re-rendered on presses, values and LEDs, and only in the rect of the control that changed), the playing
@@ -289,6 +290,14 @@ private let ARROW_DP: CGFloat = 36
 private let FIRMWARE_BEND_ST: CGFloat = 2
 /// How long after an engine runs its firmware takes to listen (OberVave's package ~2 s, the cartridge ~1.5 s).
 private let FIRMWARE_BOOT_MS: Int64 = 2000
+/// A motion tile's grab on its corner "stay on" box (not a hold of the tile).
+private let STAY_GRAB = -3
+
+/// A motion tile's corner "stay on" box (dp): top right, a quarter of the tile's short side, 18..28 dp.
+func fmStayBox(_ r: FMGrid.Rect) -> FMGrid.Rect {
+    let s = min(max(min(r.w, r.h) * 0.25, 18), 28)
+    return FMGrid.Rect(x: r.x + r.w - s - 4, y: r.y + 4, w: s, h: s)
+}
 
 typealias FMPointer = ObjectIdentifier
 
@@ -340,6 +349,7 @@ final class FMSurfaceState {
     var ledButtons = 0, ledKeys = 0, ledGlow = 0
     var noteOct = 0                        // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn = false                     // the surface's BEND toggle: keyboard strips bend
+    var stayOn: [String: Bool] = [:]       // motion tiles switched on with their corner box
 }
 
 /// What the firmware screen area says about the instance: a title, an action (tap the screen) and a hint.
@@ -487,6 +497,10 @@ final class FMInstrumentSurface: UIView {
     private let motionView = FMLayerView()
     private var motionShownKeys: Set<String> = []
     private var motionHeldBack: [String: Float] = [:]
+    // learned MIDI controls (FMutateMidiSurface.swift): every control of the layout by id (their press bindings),
+    // and when each one's bubble was last moved (it goes once the control has been still for a moment)
+    private var allControls: [String: FMControl] = [:]
+    private var midiStill: [String: Int64] = [:]
 
     private var shm: FMFirmwareShm?
     private let screenScaler = FMScreenScaler()
@@ -556,6 +570,11 @@ final class FMInstrumentSurface: UIView {
 
         let first = !mounted
         mounted = true
+        if first {
+            // learned MIDI controls show on this surface from now on (FMutateMidiSurface.swift)
+            FMMidiSurface.shared.clear()
+            FMMidiSurface.shared.shower = self
+        }
         var structure = false
         var screenText = false
 
@@ -573,8 +592,13 @@ final class FMInstrumentSurface: UIView {
                 // Kotlin: remember(layout.id) { Rule7() }
                 r7 = FMRule7()
                 r7.ownerChanged = { [weak self] in self?.controlsView.setNeedsDisplay() }
+                // Kotlin: LaunchedEffect(state) { MidiSurface.clear() }; and what a learned control's knob moved on
+                // the last layout isn't this one's
+                FMMidiSurface.shared.clear()
+                motionHeldBack.removeAll()
             }
             layout = next
+            allControls = next.map { l in Dictionary((l.dock + l.pages.flatMap(\.controls)).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) } ?? [:]
             keyGeometry.removeAll()
             structure = true
         }
@@ -711,6 +735,7 @@ final class FMInstrumentSurface: UIView {
         if disposed { return }
         disposeState()
         disposed = true
+        if FMMidiSurface.shared.shower === self { FMMidiSurface.shared.shower = nil }
         FMOrientation.hold(nil, window)
         displayLink?.invalidate()
         displayLink = nil
@@ -885,16 +910,21 @@ final class FMInstrumentSurface: UIView {
         }
     }
 
+    /// A velocity strip's own octave follows OCT presses (the firmware's OCT doesn't reach its MIDI notes).
+    private func octaveFollows(_ id: String, _ down: Bool) {
+        if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") {
+            state.noteOct = fmClamp(state.noteOct + (id == "oct_down" ? -1 : 1), -2, 2)
+            keysView.setNeedsDisplay()
+        }
+    }
+
     /// Press or release a discrete target (keys, buttons, notes, page).
     func fire(_ t: FMTarget, _ down: Bool) {
         switch t {
         case let .key(n): input(["t": "key", "k": n, "d": down])
         case let .button(id):
             input(["t": "button", "id": id, "d": down])
-            if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") {
-                state.noteOct = fmClamp(state.noteOct + (id == "oct_down" ? -1 : 1), -2, 2)
-                keysView.setNeedsDisplay()
-            }
+            octaveFollows(id, down)
         case let .midi(type, channel, number, _, on, off):
             switch type {
             case "note":
@@ -1193,9 +1223,26 @@ final class FMInstrumentSurface: UIView {
             let n = layout.pages.count
             let i = fmClamp(Int((p.x - r.x) / r.w * CGFloat(n)), 0, n - 1)
             goPage(layout.pages[i].id)
-        // a motion control: hold engages while the finger is on it, latch toggles on a tap
+        // a motion control: its corner box switches "stay on" (engaged until switched off); otherwise hold engages
+        // while the finger is on it, latch toggles on a tap, and a tile that stays on ignores its body
         case "motion":
-            if c.motionLatch && motion.isEngaged(c.id) { motionOff(c.id) } else { motionOn(c) }
+            if fmStayBox(r).contains(p.x, p.y) {
+                g.sub = STAY_GRAB
+                haptic(.virtualKey)
+                if state.stayOn[c.id] == true {
+                    motionOff(c.id)
+                } else {
+                    if !motion.isEngaged(c.id) { motionOn(c) }
+                    state.stayOn[c.id] = true
+                    dirtyControl(c.id)
+                }
+            } else if state.stayOn[c.id] == true {
+                break
+            } else if c.motionLatch && motion.isEngaged(c.id) {
+                motionOff(c.id)
+            } else {
+                motionOn(c)
+            }
         case "knob", "slider", "xy_pad":
             setPressed(c.id, true)
             setEncoderTurns(c.id, 0)
@@ -1307,7 +1354,7 @@ final class FMInstrumentSurface: UIView {
                 }
             }
         case "motion":
-            if !c.motionLatch { motionOff(c.id) }
+            if !c.motionLatch && g.sub != STAY_GRAB && state.stayOn[c.id] != true { motionOff(c.id) }
         case "screen":
             if !g.moved && phase == "safe_mode" { haptic(.virtualKey); emit("run_anyway") }
         default: break
@@ -1564,9 +1611,13 @@ extension FMInstrumentSurface: FMMotionSink {
         // show them); the others (a pitch bend, a CC nothing here shows) wait in motionHeldBack until the motion
         // control lets go, or every reading would redraw the controls layer
         motionShownKeys = Set(controls.filter { $0.type == "knob" || $0.type == "slider" }.flatMap { $0.bindings.compactMap(\.to.absoluteKey) })
+        // values learned controls moved while their knob was on another page: shown now that it is
+        for k in motionShownKeys { if let v = motionHeldBack.removeValue(forKey: k) { putValue(k, v) } }
         let ids = Set(controls.filter { $0.type == "motion" }.map(\.id))
         // Kotlin's retain(ids), plus the pressed look, which Kotlin leaves on
         for id in motion.engagedIds where !ids.contains(id) { motionOff(id) }
+        // "stay on" included
+        for id in state.stayOn.keys where !ids.contains(id) { state.stayOn.removeValue(forKey: id); setPressed(id, false) }
         motionView.setNeedsDisplay()
     }
 
@@ -1578,6 +1629,7 @@ extension FMInstrumentSurface: FMMotionSink {
     private func motionOff(_ id: String) {
         motion.disengage(id)
         setPressed(id, false)
+        if state.stayOn.removeValue(forKey: id) != nil { dirtyControl(id) }
     }
 
     private func motionAllOff() {
@@ -1616,6 +1668,75 @@ extension FMInstrumentSurface: FMMotionSink {
     func motionSettle() {
         for (k, v) in motionHeldBack { putValue(k, v) }
         motionHeldBack.removeAll()
+    }
+}
+
+// MARK: - learned MIDI controls (FMutateMidiSurface.swift; FMutate.MIDI.Controls): the firmware already has their
+// inputs, the surface only shows them; plus what only the surface does (page, BEND, the velocity strips' octave)
+
+private let MIDI_BUBBLE_MS: Int64 = 700
+
+extension FMInstrumentSurface: FMMidiShower {
+    private func pressBindingsOf(_ key: String) -> [FMBinding] {
+        guard let hash = key.firstIndex(of: "#") else { return allControls[key]?.bindings ?? [] }
+        guard let i = Int(key[key.index(after: hash)...]), let c = allControls[String(key[..<hash])],
+              i >= 0, i < c.pads.count else { return [] }
+        return c.pads[i].bindings
+    }
+
+    private func showLocally(_ t: FMTarget, _ down: Bool) {
+        switch t {
+        case let .page(ref): if down { goPage(ref) }
+        case let .action(id): if id == "bend" { state.bendOn = down }
+        case let .button(id): octaveFollows(id, down)
+        default: break
+        }
+    }
+
+    /// A learned knob's bubble and an encoder's turn go away once it has been still for a moment.
+    private func midiMoved(_ id: String, _ bubble: String) {
+        setBubble(id, bubble)
+        let at = fmNowMs() + MIDI_BUBBLE_MS
+        midiStill[id] = at
+        fmAfter(MIDI_BUBBLE_MS) { [weak self] in
+            guard let self, self.midiStill[id] == at, self.state.pressed[id] != true else { return }
+            self.midiStill.removeValue(forKey: id)
+            self.setBubble(id, nil)
+            self.setEncoderTurns(id, nil)
+        }
+    }
+
+    private func pressedOrHeld(_ key: String, _ down: Bool) {
+        if key.contains("#") { setHeld(key, down) } else { setPressed(key, down) }
+    }
+
+    func showMidi(_ shows: [FMMidiShow]) {
+        if disposed { return }
+        for s in shows {
+            switch s {
+            case let .press(key, down):
+                for b in pressBindingsOf(key) where b.on == "press" && b.mode != "toggle" { showLocally(b.to, down) }
+                pressedOrHeld(key, down)
+            case let .toggle(key, on):
+                state.toggles[key] = on
+                dirtyControl(key)
+                for b in pressBindingsOf(key) where b.on == "press" && b.mode == "toggle" { showLocally(b.to, on) }
+            case let .value(control, target, v):
+                if motionShownKeys.contains(target) { putValue(target, v) } else { motionHeldBack[target] = v }
+                r7.take(target, control, v)
+                if controls.contains(where: { $0.id == control }) { midiMoved(control, "\(fmRound(v * 100))") }
+            case let .shine(key, down):
+                pressedOrHeld(key, down)
+            case let .octave(dir):
+                octaveFollows(dir < 0 ? "oct_down" : "oct_up", true)
+            case let .clicks(control, n):
+                if controls.contains(where: { $0.id == control }) {
+                    let turns = (state.encoderTurns[control] ?? 0) + n
+                    setEncoderTurns(control, turns)
+                    midiMoved(control, (turns > 0 ? "+" : "") + "\(turns)")
+                }
+            }
+        }
     }
 }
 

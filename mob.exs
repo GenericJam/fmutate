@@ -47,11 +47,13 @@ config :mob_dev,
   # from ios/AppDelegate.m)
   project_swift_sources: Path.wildcard(Path.join(__DIR__, "ios/FMutate*.swift")),
   # fm1audio: the audio output (AAudio on Android, RemoteIO on iOS). fm1io: the JNI bridge to
-  # fmutate/FMutateIO.kt (audio output devices). fm1host: engines on threads of the app (iOS has no processes),
-  # linked with the engines native/build_ios.sh builds.
+  # fmutate/FMutateIO.kt (audio output devices, what learned MIDI controls show). fm1surface: the latter on iOS,
+  # into ios/FMutateMidiSurface.swift. fm1host: engines on threads of the app (iOS has no processes), linked
+  # with the engines native/build_ios.sh builds.
   static_nifs: [
     %{module: :fm1audio, archs: [:all]},
     %{module: :fm1io, archs: [:android]},
+    %{module: :fm1surface, archs: [:ios]},
     %{
       module: :fm1host,
       archs: [:ios],
