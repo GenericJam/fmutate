@@ -80,6 +80,7 @@ defmodule FMutate.Updates do
     # what the last check found, while it's still newer than this app (not once it's installed): offered again
     # at launch without asking GitHub before the interval is up
     release = newer(saved.release, installed)
+    launch = launch(saved, installed)
 
     state = %{
       config: config,
@@ -89,11 +90,11 @@ defmodule FMutate.Updates do
       release: release,
       checked_at: saved.checked_at,
       # the app version this launch replaced, when it differs from the last one that ran
-      updated_from: updated_from(saved.version_code, installed),
+      updated_from: launch.updated_from,
       # the outcome of the last code check this server asked for (mob_deliver also checks by itself)
       code_check: nil,
-      # a rollback mob_deliver did at this launch, shown for this launch only (taking it clears it)
-      rollback: code_client().take_rollback_notice(),
+      # a rollback mob_deliver did at this launch's boot
+      rollback: launch.rollback,
       apk: nil,
       task: nil
     }
@@ -102,6 +103,25 @@ defmodule FMutate.Updates do
     persist(state)
     if launch_check?(state), do: send(self(), :launch_check)
     {:ok, state}
+  end
+
+  # What this launch replaced (the app version) and rolled back (the code), worked out once per VM: both are gone
+  # once read (updates.term is rewritten with this version, taking the notice clears it), and this server restarts
+  # within the launch whenever an earlier child of FMutate.Supervisor does (rest_for_one).
+  defp launch(saved, installed) do
+    case :persistent_term.get({__MODULE__, :launch}, nil) do
+      nil ->
+        launch = %{
+          updated_from: updated_from(saved.version_code, installed),
+          rollback: code_client().take_rollback_notice()
+        }
+
+        :persistent_term.put({__MODULE__, :launch}, launch)
+        launch
+
+      launch ->
+        launch
+    end
   end
 
   @impl true

@@ -74,6 +74,9 @@ defmodule FMutate.UpdatesTest do
     on_exit(fn -> Application.delete_env(:fmutate_app, :code_client) end)
     on_exit(fn -> :persistent_term.erase(FakeClient) end)
     on_exit(fn -> :persistent_term.erase({FakeDeliver, :notice}) end)
+    # what a launch works out once per VM
+    :persistent_term.erase({Updates, :launch})
+    on_exit(fn -> :persistent_term.erase({Updates, :launch}) end)
     Process.put(:apk_dir, tmp)
     %{state_file: Path.join(tmp, "updates.term")}
   end
@@ -102,6 +105,19 @@ defmodule FMutate.UpdatesTest do
     start_supervised!({Updates, [file: ctx.state_file, repo: "GenericJam/fmutate"] ++ opts})
     {:ok, state} = Updates.subscribe()
     state
+  end
+
+  # the server again within the same launch (FMutate.Supervisor restarted it with an earlier sibling)
+  defp restart(ctx) do
+    stop_supervised!(Updates)
+    start(ctx)
+  end
+
+  # the next launch: a new VM, without what the last one worked out once
+  defp relaunch(ctx) do
+    stop_supervised!(Updates)
+    :persistent_term.erase({Updates, :launch})
+    start(ctx)
   end
 
   # the state now if it already matches (a fast fake can finish before the subscription), else the next
@@ -140,8 +156,7 @@ defmodule FMutate.UpdatesTest do
     state = await(&match?({:available, _}, &1.app))
     assert %DateTime{} = state.checked_at
 
-    stop_supervised!(Updates)
-    relaunched = start(ctx)
+    relaunched = relaunch(ctx)
     refute_receive {:called, :check, _}, 200
     # what the last check found is still offered, without asking GitHub again
     assert relaunched.app == {:available, @release}
@@ -153,8 +168,7 @@ defmodule FMutate.UpdatesTest do
     assert_receive {:called, :check, _}
     assert await(&match?({:error, _}, &1.app)).checked_at == nil
 
-    stop_supervised!(Updates)
-    start(ctx)
+    relaunch(ctx)
     assert_receive {:called, :check, _}
   end
 
@@ -251,16 +265,15 @@ defmodule FMutate.UpdatesTest do
     assert await(&match?({:error, _}, &1.app)).app == {:error, {:sha256_mismatch, "00", "11"}}
   end
 
-  test "a launch after an update says which version it replaced", ctx do
+  test "a launch after an update says which version it replaced, for the whole launch", ctx do
     script(%{})
     start(ctx)
-    stop_supervised!(Updates)
 
     script(%{installed: {:ok, %{package: "com.genericjam.fmutate", version_code: 2, version_name: "0.1.1"}}})
-    assert start(ctx).updated_from == 1
+    assert relaunch(ctx).updated_from == 1
+    assert restart(ctx).updated_from == 1
 
-    stop_supervised!(Updates)
-    assert start(ctx).updated_from == nil
+    assert relaunch(ctx).updated_from == nil
   end
 
   test "once the update is installed, its release isn't offered again", ctx do
@@ -268,6 +281,7 @@ defmodule FMutate.UpdatesTest do
     start(ctx)
     await(&match?({:available, _}, &1.app))
     stop_supervised!(Updates)
+    :persistent_term.erase({Updates, :launch})
 
     # the release found above is now installed; the next check (within the interval) fails
     script(%{
@@ -293,8 +307,7 @@ defmodule FMutate.UpdatesTest do
     Updates.install()
     refute_receive {:called, :download, _}, 200
 
-    stop_supervised!(Updates)
-    assert start(ctx).release == nil
+    assert relaunch(ctx).release == nil
   end
 
   test "Android's outcome arriving before the session's start isn't overwritten; Install works from the dialog", ctx do
@@ -360,9 +373,9 @@ defmodule FMutate.UpdatesTest do
     assert start(ctx).code.rollback == notice
     Updates.check()
     assert await(&(&1.app == :up_to_date)).code.rollback == notice
+    assert restart(ctx).code.rollback == notice
 
-    stop_supervised!(Updates)
-    assert start(ctx).code.rollback == nil
+    assert relaunch(ctx).code.rollback == nil
   end
 
   defp atoms(term) when is_atom(term), do: [term]
