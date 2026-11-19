@@ -21,7 +21,8 @@ cd "$(dirname "$0")"
 HERE=$(pwd)
 ROOT=$(cd .. && pwd)
 NDK=${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}
-TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+[ -d "$NDK" ] || NDK=$HOME/Library/Android/sdk/ndk/27.2.12479018    # (macOS's default SDK location)
+TC=$NDK/toolchains/llvm/prebuilt/$(uname -s | tr 'A-Z' 'a-z')-x86_64/bin   # (darwin-x86_64 on Apple silicon too)
 API=28                                          # minSdk (android/app/build.gradle)
 # Not armeabi-v7a by default: fm1-core has no 32-bit ARM code generator, and its interpreter ran Dinghy at 0.11x
 # real time on a Moto G Power 2021 (`ABIS=armeabi-v7a` still builds it, for measuring). Without libfm1emu.so,

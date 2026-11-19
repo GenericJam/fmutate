@@ -11,6 +11,8 @@ defmodule FMutate.Supervisor do
   @impl true
   def init(opts) do
     instances = Keyword.get(opts, :instances, ["a"])
+    # (before any engine starts: the firmwares that ended the last launch, for the instances to count)
+    :ok = FMutate.CrashMarker.arm()
 
     children =
       [

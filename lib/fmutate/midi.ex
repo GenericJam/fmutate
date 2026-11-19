@@ -29,9 +29,10 @@ defmodule FMutate.MIDI do
   (`midi_in`, `FMutate.MIDI.Learn`). This process keeps them (`FMutate.MIDI.Controls`, reloaded whenever
   `FMutate.Layouts` saves a layout or the firmware changes): a matching message drives its layout control's
   bindings here, as instance inputs, and skips its default path. The on-screen control is told what to show
-  through `FMutate.IONif.surface/1` (a JNI call into the surface's queue, applied once per display frame),
-  never through the instrument screen's process, and only after the inputs are on their way; the lines of
-  all the messages waiting in this mailbox go in one call.
+  through `FMutate.IONif.surface/1` (Android: a JNI call into the surface's queue, applied once per display
+  frame) or `FMutate.SurfaceNif.surface/1` (iOS: the Swift surface's queue, applied on the main thread), never
+  through the instrument screen's process, and only after the inputs are on their way; the lines of all the
+  messages waiting in this mailbox go in one call.
 
   The instance's rule 7 arbiter lives here too, so the surface's absolute moves come through
   `surface_in/2` and pick up from learned hardware controls and the other way round.
@@ -187,9 +188,13 @@ defmodule FMutate.MIDI do
     {:ok, start_clock(state)}
   end
 
-  # the surface's queue (FMutate.IONif) on a device; nowhere on a host
+  # the surface's queue on a device (Android: FMutate.IONif; iOS: FMutate.SurfaceNif); nowhere on a host
   defp native_surface do
-    if FMutate.IONif.loaded?(), do: &FMutate.IONif.surface/1, else: fn _text -> :ok end
+    cond do
+      FMutate.IONif.loaded?() -> &FMutate.IONif.surface/1
+      FMutate.SurfaceNif.loaded?() -> &FMutate.SurfaceNif.surface/1
+      true -> fn _text -> :ok end
+    end
   end
 
   @impl true

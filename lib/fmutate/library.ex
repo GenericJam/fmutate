@@ -86,7 +86,7 @@ defmodule FMutate.Library do
   def import_package(path, filename), do: GenServer.call(__MODULE__, {:import, path, filename})
 
   @doc "Whether this build carries the emulator engine (otherwise packages \"don't run here yet\")."
-  def emu?, do: File.exists?(Paths.emu_bin())
+  def emu?, do: Paths.emu?()
 
   ## Server
 

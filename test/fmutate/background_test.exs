@@ -29,6 +29,8 @@ defmodule FMutate.BackgroundTest do
   defmodule Backend do
     def keep_alive, do: report(:keep_alive, :persistent_term.get({__MODULE__, :answer}, :ok))
     def stop, do: report(:stop, :ok)
+    def on?, do: false
+    def resume, do: :ok
     def request_notifications, do: report(:request_notifications, :ok)
 
     defp report(call, answer) do
