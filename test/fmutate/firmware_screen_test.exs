@@ -148,24 +148,37 @@ defmodule FMutate.FirmwareScreenTest do
     view = open("felucca")
 
     assert text(view) =~ @what
-    assert text(view) =~ "Couldn’t read the README (offline?)"
+
+    assert text(view) =~
+             "Offline: couldn’t reach GitHub. The card text above is what there is for now."
+
     assert find(view, :button, text: "Read the full README ↗")
   end
 
-  test "offline with a copy read before: the copy at once, then said to be from that day", %{
-    server: server
-  } do
+  test "offline with a copy read before: the copy, said to be from that day", %{server: server} do
     FixtureServer.route(server, @readme_path, {200, [{"etag", ~s("1")}], @readme})
     open("felucca")
     FixtureServer.stop(server)
 
+    # mount reads nothing untrusted: the copy arrives from a task
     view = mount_screen(FirmwareScreen, %{id: "felucca"})
-    assert text(view) =~ "Open-source firmware for the M-VAVE FM-1."
-    refute text(view) =~ "Offline"
+    refute text(view) =~ "Open-source firmware"
 
     view = render_async(view)
     assert text(view) =~ "Open-source firmware for the M-VAVE FM-1."
-    assert text(view) =~ ~r/Offline: the README as read on \d{4}-\d{2}-\d{2}\./
+
+    assert text(view) =~
+             ~r/Offline: couldn’t reach GitHub\. Showing the copy read on \d{4}-\d{2}-\d{2}\./
+  end
+
+  test "a README that isn't there, or that GitHub won't serve, is said as such", %{server: server} do
+    assert text(open("felucca")) =~ "No README at v1.8.2. The card text above is what there is"
+
+    FixtureServer.route(server, @readme_path, {503, [], "busy"})
+    assert text(open("felucca")) =~ "GitHub answered 503."
+
+    FixtureServer.route(server, @readme_path, {200, [], String.duplicate("x", 524_289)})
+    assert text(open("felucca")) =~ "The README is too large to show here."
   end
 
   test "a built-in firmware reads the README at the commit its cartridge is built from", %{

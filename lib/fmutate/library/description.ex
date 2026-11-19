@@ -7,7 +7,7 @@ defmodule FMutate.Library.Description do
   Where the text comes from, first that works:
 
     1. the README read now from the repository's host: `raw.githubusercontent.com/<owner>/<name>/<ref>/README.md`
-       (`readme.md` when that is missing; the default branch when the catalogue pins no ref), HTTPS through
+       (`Readme.md`, `readme.md`, `README` when that is missing; the default branch when the catalogue pins no ref), HTTPS through
        `FMutate.Library.HTTP`, at most 512 KB. Cached per repository and ref under `FMutate.Paths.descriptions_dir/0`
        with its `ETag` and `Last-Modified`, so reading it again is a conditional GET that a 304 answers;
     2. that cached copy, when the host can't be reached (offline): `status: :cached` with when it was read;
@@ -23,7 +23,7 @@ defmodule FMutate.Library.Description do
 
   @max 524_288
   @picture_max 2_097_152
-  @files ["README.md", "readme.md"]
+  @files ["README.md", "Readme.md", "readme.md", "README"]
   @extensions ~w(.webp .png .jpg .jpeg .gif)
 
   @typedoc "A GitHub repository (`owner/name`) and the ref to read it at (nil: the default branch)."

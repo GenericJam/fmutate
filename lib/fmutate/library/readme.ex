@@ -22,6 +22,7 @@ defmodule FMutate.Library.Readme do
 
   @scan 65_536
   @budget 4000
+  @heading_max 300
   # a hard line break (`<br>`) survives paragraph joining as this (a private-use character, not whitespace, so
   # trimming keeps it; dropped from the input), then becomes "\n"
   @br "\uE000"
@@ -121,7 +122,7 @@ defmodule FMutate.Library.Readme do
     cond do
       fence?(line) -> :fence
       boundary?(line, cur) -> :boundary
-      m = Regex.run(~r/^\s{0,3}(\#{1,6})\s+(.*?)\s*#*\s*$/, line) -> {:heading, m}
+      m = Regex.run(~r/^\s{0,3}(\#{1,6})\s+(.*)$/, line) -> {:heading, m}
       setext?(cur, line) -> :setext
       table_row?(line) -> :table
       m = Regex.run(~r/^\s*(?:[-*+]|\d{1,9}[.)])\s+(.*)$/, line) -> {:item, m}
@@ -136,8 +137,11 @@ defmodule FMutate.Library.Readme do
   defp step(:table, line, rest, acc, cur), do: parse_table([line | rest], push(acc, cur))
   defp step(:text, line, rest, acc, cur), do: parse(rest, acc, continue(cur, String.trim(line)))
 
-  defp step({:heading, [_, hashes, title]}, _line, rest, acc, cur),
-    do: parse(rest, [{:heading, String.length(hashes), title} | push(acc, cur)], nil)
+  # (the closing #s trimmed without a regex: a long line of them can't make it backtrack)
+  defp step({:heading, [_, hashes, title]}, _line, rest, acc, cur) do
+    title = title |> String.trim_trailing() |> String.trim_trailing("#") |> String.trim_trailing()
+    parse(rest, [{:heading, String.length(hashes), title} | push(acc, cur)], nil)
+  end
 
   defp step(:setext, line, rest, acc, {:paragraph, lines}) do
     level = if String.contains?(line, "="), do: 1, else: 2
@@ -215,10 +219,11 @@ defmodule FMutate.Library.Readme do
 
   ## Inline
 
+  # (a heading is cut as a paragraph would be, at @heading_max characters: ATX and setext alike)
   defp inline_block({:heading, level, text}) do
     case inline(text) do
       "" -> []
-      t -> [{:heading, level, String.replace(t, "\n", " ")}]
+      t -> [{:heading, level, t |> String.replace("\n", " ") |> cut_text(@heading_max)}]
     end
   end
 
@@ -241,11 +246,11 @@ defmodule FMutate.Library.Readme do
   def inline(text) do
     text =
       text
-      |> then(&Regex.replace(~r/!\[[^\]]*\]\([^)]*\)/, &1, ""))
-      |> then(&Regex.replace(~r/!\[[^\]]*\]\[[^\]]*\]/, &1, ""))
-      |> then(&Regex.replace(~r/\[([^\]]*)\]\([^)]*\)/, &1, "\\1"))
-      |> then(&Regex.replace(~r/\[([^\]]+)\]\[[^\]]*\]/, &1, "\\1"))
-      |> then(&Regex.replace(~r/`+([^`]+)`+/, &1, "\\1"))
+      |> then(&Regex.replace(~r/!\[[^\]]{0,300}\]\([^)]{0,1000}\)/, &1, ""))
+      |> then(&Regex.replace(~r/!\[[^\]]{0,300}\]\[[^\]]{0,300}\]/, &1, ""))
+      |> then(&Regex.replace(~r/\[([^\]]{0,300})\]\([^)]{0,1000}\)/, &1, "\\1"))
+      |> then(&Regex.replace(~r/\[([^\]]{1,300})\]\[[^\]]{0,300}\]/, &1, "\\1"))
+      |> then(&Regex.replace(~r/`{1,16}([^`]{1,300})`{1,16}/, &1, "\\1"))
       # (spans bounded: an opener without a closer must not rescan the rest of a hostile paragraph)
       |> then(&Regex.replace(~r/(\*\*|__)(?=\S)(.{1,300}?)(?<=\S)\1/, &1, "\\2"))
       |> then(&Regex.replace(~r/(?<![\w*])\*(?=\S)(.{1,300}?)(?<=\S)\*(?![\w*])/, &1, "\\1"))
@@ -362,7 +367,7 @@ defmodule FMutate.Library.Readme do
 
   defp shorten({:paragraph, text}, budget), do: {:paragraph, cut_text(text, budget)}
   defp shorten({:list, items}, budget), do: {:list, elem(take_items(items, budget), 0)}
-  defp shorten(heading, _budget), do: heading
+  defp shorten({:heading, level, text}, budget), do: {:heading, level, cut_text(text, budget)}
 
   defp take_items(items, budget) do
     Enum.reduce_while(items, {[], 0}, fn item, {acc, used} ->

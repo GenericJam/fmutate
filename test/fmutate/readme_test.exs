@@ -135,4 +135,25 @@ defmodule FMutate.ReadmeTest do
              {:paragraph, "Bad bytes and &#7; &#x2028;."}
            ]
   end
+
+  test "hostile marks without closers (backticks, emphasis, links, headings) stay quick and bounded" do
+    for unit <- ["`", "``a ", "**a ", "*a ", "_a ", "[a ", "![a](", "<h1>x ", "# ", "#"] do
+      md = String.duplicate(unit, div(65_000, byte_size(unit)))
+      {us, %{blocks: blocks}} = :timer.tc(fn -> Readme.extract(md) end)
+      assert us < 3_000_000, "#{inspect(unit)}: #{div(us, 1000)} ms"
+      assert Enum.count_until(blocks, 201) <= 200 and Enum.sum_by(blocks, &text_size/1) <= 4_100
+    end
+  end
+
+  test "a heading longer than 300 characters is cut like a paragraph, in either form" do
+    long = String.duplicate("Word. ", 100)
+
+    for md <- ["# " <> long <> "\n\nText.", long <> "\n=====\n\nText."] do
+      assert [{:heading, 1, title}, {:paragraph, "Text."}] = blocks(md)
+      assert String.length(title) <= 302 and String.ends_with?(title, "Word. …")
+    end
+  end
+
+  defp text_size({:list, items}), do: Enum.sum_by(items, &String.length/1)
+  defp text_size(block), do: String.length(elem(block, tuple_size(block) - 1))
 end

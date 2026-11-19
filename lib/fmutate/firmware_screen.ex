@@ -46,14 +46,18 @@ defmodule FMutate.FirmwareScreen do
 
     socket =
       Mob.Socket.assign(socket,
-        description: fw && Description.cached(fw),
+        description: nil,
         reading: source?,
         picture: fw && Description.cached_picture(fw)
       )
 
+    # the phone's copy (quick, but untrusted text: never parsed in mount), then the read from GitHub
     socket =
       if source?,
-        do: Mob.Socket.start_async(socket, :description, fn -> Description.load(fw) end),
+        do:
+          socket
+          |> Mob.Socket.start_async(:cached, fn -> Description.cached(fw) end)
+          |> Mob.Socket.start_async(:description, fn -> Description.load(fw) end),
         else: socket
 
     socket =
@@ -269,7 +273,7 @@ defmodule FMutate.FirmwareScreen do
     open_repo = {self(), {:open_url, repo_url}}
     at = if src.ref, do: " at " <> short_ref(src.ref), else: ""
     attribution = "#{fw.author}’s description, from github.com/#{src.repo}#{at}"
-    state = readme_state(desc, reading)
+    state = readme_state(desc, reading, src)
     has_state = state != nil
     state = state || ""
     blocks = Enum.map((desc && desc.readme && desc.readme.blocks) || [], &block/1)
@@ -286,20 +290,28 @@ defmodule FMutate.FirmwareScreen do
     """
   end
 
-  defp readme_state(nil, true), do: "Reading the README…"
-  defp readme_state(%{status: :fresh}, _reading), do: nil
-  defp readme_state(%{status: :cached}, true), do: nil
+  defp readme_state(nil, true, _src), do: "Reading the README…"
+  defp readme_state(%{status: :fresh}, _reading, _src), do: nil
+  defp readme_state(%{status: :cached}, true, _src), do: nil
 
-  defp readme_state(%{status: :cached, fetched_at: t}, false),
-    do: "Offline: the README as read on #{date(t)}."
+  defp readme_state(%{status: :cached, fetched_at: t, error: error}, false, src),
+    do: failure(error, src) <> " Showing the copy read on #{date(t)}."
 
-  defp readme_state(%{status: :missing}, _reading),
-    do: "Couldn’t read the README (offline?). The card text above is what there is for now."
+  defp readme_state(%{status: :missing, error: error}, _reading, src),
+    do: failure(error, src) <> " The card text above is what there is for now."
 
-  defp readme_state(nil, false),
-    do: "Couldn’t read the README (offline?). The card text above is what there is for now."
+  defp readme_state(nil, false, _src), do: "Couldn’t read the README."
+  defp readme_state(_desc, _reading, _src), do: nil
 
-  defp readme_state(_desc, _reading), do: nil
+  # why the README isn't the one read now, said as it is
+  defp failure(nil, _src), do: "Not read again yet."
+
+  defp failure({:http, 404}, src),
+    do: "No README at #{if src.ref, do: short_ref(src.ref), else: "the default branch"}."
+
+  defp failure({:http, status}, _src), do: "GitHub answered #{status}."
+  defp failure(:size, _src), do: "The README is too large to show here."
+  defp failure(_transport, _src), do: "Offline: couldn’t reach GitHub."
 
   # "Read the full README" when the page shows only its start, or none of it
   defp full_link(src, desc) do
@@ -388,6 +400,15 @@ defmodule FMutate.FirmwareScreen do
       |> Calendar.strftime("%Y-%m-%d")
 
   ## Events
+
+  # (the phone's copy shows until the read from GitHub answers, never over it)
+  def handle_async(:cached, {:ok, desc}, socket) do
+    if socket.assigns.description == nil and socket.assigns.reading,
+      do: {:noreply, Mob.Socket.assign(socket, :description, desc)},
+      else: {:noreply, socket}
+  end
+
+  def handle_async(:cached, _result, socket), do: {:noreply, socket}
 
   def handle_async(:description, {:ok, desc}, socket),
     do: {:noreply, Mob.Socket.assign(socket, description: desc, reading: false)}
