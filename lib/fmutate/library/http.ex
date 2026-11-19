@@ -10,20 +10,58 @@ defmodule FMutate.Library.HTTP do
 
   @doc """
   GET `url` into memory, with `extra` request headers (e.g. `[{"if-none-match", etag}]`): the body and the
-  response headers (lower-case names), or `:not_modified` on a 304.
+  response headers (lower-case names), or `:not_modified` on a 304. With `max: bytes` the body streams in and
+  one that grows past `max` is cut off: `{:error, :size}` (for bodies nobody vetted, such as a README).
   """
-  @spec get(String.t(), [{String.t(), String.t()}]) ::
+  @spec get(String.t(), [{String.t(), String.t()}], keyword) ::
           {:ok, binary, %{String.t() => String.t()}} | :not_modified | {:error, term}
-  def get(url, extra \\ []) do
+  def get(url, extra \\ [], opts \\ []) do
     req = headers() ++ for({k, v} <- extra, do: {to_charlist(k), to_charlist(v)})
 
     with :ok <- start() do
-      case :httpc.request(:get, {to_charlist(url), req}, http_opts(url), body_format: :binary) do
-        {:ok, {{_, 200, _}, resp, body}} -> {:ok, body, header_map(resp)}
-        {:ok, {{_, 304, _}, _, _}} -> :not_modified
-        {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
-        {:error, reason} -> {:error, reason}
+      case opts[:max] do
+        nil -> get_whole(url, req)
+        max -> get_capped(url, req, max)
       end
+    end
+  end
+
+  defp get_whole(url, req) do
+    case :httpc.request(:get, {to_charlist(url), req}, http_opts(url), body_format: :binary) do
+      {:ok, {{_, 200, _}, resp, body}} -> {:ok, body, header_map(resp)}
+      {:ok, {{_, 304, _}, _, _}} -> :not_modified
+      {:ok, {{_, status, _}, _, _}} -> {:error, {:http, status}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp get_capped(url, req, max) do
+    opts = [sync: false, stream: :self, body_format: :binary]
+
+    with {:ok, ref} <- :httpc.request(:get, {to_charlist(url), req}, http_opts(url), opts),
+         do: receive_capped(ref, %{}, [], 0, max)
+  end
+
+  defp receive_capped(ref, _headers, _acc, got, max) when got > max do
+    :httpc.cancel_request(ref)
+    {:error, :size}
+  end
+
+  defp receive_capped(ref, headers, acc, got, max) do
+    receive do
+      {:http, {^ref, :stream_start, resp}} -> receive_capped(ref, header_map(resp), acc, got, max)
+      {:http, {^ref, :stream, chunk}} -> receive_capped(ref, headers, [acc | chunk], got + byte_size(chunk), max)
+      {:http, {^ref, :stream_end, _resp}} -> {:ok, IO.iodata_to_binary(acc), headers}
+      # (a status other than 200 isn't streamed: it arrives whole)
+      {:http, {^ref, {{_, 304, _}, _, _}}} -> :not_modified
+      {:http, {^ref, {{_, 200, _}, resp, body}}} when byte_size(body) <= max -> {:ok, body, header_map(resp)}
+      {:http, {^ref, {{_, 200, _}, _, _}}} -> {:error, :size}
+      {:http, {^ref, {{_, status, _}, _, _}}} -> {:error, {:http, status}}
+      {:http, {^ref, {:error, reason}}} -> {:error, reason}
+    after
+      @timeout ->
+        :httpc.cancel_request(ref)
+        {:error, :timeout}
     end
   end
 

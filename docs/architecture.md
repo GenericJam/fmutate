@@ -42,6 +42,24 @@ flowchart LR
   be compared. Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out.
   A package "doesn't run here yet" while the build has no `libfm1emu.so`; with it, a package on the phone is
   "On phone" and runs (`FMutate.Firmware.runnable/1` → `%{engine, file, backend}`).
+- **Synth pages** (`FMutate.FirmwareScreen`, opened by a tap on a library card; the card's actions are shared
+  through `FMutate.LibraryUI`): a firmware's fuller description is its repository's README, read by
+  `FMutate.Library.Description` when the page opens (`Mob.Socket.start_async/3`) from
+  `https://raw.githubusercontent.com/<owner>/<name>/<ref>/README.md` (`readme.md` after a 404), over
+  `FMutate.Library.HTTP` with a 512 KB cap. The ref is the one the build or package comes from: a Hub package's
+  verified build commit (`provenance.commit`), else `srcref`, else its release `tag`, else the default branch
+  (`HEAD`); a native build's index `commit`; a bundled cartridge's commit in `native/build_android.sh` (also in
+  `FMutate.Firmware`'s `@bundled`). Cached per repository and ref as `<data>/descriptions/<hash>.md` + `.term`
+  (ETag, Last-Modified, when, file name): the page shows the copy at once and the read is conditional (a 304
+  keeps it); offline it stays, "as read on <date>"; with no copy the Hub's card text (`what`, the maker's
+  `fmhub.json`) is what there is. `FMutate.Library.Readme` turns the untrusted Markdown/HTML into headings,
+  paragraphs and lists for Mob text components (Mob has no Markdown or HTML view): pictures, badges, HTML,
+  code blocks and link noise go; it reads at most 64 KB and stops at a section boundary past 4000 characters,
+  with "Read the full README" opening GitHub's page at the same ref in the browser (`Mob.Device.open_url/1`).
+  The Hub's card picture (`card`, a path under thefirmwarehub.com only) is read once into the same directory
+  (2 MB cap) and shown from the file. The Hub's terms: card texts and pictures are their makers', so the page
+  names the maker and links the repository beside each, and says the README is "<maker>'s description, from
+  github.com/<repo> at <ref>"; the list's CC BY 4.0 line closes the page.
 - **Native builds of Hub firmwares** (`FMutate.Cartridges`): [fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges)
   builds Hub firmwares as cartridges per platform in CI and publishes a signed index (`:cartridges` `index_url`
   in `config/config.exs`; `index.json` + `index.json.sig`, Ed25519 by the key in `public_key`). FMutate keeps
@@ -85,7 +103,7 @@ flowchart LR
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
 | `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -95,6 +113,13 @@ flowchart LR
 
 - **Package id** `com.genericjam.fmutate` (Kotlin namespace stays `com.example.fmutate_app`: the JNI symbols
   in `beam_jni.c` follow it).
+- **Synth page design** (HANDOFF has no board for a firmware detail page; this is the tech decision, in the
+  library's look: `bg`, `surface` cards at radius 18, the card's badges and pills, `info` for links): "‹ Library",
+  the Hub's picture (200 dp, fit) with whose it is, name (30 bold), status / New / Native-Emulated, the meta line,
+  "by <maker>" with the repository as a link pill, tags, the card's actions, FMutate's own note (the Hub package
+  of a native firmware), the maker's card text in a `surface` box, then README with its attribution line and
+  "Read the full README ↗"; the Hub's list licence last. FMutate's remarks on a card (`Firmware` `note`) are
+  kept apart from the maker's text (`about`) so the page never presents one as the other.
 - **Layout fitting** (`Layout.kt` `fit/4`): authoring grid as is when it matches; else keep the authoring grid
   with smaller cells if they stay ≥ 40 dp; else move cells onto the device grid and show "doesn't fit".
 - **Immersive** while the instrument shows; orientation locked to the layout's frame.

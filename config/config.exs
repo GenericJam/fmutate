@@ -16,5 +16,8 @@ config :fmutate_app, :cartridges,
   index_url: "https://genericjam.github.io/fmutate-cartridges/index.json",
   public_key: "PlTQbGPmAqukMY78jvsMLR6BBxPQAa2E3T77ofuv8h8="
 
-# tests serve their own index; none comes from the network
-if config_env() == :test, do: config(:fmutate_app, :cartridges, index_url: nil)
+# tests serve their own index and READMEs (FMutate.Library.Description); none comes from the network
+if config_env() == :test do
+  config :fmutate_app, :cartridges, index_url: nil
+  config :fmutate_app, :readme_base, "http://127.0.0.1:9/"
+end

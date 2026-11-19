@@ -32,6 +32,9 @@ defmodule FMutate.Paths do
   """
   def cartridges_dir, do: ensure(Path.join(data_dir(), "cartridges"))
 
+  @doc "Firmware READMEs and card pictures read for the synth pages (`FMutate.Library.Description`)."
+  def descriptions_dir, do: ensure(Path.join(data_dir(), "descriptions"))
+
   @doc "A bundled cartridge's path, or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
     path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")

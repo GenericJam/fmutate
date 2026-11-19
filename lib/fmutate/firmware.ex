@@ -29,13 +29,19 @@ defmodule FMutate.Firmware do
     package: nil,
     caps: %{},
     # library: where it comes from (`:bundled | :hub | :imported`), its tags, and for a Hub package its
-    # download (`url`, `size` in bytes, `sha256`) and repository
+    # download (`url`, `size` in bytes, `sha256`); its repository (`repo`, a URL) and the git ref this build
+    # or package comes from (`ref`: a commit or tag; nil = the default branch), where its README is read
+    # (`FMutate.Library.Description`); the Hub's card picture (`picture`, a URL); `note`: FMutate's own remark
+    # on the card (the maker's text is `about`)
     source: :bundled,
     tags: [],
     url: nil,
     size: nil,
     sha256: nil,
     repo: nil,
+    ref: nil,
+    picture: nil,
+    note: nil,
     # a Hub firmware with a native build (`FMutate.Cartridges`): the index's entry for this platform, its
     # cartridge (downloaded or of the build; nil until downloaded), and whether the build is new since the
     # player last looked
@@ -49,6 +55,7 @@ defmodule FMutate.Firmware do
   # `caps`: what the firmware does beyond plain notes, for bindings: `pitch_bend` (keyboard bend),
   # `octave_reset_both` (OCT− and OCT+ pressed together set its octave to 0), `note_pressure` (MIDI polyphonic
   # aftertouch sets a held note's level; FMutate's build of OberVave, native/patches/obervave). Unknown = false.
+  # `repo` and `ref`: the source native/build_android.sh builds the cartridge from (keep the commits in step).
   @bundled [
     %{
       id: "obervave",
@@ -57,6 +64,8 @@ defmodule FMutate.Firmware do
       author: "zvenson",
       license: "GPL-3.0",
       about: "An 8-voice analog-style poly after the classic American polys of 1979-84.",
+      repo: "https://github.com/zvenson/obervave",
+      ref: "792535d23ef4265475b1c2f9895ca30e857fe596",
       caps: %{pitch_bend: true, octave_reset_both: true, note_pressure: true}
     },
     %{
@@ -66,6 +75,8 @@ defmodule FMutate.Firmware do
       author: "zvenson",
       license: "GPL-3.0",
       about: "A string ensemble in the spirit of the late-70s machines.",
+      repo: "https://github.com/zvenson/shineon",
+      ref: "2f37738d690a628e0ae1d23d07ea5ee3eeda2de7",
       caps: %{pitch_bend: true, octave_reset_both: true}
     }
   ]
