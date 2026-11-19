@@ -595,7 +595,7 @@ defmodule FMutate.IOScreen do
 
     notes = if (p[:notes] || :keys) == :keys, do: "keys", else: "firmware MIDI"
     bend = if m.bend, do: " · pitch bend on", else: " · no pitch bend"
-    "#{ch} → #{notes}#{bend}"
+    "#{ch} → #{notes}#{bend}" <> learned_count(m, name)
   end
 
   defp out_line(m, listeners) do
@@ -921,6 +921,8 @@ defmodule FMutate.IOScreen do
           text_size={11}
           text_color={0xFFA9A3B8}
         />
+        {automap_section(assigns.midi, name)}
+        {learned_section(assigns.midi, name)}
       </Column>
     </Sheet>
     """
@@ -1105,6 +1107,23 @@ defmodule FMutate.IOScreen do
     {:noreply, socket}
   end
 
+  # MIDI learn: clear one learned control, or all learned from a device (FMutate.MIDI saves the layout)
+  def handle_info({:tap, {:clear_learned, what}}, socket) do
+    _ = MIDI.clear_learned(@instance, what)
+    {:noreply, Mob.Socket.assign(socket, :midi, MIDI.settings(@instance))}
+  end
+
+  # automap: on / off and Reset (first touch again), per source
+  def handle_info({:tap, {:automap, name, on}}, socket) do
+    :ok = MIDI.set_automap(@instance, name, on)
+    {:noreply, Mob.Socket.assign(socket, :midi, MIDI.settings(@instance))}
+  end
+
+  def handle_info({:tap, {:automap_reset, name}}, socket) do
+    :ok = MIDI.reset_automap(@instance, name)
+    {:noreply, Mob.Socket.assign(socket, :midi, MIDI.settings(@instance))}
+  end
+
   # FMutate.Instance, FMutate.IO or FMutate.Dist restarted: subscribed again, with its current state
   def handle_info(msg, socket) when Subscription.message?(msg) do
     case Subscription.handle(msg) do
@@ -1115,4 +1134,109 @@ defmodule FMutate.IOScreen do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  ## Learned MIDI controls (MIDI learn): the current layout's, per source
+
+  # learned inputs that take this source's messages: its own and any device's
+  defp learned_for(m, name), do: Enum.filter(m[:learned] || [], &(&1.device in [nil, name]))
+
+  defp learned_count(m, name) do
+    case length(learned_for(m, name)) do
+      0 -> ""
+      n -> " · #{n} learned"
+    end
+  end
+
+  defp learned_section(m, name) do
+    learned = learned_for(m, name)
+
+    rows =
+      for l <- learned do
+        tap = {self(), {:clear_learned, {:control, l.control, l.sub, l.on}}}
+        what = "#{l.message} → #{l.name}" <> if(l.device, do: "", else: " · any device")
+
+        ~MOB"""
+        <Row gap={8}>
+          <Text text={what} text_size={13} text_color={0xFFF3EFF8} weight={1} />
+          <Button text="Clear" on_tap={tap} background={0xFF2A2636} text_color={0xFFF3EFF8} text_size={12} corner_radius={10} />
+        </Row>
+        """
+      end
+
+    clear_all =
+      if Enum.any?(learned, &(&1.device == name)) do
+        tap = {self(), {:clear_learned, {:device, name}}}
+
+        ~MOB"""
+        <Button text="Clear all from this device" on_tap={tap} background={0xFF2A2636} text_color={0xFFF3EFF8} text_size={13} corner_radius={12} />
+        """
+      end
+
+    hint =
+      if learned == [],
+        do: "None yet: in Edit layout, open a control's sheet and tap Learn from MIDI.",
+        else: "A learned message drives its control and plays nothing else; the rest follows the settings above."
+
+    ~MOB"""
+    <Column gap={8}>
+      <Text text="LEARNED ON THIS LAYOUT" text_size={11} text_color={0xFFA9A3B8} font="monospace" font_weight="bold" />
+      {rows}
+      {clear_all}
+      <Text text={hint} text_size={11} text_color={0xFFA9A3B8} />
+      <Text text="A channel chosen above plays only that channel, automap included: pads on their own channel (an MPK mini's on 10) are then left out, unless learned." text_size={11} text_color={0xFFA9A3B8} />
+    </Column>
+    """
+  end
+
+  ## Automap (FMutate.MIDI.Automap): the source's knobs and pads on the FM-1's panel, every layout
+
+  defp automap_section(m, name) do
+    a = get_in(m, [:automap, name]) || %{on: false, profile: nil, assigned: [], open: %{knobs: false, pads: false}}
+    toggle = {self(), {:automap, name, not a.on}}
+    reset = {self(), {:automap_reset, name}}
+
+    what =
+      cond do
+        not a.on -> "Off: this device's knobs and pads follow the settings above."
+        a.profile -> "#{a.profile}: its factory knobs and pads." <> first_touch_hint(a.open)
+        true -> "Turn its knobs and hit its pads (channel 10) in the order you want them." <> first_touch_hint(a.open)
+      end
+
+    rows =
+      if a.on do
+        for {hw, fm} <- a.assigned do
+          line = "#{hw} → #{fm}"
+
+          ~MOB"""
+          <Text text={line} text_size={13} text_color={0xFFF3EFF8} />
+          """
+        end
+      else
+        []
+      end
+
+    reset_button =
+      if a.on do
+        ~MOB"""
+        <Button text="Reset (learn the order again)" on_tap={reset} background={0xFF2A2636} text_color={0xFFF3EFF8} text_size={13} corner_radius={12} />
+        """
+      end
+
+    ~MOB"""
+    <Column gap={8}>
+      <Text text="AUTOMAP" text_size={11} text_color={0xFFA9A3B8} font="monospace" font_weight="bold" />
+      <Button text={if a.on, do: "Automap on · tap to turn off", else: "Automap off · tap to turn on"} on_tap={toggle} background={0xFF2A2636} text_color={0xFFF3EFF8} text_size={13} corner_radius={12} />
+      <Text text={what} text_size={11} text_color={0xFFA9A3B8} />
+      {rows}
+      {reset_button}
+      <Text text="Knobs 1–4 → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO, 8 → MASTER. Pads 1–8 → FX … SAVE, 9–14 → ARP, SEQ, PLAY, REC, OCT−, OCT+; 15–16 play notes. A control's learned MIDI input comes first." text_size={11} text_color={0xFFA9A3B8} />
+    </Column>
+    """
+  end
+
+  defp first_touch_hint(%{knobs: false, pads: false}), do: ""
+  defp first_touch_hint(%{knobs: k, pads: p}) do
+    open = Enum.join((if k, do: ["knobs"], else: []) ++ (if p, do: ["pads"], else: []), " and ")
+    " New #{open} join in the order they are first touched."
+  end
 end

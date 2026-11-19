@@ -14,7 +14,8 @@ import org.json.JSONObject
 /**
  * The phone's audio outputs for FMutate.IO (HANDOFF §10), bridged to the BEAM by the `fm1io` NIF
  * (c_src/fm1io.c, Elixir FMutate.IONif): the list is pushed whole as JSON ([nativeEvent]) whenever it
- * changes, and [call] answers `{"op": "state"}`. MIDI is the mob_midi plugin's (FMutate.IO, FMutate.MIDI).
+ * changes, and [call] answers `{"op": "state"}`. MIDI is the mob_midi plugin's (FMutate.IO, FMutate.MIDI);
+ * what learned MIDI controls show on the instrument comes in through [surface].
  *
  * [init] runs from MainActivity.onCreate.
  */
@@ -82,4 +83,8 @@ object FMutateIO {
         }
         return rep.toString()
     }
+
+    /** fm1io surface/1 (a dirty scheduler thread): what learned MIDI controls show ([MidiSurface]). */
+    @JvmStatic
+    fun surface(text: String) = MidiSurface.offer(text)
 }

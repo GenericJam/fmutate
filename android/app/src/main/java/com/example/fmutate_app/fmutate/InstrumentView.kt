@@ -73,9 +73,10 @@ import kotlin.math.sin
  *
  *   send("in", {t: "key", k, d}) | {t: "button", id, d} | {t: "encoder", id, clicks} | {t: "pot", v}
  *            | {t: "midi", bytes: [..]}
- *   send("menu"), send("pages"), send("edit"), send("page", {id}), send("use_classic")
+ *   send("menu"), send("pages"), send("edit"), send("page", {id}), send("use_classic"), send("toggle", {k, on})
  *
- * The firmware's screen and LEDs come from the engine's shared memory (FirmwareShm), not from props.
+ * The firmware's screen and LEDs come from the engine's shared memory (FirmwareShm), not from props. What
+ * learned hardware MIDI controls show (knob values, presses, toggles) comes from MidiSurface, once per frame.
  *
  * Drawing is split into layers so a frame redraws only what changed: the controls (an offscreen layer,
  * re-rendered on presses, values and LEDs), the firmware screen (each new engine frame), the Opling menu
@@ -140,11 +141,21 @@ private const val LONG_PRESS_MS = 500L
 private const val EDIT_HOLD_MS = 600L
 private const val STILL_DP = 4f
 private const val POT_RANGE_DP = 200f
+/** How long a learned MIDI control's bubble stays after its last move. */
+private const val MIDI_BUBBLE_MS = 700L
 private const val ARROW_DP = 36f
 /** The firmware's own pitch-bend range (OberVave's and ShineOn's BEND in every factory program). */
 private const val FIRMWARE_BEND_ST = 2f
 /** How long after an engine runs its firmware takes to listen (OberVave's package ~2 s, the cartridge ~1.5 s). */
 private const val FIRMWARE_BOOT_MS = 2000L
+/** A motion tile's grab on its corner "stay on" box (not a hold of the tile). */
+private const val STAY_GRAB = -3
+
+/** A motion tile's corner "stay on" box (dp): top right, a quarter of the tile's short side, 18..28 dp. */
+private fun stayBox(r: Grid.Rect): Grid.Rect {
+    val s = (min(r.w, r.h) * 0.25f).coerceIn(18f, 28f)
+    return Grid.Rect(r.x + r.w - s - 4f, r.y + 4f, s, s)
+}
 
 /** What one finger is doing: it belongs to the control it first touched until it lifts (rule 1). */
 private class Grab(
@@ -187,6 +198,7 @@ private class SurfaceState {
     var leds = Triple(0, 0, 0)                             // replaced only when an LED changes
     var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn by mutableStateOf(false)                    // the surface's BEND toggle: keyboard strips bend
+    val stayOn = mutableStateMapOf<String, Boolean>()      // motion tiles switched on with their corner box
 }
 
 /**
@@ -363,15 +375,20 @@ private fun InstrumentSurface(
         controls.filter { c -> c.type != "motion" && c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
     }
 
+    /** OCT presses move velocity strips' own octave too (they play MIDI notes, which skip the firmware's octave). */
+    fun octaveFollows(t: Target.Button, down: Boolean) {
+        if (down && hasVelocityStrip && (t.id == "oct_down" || t.id == "oct_up")) {
+            state.noteOct = (state.noteOct + if (t.id == "oct_down") -1 else 1).coerceIn(-2, 2)
+        }
+    }
+
     /** Press or release a discrete target (keys, buttons, notes, page). */
     fun fire(t: Target, down: Boolean) {
         when (t) {
             is Target.Key -> input(mapOf("t" to "key", "k" to t.n, "d" to down))
             is Target.Button -> {
                 input(mapOf("t" to "button", "id" to t.id, "d" to down))
-                if (down && hasVelocityStrip && (t.id == "oct_down" || t.id == "oct_up")) {
-                    state.noteOct = (state.noteOct + if (t.id == "oct_down") -1 else 1).coerceIn(-2, 2)
-                }
+                octaveFollows(t, down)
             }
             is Target.Midi -> when (t.type) {
                 "note" -> input(mapOf("t" to "midi", "bytes" to listOf((if (down) 0x90 else 0x80) or (t.channel - 1), t.number, if (down) 100 else 0)))
@@ -434,16 +451,19 @@ private fun InstrumentSurface(
     /** Keyboard strips bend instead of glissando: their own glide setting, or the surface's BEND toggle. */
     fun bends(c: Control) = (c.wobble || state.bendOn) && bendOk
 
-    /** Press bindings of a button-like thing (a button, a single key, a pad). */
+    /**
+     * Press bindings of a button-like thing (a button, a single key, a pad). A down flips its toggle once, for
+     * all its toggle bindings; the toggle is reported, since learned MIDI presses (FMutate.MIDI) share it.
+     */
     fun pressBindings(key: String, bindings: List<Binding>, down: Boolean) {
-        for (b in bindings.filter { it.on == "press" }) {
-            if (b.mode == "toggle") {
-                if (down) {
-                    val on = !(state.toggles[key] ?: false)
-                    state.toggles[key] = on
-                    fire(b.to, on)
-                }
-            } else fire(b.to, down)
+        val press = bindings.filter { it.on == "press" }
+        val on = if (down && press.any { it.mode == "toggle" }) !(state.toggles[key] ?: false) else null
+        if (on != null) {
+            state.toggles[key] = on
+            emit("toggle", mapOf("k" to key, "on" to on))
+        }
+        for (b in press) {
+            if (b.mode == "toggle") { if (on != null) fire(b.to, on) } else fire(b.to, down)
         }
         val map = if ('#' in key) state.held else state.pressed
         if (down) map[key] = true else map.remove(key)
@@ -525,10 +545,15 @@ private fun InstrumentSurface(
     fun motionOff(id: String) {
         motion.disengage(id)
         state.pressed.remove(id)
+        state.stayOn.remove(id)
     }
     fun motionAllOff() = motionIds.forEach { if (motion.isEngaged(it)) motionOff(it) }
-    // a page change (or a new layout) lets go of motion controls no longer shown
-    LaunchedEffect(motionIds) { motion.retain(motionIds) }
+    // a page change (or a new layout) lets go of motion controls no longer shown, "stay on" included
+    LaunchedEffect(motionIds) {
+        val gone = state.stayOn.keys.filter { it !in motionIds }
+        motion.retain(motionIds)
+        gone.forEach { state.stayOn.remove(it); state.pressed.remove(it) }
+    }
     // and the app going to the background lets go of all of them (a latch would keep the sensors on)
     DisposableEffect(state) {
         val lifecycle = (context.findActivity() as? androidx.lifecycle.LifecycleOwner)?.lifecycle
@@ -539,6 +564,81 @@ private fun InstrumentSurface(
         onDispose { lifecycle?.removeObserver(observer) }
     }
     // ── end motion controls ──
+
+    // ── learned MIDI controls (MidiSurface.kt; FMutate.MIDI.Controls): the firmware already has their inputs,
+    // the surface only shows them, drained once per frame; plus what only the surface does (page, BEND, the
+    // velocity strips' octave) ──
+    val allControls = remember(layout) { (layout.dock + layout.pages.flatMap { it.controls }).associateBy { it.id } }
+    fun pressBindingsOf(key: String): List<Binding> {
+        val hash = key.indexOf('#')
+        if (hash < 0) return allControls[key]?.bindings ?: emptyList()
+        val i = key.substring(hash + 1).toIntOrNull() ?: return emptyList()
+        return allControls[key.substring(0, hash)]?.pads?.getOrNull(i)?.bindings ?: emptyList()
+    }
+    fun showLocally(t: Target, down: Boolean) {
+        when (t) {
+            is Target.Page -> if (down) goPage(t.ref)
+            is Target.Action -> if (t.id == "bend") state.bendOn = down
+            is Target.Button -> octaveFollows(t, down)
+            else -> {}
+        }
+    }
+    val shownIds = remember(controls) { controls.map { it.id }.toSet() }
+    // a learned knob's bubble and an encoder's turn go away once it has been still for a moment
+    val midiStill = remember(state) { HashMap<String, Long>() }
+    fun midiMoved(id: String, bubble: String) {
+        state.bubbles[id] = bubble
+        val at = System.currentTimeMillis() + MIDI_BUBBLE_MS
+        midiStill[id] = at
+        scope.launch {
+            delay(MIDI_BUBBLE_MS)
+            if (midiStill[id] == at && state.pressed[id] != true) {
+                midiStill.remove(id)
+                state.bubbles.remove(id)
+                state.encoderTurns.remove(id)
+            }
+        }
+    }
+    fun showMidi(s: MidiShow) {
+        when (s) {
+            is MidiShow.Press -> {
+                for (b in pressBindingsOf(s.key)) if (b.on == "press" && b.mode != "toggle") showLocally(b.to, s.down)
+                val map = if ('#' in s.key) state.held else state.pressed
+                if (s.down) map[s.key] = true else map.remove(s.key)
+            }
+            is MidiShow.Toggle -> {
+                state.toggles[s.key] = s.on
+                for (b in pressBindingsOf(s.key)) if (b.on == "press" && b.mode == "toggle") showLocally(b.to, s.on)
+            }
+            is MidiShow.Value -> {
+                if (s.target in shownKeys) state.values[s.target] = s.v else heldBack[s.target] = s.v
+                rule7.take(s.target, s.control, s.v)
+                if (s.control in shownIds) midiMoved(s.control, "${(s.v * 100).roundToInt()}")
+            }
+            is MidiShow.Shine -> {
+                val map = if ('#' in s.key) state.held else state.pressed
+                if (s.down) map[s.key] = true else map.remove(s.key)
+            }
+            is MidiShow.Octave -> octaveFollows(Target.Button(if (s.dir < 0) "oct_down" else "oct_up"), true)
+            is MidiShow.Clicks -> if (s.control in shownIds) {
+                val turns = (state.encoderTurns[s.control] ?: 0) + s.n
+                state.encoderTurns[s.control] = turns
+                midiMoved(s.control, (if (turns > 0) "+" else "") + turns)
+            }
+        }
+    }
+    // values learned controls moved while their knob was on another page: shown when it is
+    LaunchedEffect(shownKeys) { for (k in shownKeys) heldBack.remove(k)?.let { state.values[k] = it } }
+    val onMidi by rememberUpdatedState<(MidiShow) -> Unit> { s -> showMidi(s) }
+    LaunchedEffect(state) {
+        MidiSurface.clear()
+        while (true) {
+            MidiSurface.await()
+            withFrameNanos { }
+            for (s in MidiSurface.drain()) onMidi(s)
+        }
+    }
+    // ── end learned MIDI controls ──
 
     // keyboard geometry: the visible firmware keys of a strip
     fun window(c: Control): IntRange {
@@ -704,8 +804,19 @@ private fun InstrumentSurface(
                 val i = ((p.x - r.x) / r.w * n).toInt().coerceIn(0, n - 1)
                 goPage(layout.pages[i].id)
             }
-            // a motion control: hold engages while the finger is on it, latch toggles on a tap
-            "motion" -> if (c.motionLatch) { if (motion.isEngaged(c.id)) motionOff(c.id) else motionOn(c) } else motionOn(c)
+            // a motion control: its corner box switches "stay on" (engaged until switched off); otherwise hold engages
+            // while the finger is on it, latch toggles on a tap, and a tile that stays on ignores its body
+            "motion" -> when {
+                stayBox(r).contains(p.x, p.y) -> {
+                    g.sub = STAY_GRAB
+                    haptic(HapticFeedbackConstants.VIRTUAL_KEY)
+                    if (state.stayOn[c.id] == true) motionOff(c.id)
+                    else { if (!motion.isEngaged(c.id)) motionOn(c); state.stayOn[c.id] = true }
+                }
+                state.stayOn[c.id] == true -> {}
+                c.motionLatch -> if (motion.isEngaged(c.id)) motionOff(c.id) else motionOn(c)
+                else -> motionOn(c)
+            }
             "knob", "slider", "xy_pad" -> {
                 state.pressed[c.id] = true
                 state.encoderTurns[c.id] = 0
@@ -817,7 +928,7 @@ private fun InstrumentSurface(
                     }
                 }
             }
-            "motion" -> if (!c.motionLatch) motionOff(c.id)
+            "motion" -> if (!c.motionLatch && g.sub != STAY_GRAB && state.stayOn[c.id] != true) motionOff(c.id)
             "screen" -> if (!g.moved && phaseNow == "safe_mode") { haptic(HapticFeedbackConstants.VIRTUAL_KEY); emit("run_anyway") }
             else -> {}
         }
@@ -865,6 +976,8 @@ private fun InstrumentSurface(
             // fingers still down when the surface goes (a sheet over it, another screen): let go of what they hold
             grabs.keys.toList().forEach { letGo(it) }
             toggled().forEach { fire(it, false) }
+            // learned MIDI presses (FMutate.MIDI) share the toggles: those just let go are off now
+            for (c in controls) if (state.toggles[c.id] == true) emit("toggle", mapOf("k" to c.id, "on" to false))
             motion.close()
             // a swell leaves the firmware's volume where the last finger was: full again
             if (hasVelocityStrip) input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
@@ -1158,6 +1271,7 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
     /** A motion control's ring (its tilt dot is on the motion layer, [motionDot]): lime while engaged. */
     fun motion(c: Control, r: Grid.Rect, st: SurfaceState, sensor: Boolean) {
         val active = st.pressed[c.id] == true
+        val stay = st.stayOn[c.id] == true
         rr(r.x, r.y, r.w, r.h, 12f, if (active) C.fmTint else C.raised)
         val cx = r.cx
         val cy = ringY(r)
@@ -1168,6 +1282,20 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         val label = if (!sensor) "no sensor" else c.label
         text(label, r.cx, r.y + r.h - 9, 10f, if (active) C.fm else if (sensor) C.muted else C.faint, mono = true)
         if (c.motionLatch && r.h >= 80f) text("LATCH", r.x + 22, r.y + 10, 8f, if (active) C.fm else C.faint, mono = true)
+        // the corner "stay on" box: lime with a tick while the tile stays on
+        if (sensor) {
+            val b = stayBox(r)
+            if (stay) {
+                rr(b.x, b.y, b.w, b.h, 6f, C.fm)
+                s.drawLine(C.ink, off(b.x + b.w * 0.25f, b.y + b.h * 0.52f), off(b.x + b.w * 0.43f, b.y + b.h * 0.7f), 2f.px())
+                s.drawLine(C.ink, off(b.x + b.w * 0.43f, b.y + b.h * 0.7f), off(b.x + b.w * 0.76f, b.y + b.h * 0.32f), 2f.px())
+            } else {
+                s.drawRoundRect(
+                    C.lineSoft, off(b.x, b.y), sz(b.w, b.h), androidx.compose.ui.geometry.CornerRadius(6f.px()),
+                    style = Stroke(1.5f.px()),
+                )
+            }
+        }
     }
 
     // a motion control's ring inside its cells (dp), above the label
