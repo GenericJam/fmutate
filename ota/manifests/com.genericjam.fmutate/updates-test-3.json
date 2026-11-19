@@ -1,1 +1,1 @@
-{"app":"com.genericjam.fmutate","channel":"updates-test-3","issued_at":"2026-11-19T22:47:01Z","manifest_version":1,"modules":{},"signature":"ed25519:L5T6A4hx7ubABcmNjUfPln0w4gDgfxPG+Uyfio1w/ofRfaGmjp3OR4E8c2nIiD+eEePW5hk5aIGrfLW+zTk/Cg=="}
+{"app":"com.genericjam.fmutate","channel":"updates-test-3","issued_at":"2026-11-19T22:47:12Z","manifest_version":1,"modules":{"FMutate.InstrumentScreen":"sha256:203183ead358147a89a1d79610d0d604da8054f027b6401e0a1ff4c555824327"},"signature":"ed25519:zH16/R29e3sO5LXkqHfj5LknsYAspkPnrp/MX52f7TUvXbYusyzDspE4KfnzNiVX14cF6QyhwTSJ4pfa3aQECw=="}
