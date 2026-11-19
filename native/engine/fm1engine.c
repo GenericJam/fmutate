@@ -198,7 +198,10 @@ static void render_timed(struct eng *e, int16_t *blk, uint64_t w)
     if (done < BLOCK) c->render(blk + 2u * done, BLOCK - done);
 }
 
-static int abandoned(const struct eng *e) { return e->io->abandoned && *e->io->abandoned; }
+static int abandoned(const struct eng *e)
+{
+    return e->io->abandoned && atomic_load_explicit(e->io->abandoned, memory_order_acquire);
+}
 
 /* The firmware's loop ended inside the cartridge (in-process only): the debug crash, as SIGSEGV would end a
  * process, or a stop from the host. */

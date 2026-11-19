@@ -5,6 +5,7 @@
 #ifndef FM1ENGINE_H
 #define FM1ENGINE_H
 
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -28,16 +29,22 @@ struct fm1c_api {
     void (*stop)(void);                   /* ask the loop to stop at its next park point (any thread) */
     int (*quit)(uint32_t timeout_ms);     /* stop it and wait: 0 ended (its thread joined), -1 still running */
     void (*state)(void **data, size_t *data_n, void **bss, size_t *bss_n);   /* its globals, for a fresh boot */
-    int (*on_loop_thread)(void);          /* the caller is its firmware's loop thread (async-signal-safe) */
 };
+
+/* In-process only (c_src/fm1host.c): the crash marker of the calling thread, what the app's fatal-signal handler
+ * writes if this thread crashes (NULL: not a firmware's thread). A cartridge's main loop thread takes the one of
+ * the thread that started it (its engine's: fm1c_init). */
+const void *fm1host_marker(void);
+void fm1host_set_marker(const void *marker);
 
 /* How an engine talks to its host. */
 struct fm1engine_io {
     void *ctx;
     int in_fd;                            /* port messages in ({packet, 2}); EOF = closed: save the flash, end */
     int (*send)(void *ctx, const uint8_t *msg, uint32_t n);   /* one message out; nonzero = nobody listens */
-    const volatile int *abandoned;        /* the host gave up on this engine: end at once, save nothing (NULL:
-                                             a process, killed from outside instead) */
+    const _Atomic int *abandoned;         /* the host gave up on this engine: end at once, save nothing (NULL:
+                                             a process, killed from outside instead); read with acquire (Rust:
+                                             AtomicI32, native/emu/src/engine.rs) */
 };
 
 /* Exit codes, as the executable's: 0 closed (flash saved) or the host is gone, 2 error before READY,

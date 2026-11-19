@@ -20,8 +20,8 @@
  *   boot, its BSS zeroed), so it boots fresh as in a new process. One engine per cartridge at a time: a start
  *   while its previous engine is still ending returns `busy` at once (FMutate.Engine tries again).
  * - Fatal signals (a native firmware crashing ends the app: there is no process to lose instead) on a firmware's
- *   threads (its engine's, its main loop's) write that cartridge's id to a marker file before the previous
- *   handler runs; the app reads it at its next launch (`crash_marker/1`, FMutate.CrashMarker).
+ *   threads (its engine's, its main loop's) write that cartridge's id to a marker file, then the signal goes to
+ *   the previous handler; the app reads the marker at its next launch (`crash_marker/1`, FMutate.CrashMarker).
  */
 #include <erl_nif.h>
 
@@ -31,6 +31,8 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdatomic.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -52,17 +54,18 @@ extern int fm1emu_bench(const char *package, double secs, uint32_t mhz, char *ou
 #define QUIT_MS 1000u                         /* a firmware's loop ends at its next park point: 1 ms normally */
 #define ENGINE_STACK (8u << 20)
 
+struct marker { size_t n; char line[64]; };   /* what a crash writes: the cartridge's id and a newline */
+
 struct cart {
     const char *id;
     const struct fm1c_api *api;
     void *data_copy;                          /* its data section before its first boot */
     int busy;                                 /* an engine runs it (or a hung one holds it) */
     int hung;                                 /* its firmware's loop didn't end: busy until it does, if ever */
-    volatile int on_thread;                   /* engine_th is its engine's thread */
-    pthread_t engine_th;
+    struct marker marker;                     /* (load) */
 };
 
-#define FM1_CART(id) {#id, &fm1c_##id, NULL, 0, 0, 0, 0},
+#define FM1_CART(id) {#id, &fm1c_##id, NULL, 0, 0, {0, {0}}},
 static struct cart carts[] = {
 #include "../native/build/ios/fm1_cartridges.h"
 };
@@ -83,7 +86,7 @@ typedef struct {
     char *file, *prefix, *flash;
     uint32_t fill, mhz;
     int in_r, in_w;                           /* the port's pipe; in_w -1 once closed */
-    volatile int abandoned;                   /* read by the engine (fm1engine_io.abandoned) */
+    _Atomic int abandoned;                    /* read by the engine (fm1engine_io.abandoned), with acquire */
     int done;                                 /* its thread has ended */
     int released;                             /* its cartridge is no longer its own: a kill mustn't stop() it */
     struct fm1engine_io io;
@@ -93,40 +96,35 @@ static ErlNifResourceType *engine_type;
 static ERL_NIF_TERM a_ok, a_error, a_data, a_exit_status, a_native, a_emu, a_busy, a_hung, a_unknown, a_closed,
     a_full, a_true, a_false;
 
-/* ---- the crash marker */
+/* ---- the crash marker
+ *
+ * Each firmware thread (its engine's, and its main loop's, which takes its engine's: live.c's app_run) carries its
+ * cartridge's marker line in a thread-specific slot, set before the firmware runs there. The handler only reads
+ * that slot, writes the line and fsyncs, puts the previous disposition back and raises the signal again, which
+ * the previous handler (Mob's, the default) gets once this one returns. A pthread key, not _Thread_local: Darwin
+ * allocates a thread's _Thread_local block on its first use, with malloc, which the handler on another thread
+ * (a crash elsewhere, perhaps in malloc) would be; pthread_getspecific reads the thread's TSD slot, nothing more. */
 
-static int marker_fd = -1;
+static pthread_key_t marker_key;
+static _Atomic int marker_fd = -1;
 static struct sigaction previous[32];
 static const int fatal[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP, SIGABRT};
 
-/* The cartridge whose engine or main loop this thread is, else NULL (a crash elsewhere isn't a firmware's). */
-static const struct cart *culprit(void)
-{
-    pthread_t self = pthread_self();
-    for (size_t i = 0; i < NCART; i++) {
-        const struct cart *c = &carts[i];
-        if (!c->busy) continue;
-        if ((c->on_thread && pthread_equal(self, c->engine_th)) || c->api->on_loop_thread()) return c;
-    }
-    return NULL;
-}
+const void *fm1host_marker(void) { return pthread_getspecific(marker_key); }
+void fm1host_set_marker(const void *m) { pthread_setspecific(marker_key, m); }
 
 static void on_fatal(int sig, siginfo_t *info, void *uc)
 {
-    const struct cart *c = culprit();
-    if (marker_fd >= 0 && c) {                /* (async-signal-safe: write, fsync) */
-        ssize_t w = write(marker_fd, c->id, strlen(c->id));
-        w = write(marker_fd, "\n", 1);
+    const struct marker *m = pthread_getspecific(marker_key);
+    int fd = atomic_load_explicit(&marker_fd, memory_order_acquire);
+    (void)info; (void)uc;
+    if (m && fd >= 0) {                       /* (async-signal-safe: write, fsync, sigaction, raise) */
+        ssize_t w = write(fd, m->line, m->n);
         (void)w;
-        fsync(marker_fd);
+        fsync(fd);
     }
-    sigaction(sig, &previous[sig], NULL);     /* the previous handler (Mob's, the default), as if we weren't here */
-    if (previous[sig].sa_flags & SA_SIGINFO) {
-        if (previous[sig].sa_sigaction) previous[sig].sa_sigaction(sig, info, uc);
-    } else if (previous[sig].sa_handler != SIG_DFL && previous[sig].sa_handler != SIG_IGN) {
-        previous[sig].sa_handler(sig);
-    } else
-        raise(sig);
+    sigaction(sig, &previous[sig], NULL);     /* as if we weren't here: pending until we return, then theirs */
+    raise(sig);
 }
 
 /* A stack of the thread's own for on_fatal (SA_ONSTACK), so a firmware that overflows its stack still leaves its
@@ -153,7 +151,7 @@ static int send_out(void *ctx, const uint8_t *m, uint32_t n)
     ErlNifEnv *env;
     ERL_NIF_TERM bin, msg;
     int sent;
-    if (e->abandoned) return 1;               /* (killed: nobody listens) */
+    if (atomic_load_explicit(&e->abandoned, memory_order_acquire)) return 1;   /* (killed: nobody listens) */
     env = enif_alloc_env();
     memcpy(enif_make_new_binary(env, n, &bin), m, n);
     msg = enif_make_tuple2(env, enif_make_copy(env, e->ref), enif_make_tuple2(env, a_data, bin));
@@ -193,12 +191,11 @@ static void *engine_main(void *arg)
     if (e->kind == NATIVE) {
         struct cart *c = e->cart;
         int quit;
-        c->engine_th = pthread_self();
-        __atomic_store_n(&c->on_thread, 1, __ATOMIC_RELEASE);
+        fm1host_set_marker(&c->marker);       /* (a crash on this thread is the cartridge's from here on) */
         fresh_globals(c);
         code = fm1engine_run(c->api, e->prefix, e->flash, e->fill, &e->io);
-        __atomic_store_n(&c->on_thread, 0, __ATOMIC_RELEASE);
         quit = c->api->quit(QUIT_MS);         /* (the firmware's loop thread: parked, or a debug hang let go) */
+        fm1host_set_marker(NULL);
         pthread_mutex_lock(&e->lock);         /* (before another engine can take the cartridge: nif_kill) */
         e->released = 1;
         pthread_mutex_unlock(&e->lock);
@@ -215,7 +212,7 @@ static void *engine_main(void *arg)
     if (e->in_w >= 0) { close(e->in_w); e->in_w = -1; }
     close(e->in_r);
     e->in_r = -1;
-    if (!e->abandoned) send_exit(NULL, e, code);
+    if (!atomic_load_explicit(&e->abandoned, memory_order_acquire)) send_exit(NULL, e, code);
     pthread_mutex_unlock(&e->lock);
     enif_release_resource(e);
     return NULL;
@@ -409,8 +406,8 @@ static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     (void)argc;
     if (!enif_get_resource(env, argv[0], engine_type, (void **)&e)) return enif_make_badarg(env);
     pthread_mutex_lock(&e->lock);
-    if (!e->done && !e->abandoned) {
-        __atomic_store_n(&e->abandoned, 1, __ATOMIC_RELEASE);
+    if (!e->done && !atomic_load_explicit(&e->abandoned, memory_order_acquire)) {
+        atomic_store_explicit(&e->abandoned, 1, memory_order_release);
         if (e->kind == NATIVE && !e->released) e->cart->api->stop();
         send_exit(env, e, FM1ENGINE_EXIT_KILLED);
     }
@@ -447,16 +444,21 @@ static ERL_NIF_TERM nif_crash_marker(ErlNifEnv *env, int argc, const ERL_NIF_TER
     free(path);
     if (fd < 0) return error(env, enif_make_atom(env, "open"));
     pthread_mutex_lock(&carts_lock);
-    if (marker_fd < 0) {
+    if (atomic_load_explicit(&marker_fd, memory_order_acquire) < 0) {
         struct sigaction sa;
+        atomic_store_explicit(&marker_fd, fd, memory_order_release);   /* (before the handler can run) */
         memset(&sa, 0, sizeof sa);
         sa.sa_sigaction = on_fatal;
         sa.sa_flags = SA_SIGINFO | SA_ONSTACK;
         sigemptyset(&sa.sa_mask);
         for (size_t i = 0; i < sizeof fatal / sizeof fatal[0]; i++) sigaction(fatal[i], &sa, &previous[fatal[i]]);
-    } else
-        close(marker_fd);
-    marker_fd = fd;
+    } else {                                  /* (the same descriptor, now the new file: a handler never sees it
+                                                 closed; dup2 clears close-on-exec) */
+        int old = atomic_load_explicit(&marker_fd, memory_order_acquire);
+        dup2(fd, old);
+        fcntl(old, F_SETFD, FD_CLOEXEC);
+        close(fd);
+    }
     pthread_mutex_unlock(&carts_lock);
     return a_ok;
 }
@@ -506,7 +508,13 @@ static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     ErlNifResourceTypeInit init = {.dtor = engine_dtor, .down = engine_down, .members = 3};
     (void)priv; (void)info;
     engine_type = enif_init_resource_type(env, "fm1host_engine", &init, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
-    if (!engine_type) return -1;
+    if (!engine_type || pthread_key_create(&marker_key, NULL)) return -1;
+    for (size_t i = 0; i < NCART; i++) {
+        struct marker *m = &carts[i].marker;
+        int n = snprintf(m->line, sizeof m->line, "%s\n", carts[i].id);
+        if (n < 0 || (size_t)n >= sizeof m->line) return -1;
+        m->n = (size_t)n;
+    }
     a_ok = enif_make_atom(env, "ok");
     a_error = enif_make_atom(env, "error");
     a_data = enif_make_atom(env, "data");
