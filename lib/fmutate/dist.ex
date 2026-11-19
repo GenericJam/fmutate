@@ -192,11 +192,7 @@ defmodule FMutate.Dist do
 
       case write_allowed(candidate) do
         :ok ->
-          if Node.alive?() do
-            Node.set_cookie(node, state.sibling)
-            if not state.access.dev, do: :net_kernel.allow([node])
-          end
-
+          admit_sibling(node, state)
           {:reply, :ok, notify(%{candidate | unsaved: false})}
 
         {:error, reason} ->
@@ -380,21 +376,33 @@ defmodule FMutate.Dist do
         %{state | status: {:error, :accept_gate_not_configured}}
 
       true ->
-        :application.set_env(:kernel, :erl_epmd_node_listen_port, state.port)
-        :application.set_env(:kernel, :inet_dist_use_interface, {127, 0, 0, 1})
-        # OTP keeps the cookie file under HOME; make sure it can
-        File.mkdir_p(Path.join(System.get_env("HOME") || Paths.data_dir(), ".config/erlang"))
-        if :fmutate_tcp_dist.configured(), do: :ok = :fmutate_tcp_dist.prepare()
+        start_node(state)
+    end
+  end
 
-        case Node.start(state.node, :longnames) do
-          {:ok, _} ->
-            Logger.info("dist: #{state.node} on 127.0.0.1:#{state.port}")
-            configure(state)
+  defp start_node(state) do
+    :application.set_env(:kernel, :erl_epmd_node_listen_port, state.port)
+    :application.set_env(:kernel, :inet_dist_use_interface, {127, 0, 0, 1})
+    # OTP keeps the cookie file under HOME; make sure it can
+    File.mkdir_p(Path.join(System.get_env("HOME") || Paths.data_dir(), ".config/erlang"))
+    if :fmutate_tcp_dist.configured(), do: :ok = :fmutate_tcp_dist.prepare()
 
-          {:error, reason} ->
-            Logger.error("dist: #{state.node} did not start: #{inspect(reason)}")
-            %{state | status: {:error, reason}}
-        end
+    case Node.start(state.node, :longnames) do
+      {:ok, _} ->
+        Logger.info("dist: #{state.node} on 127.0.0.1:#{state.port}")
+        configure(state)
+
+      {:error, reason} ->
+        Logger.error("dist: #{state.node} did not start: #{inspect(reason)}")
+        %{state | status: {:error, reason}}
+    end
+  end
+
+  # an allowed sibling (its Allow saved): the sibling cookie, and past the allow list in release builds
+  defp admit_sibling(node, state) do
+    if Node.alive?() do
+      Node.set_cookie(node, state.sibling)
+      if not state.access.dev, do: :net_kernel.allow([node])
     end
   end
 
