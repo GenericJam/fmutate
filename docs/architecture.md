@@ -48,12 +48,18 @@ flowchart LR
   only the engine and this loader, so new native firmwares appear without an app update. The index has no
   daily limit: it is read at start and on every "Check for updates", with `If-None-Match`, and cached in
   `<data>/cartridges/` (`index.json`, `index.json.sig`, `etag`); an index whose signature doesn't verify, or
-  of another schema or engine ABI than 1, is refused and the last good one stays. A Hub firmware with an asset
+  of another schema or engine ABI than 1, or generated before the last good one (an old index served again), is
+  refused and the last good one stays. A Hub firmware with an asset
   for this phone (`android-arm64-v8a`, `android-x86_64`, `android-armeabi-v7a` from the BEAM's architecture)
   becomes `backend: :native` ("Native" on its card, with the build's version and short commit); its Hub package
   stays listed as `hub:<id>`. Download fetches the cartridge (`<data>/cartridges/libcart_<id>-<version>-<platform>.so`,
-  kept only when size, SHA-256 and its own signature check out; the id's older version is deleted then); until
+  cut off past its listed size, kept only when size, SHA-256 and its own signature check out, so the engine
+  never loads a file that didn't verify; the id's older version is deleted then); until
   then it is "Available". A newer build than the downloaded one shows Update while the old one keeps running.
+  An instance starting such a firmware without its cartridge (at boot, e.g. the player's emulated Hub firmware
+  that has since gone native; after a crash; a switch to it) downloads it first ("Downloading…"); if
+  that fails, the Hub package runs in the emulator when it is on the phone, else "Doesn't run here yet", and the
+  native id stays the saved choice for the next start (`FMutate.Instance` "Native builds not on the phone yet").
   A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
   downloaded native code: an entry with an iOS asset runs natively only when linked into the app, otherwise
   emulated with "Plays emulated on iPhone until the next app update". When an id turns native, its emulator
@@ -95,7 +101,8 @@ flowchart LR
   2048 / 3072 / 3840 (`FMutate.Instance.set_buffer/2`), set on the running engine (`docs/engine_protocol.md`
   "Speed and fill").
 - **System states** (booting, crashed/restarting, safe mode, too slow) show as the Opling's mood plus a short
-  message in the firmware screen area ("Starting…", "Restarting…", "Crashed twice · Run anyway" — a tap on the
+  message in the firmware screen area ("Starting…", "Downloading… · The native build · N %" while a Hub
+  firmware's native cartridge downloads before it starts, "Restarting…", "Crashed twice · Run anyway" — a tap on the
   screen is Run anyway —, "Too slow · N % speed" over the bottom of a running screen with what is being done or
   can be: "Slowing the emulated CPU · N MHz…", "Lower the emulated CPU in I/O", "This phone can't run it in real
   time"; "Audio dropouts · Raise the buffer in I/O" only for an engine fast enough on a fixed buffer that

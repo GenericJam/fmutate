@@ -114,4 +114,14 @@ defmodule FMutate.Firmware do
 
   defp downloaded_cart(%{cart: cart}) when is_binary(cart), do: if(File.exists?(cart), do: cart)
   defp downloaded_cart(_fw), do: nil
+
+  @doc """
+  Whether a firmware runs natively from a cartridge this phone downloads and doesn't have yet: a Hub firmware
+  gone native in the cartridge index (`FMutate.Library.download/1` fetches it).
+  """
+  @spec needs_cart?(t | nil) :: boolean
+  def needs_cart?(%__MODULE__{backend: :native, native: %{bundled: nil, platform: platform}} = fw),
+    do: downloaded_cart(fw) == nil and FMutate.Cartridges.downloadable?(platform)
+
+  def needs_cart?(_fw), do: false
 end

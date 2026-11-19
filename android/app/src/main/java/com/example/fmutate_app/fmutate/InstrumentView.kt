@@ -84,7 +84,8 @@ import kotlin.math.sin
  * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
  * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %), hint (what is
  * being done or can be, under "Too slow"; alone: dropouts a larger buffer would cure): the Opling's mood and the
- * message in the firmware screen area (Starting…, Restarting…, Crashed twice · Run anyway, Too slow, Audio dropouts).
+ * message in the firmware screen area (Starting…, Downloading… (a native build's cartridge), Restarting…, Crashed
+ * twice · Run anyway, Too slow, Audio dropouts).
  */
 
 private object C {
@@ -1011,6 +1012,7 @@ private data class ScreenMessage(val title: String, val color: Color, val action
 
 private fun screenMessage(phase: String, restarts: Int, slow: Boolean, speed: Int, hint: String): ScreenMessage? = when (phase) {
     "booting" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Starting…", C.muted)
+    "downloading" -> ScreenMessage("Downloading…", C.muted, hint = hint)
     "crashed" -> ScreenMessage(if (restarts > 0) "Restarting…" else "Crashed", C.muted)
     "safe_mode" -> ScreenMessage("Crashed twice", C.muted, action = "Run anyway")
     "not_installed" -> ScreenMessage("Doesn't run here yet", C.warn)

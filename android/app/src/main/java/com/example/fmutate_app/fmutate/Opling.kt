@@ -183,7 +183,7 @@ private class OplingAnim(var restarts: Int) {
         mood = when {
             phase == "safe_mode" || quarantined -> OplingMood.Sleep
             phase == "crashed" || now < dizzyUntil -> OplingMood.Dizzy
-            phase == "booting" -> OplingMood.Hatch
+            phase == "booting" || phase == "downloading" -> OplingMood.Hatch
             slow -> OplingMood.Breath
             held > 0 || now - lastNoteAt < PLAY_LINGER_MS -> OplingMood.Play
             else -> OplingMood.Idle

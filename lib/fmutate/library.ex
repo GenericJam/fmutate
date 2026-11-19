@@ -17,8 +17,10 @@ defmodule FMutate.Library do
   id's older versions are deleted then). The builds the player has seen are `seen.term`; newer ones are
   `new` until the library screen has shown them.
 
-  Subscribers get `{:library, :changed}` when the catalogue, a download or the packages change, and
-  `{:library, {:new_natives, ids}}` when a fetched index brings native builds new since the last one.
+  Subscribers get `{:library, :changed}` when the catalogue, a download or the packages change,
+  `{:library, {:new_natives, ids}}` when a fetched index brings native builds new since the last one, and
+  `{:library, {:downloaded, id, :ok | {:error, reason}}}` when a download ends (`FMutate.Instance` waits on it
+  to start a native firmware whose cartridge wasn't on the phone yet).
   """
 
   use GenServer
@@ -88,7 +90,7 @@ defmodule FMutate.Library do
 
   defp local_time(secs), do: secs |> :calendar.system_time_to_local_time(:second) |> NaiveDateTime.from_erl!()
 
-  @doc "Subscribe the caller to `{:library, :changed}` and `{:library, {:new_natives, ids}}`."
+  @doc "Subscribe the caller (once, however often it asks) to the library's messages (see the module doc)."
   def subscribe, do: GenServer.call(__MODULE__, {:subscribe, self()})
 
   @doc """
@@ -164,8 +166,9 @@ defmodule FMutate.Library do
   end
 
   def handle_call({:subscribe, pid}, _from, state) do
-    ref = Process.monitor(pid)
-    {:reply, :ok, %{state | subscribers: Map.put(state.subscribers, pid, ref)}}
+    if Map.has_key?(state.subscribers, pid),
+      do: {:reply, :ok, state},
+      else: {:reply, :ok, %{state | subscribers: Map.put(state.subscribers, pid, Process.monitor(pid))}}
   end
 
   def handle_call({:download, id}, _from, state) do
@@ -296,6 +299,8 @@ defmodule FMutate.Library do
 
   defp finish({:download, id, kind}, result, state) do
     state = %{state | downloads: Map.delete(state.downloads, id)}
+    result = if result == :ok, do: :ok, else: {:error, reason(result)}
+    for {pid, _} <- state.subscribers, do: send(pid, {:library, {:downloaded, id, result}})
 
     case result do
       :ok ->
@@ -306,6 +311,9 @@ defmodule FMutate.Library do
         changed(%{state | error: "Download failed: #{describe(kind, reason)}."})
     end
   end
+
+  defp reason({:error, reason}), do: reason
+  defp reason(other), do: other
 
   defp describe(:package, :size), do: "the package isn't the size the Hub lists"
   defp describe(:package, :sha256), do: "the package doesn't match the Hub's checksum"
