@@ -8,13 +8,16 @@ defmodule FMutate.UpdatesScreen do
 
   use Mob.Screen
 
-  alias FMutate.Updates
+  require FMutate.Subscription
+
+  alias FMutate.{Subscription, Updates}
 
   def mount(_params, _session, socket) do
+    # through Subscription: a restarted FMutate.Updates is subscribed again (it keeps subscribers in its state)
     state =
-      case GenServer.whereis(Updates) do
-        nil -> nil
-        _pid -> elem(Updates.subscribe(), 1)
+      case Subscription.subscribe(:updates, Updates, &Updates.subscribe/0) do
+        {:ok, {:ok, state}} -> state
+        :pending -> nil
       end
 
     {:ok, Mob.Socket.assign(socket, updates: state)}
@@ -36,7 +39,7 @@ defmodule FMutate.UpdatesScreen do
     """
   end
 
-  defp body(nil), do: [text("Updates aren't running in this build.", :dim)]
+  defp body(nil), do: [text("The updater isn't running right now.", :dim)]
 
   defp body(u) do
     [app_card(u), release_card(u), code_card(u)] |> Enum.reject(&is_nil/1)
@@ -95,6 +98,14 @@ defmodule FMutate.UpdatesScreen do
   defp error_label({:signature_mismatch, _, _}), do: "that APK isn't signed with FMutate's key; not installed."
   defp error_label({:not_an_update, _, _}), do: "that APK isn't newer than this one."
   defp error_label({:install_failed, _status, message}), do: "Android didn't install it (#{message})."
+  defp error_label({:apk_too_large, size, _max}), do: "the release's APK (#{mb(size)}) is larger than FMutate accepts."
+
+  defp error_label({:insufficient_space, needed, _free}),
+    do: "not enough free space (#{mb(needed)} needed); free some and try again."
+
+  defp error_label({:insecure_url, _url}), do: "GitHub sent a link that isn't HTTPS; not downloaded."
+  defp error_label({:bad_response, _what}), do: "GitHub's answer wasn't what FMutate expects; try again later."
+  defp error_label({:crashed, _reason}), do: "something went wrong in the updater; try again."
   defp error_label(reason) when reason in [:no_release, :no_update_metadata],
     do: "the latest release has no update information."
 
@@ -164,6 +175,7 @@ defmodule FMutate.UpdatesScreen do
   defp code_result({:ok, outcome}), do: to_string(outcome)
   defp code_result({:error, {:downgrade, _}}), do: "the server still had an older copy"
   defp code_result({:error, {:http_status, 404}}), do: "nothing published for this version"
+  defp code_result({:error, {:floor_not_persisted, _}}), do: "couldn't save it on this phone (storage); retried next check"
   defp code_result({:error, reason}), do: "error #{inspect(reason)}"
   defp code_result(other), do: inspect(other)
 
@@ -214,6 +226,15 @@ defmodule FMutate.UpdatesScreen do
   ## Events
 
   def handle_info({:updates, state}, socket), do: {:noreply, Mob.Socket.assign(socket, :updates, state)}
+
+  # FMutate.Updates restarted (or wasn't up at mount): subscribed again, with its current state
+  def handle_info(msg, socket) when Subscription.message?(msg) do
+    case Subscription.handle(msg) do
+      {:subscribed, :updates, {:ok, state}} -> {:noreply, Mob.Socket.assign(socket, :updates, state)}
+      _ -> {:noreply, socket}
+    end
+  end
+
   def handle_info({:tap, :back}, socket), do: {:noreply, Mob.Socket.pop_screen(socket)}
 
   def handle_info({:tap, :check}, socket) do

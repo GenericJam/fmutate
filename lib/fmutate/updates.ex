@@ -80,7 +80,8 @@ defmodule FMutate.Updates do
       subscribers: %{},
       installed: installed,
       app: :idle,
-      release: saved[:release],
+      # what the last check found, while it's still newer than this app (not once it's installed)
+      release: newer(saved[:release], installed),
       checked_at: saved[:checked_at],
       # the app version this launch replaced, when it differs from the last one that ran
       updated_from: updated_from(saved[:version_code], installed),
@@ -147,14 +148,12 @@ defmodule FMutate.Updates do
   defp start_check(state, what) do
     opts = check_opts(state.config)
     client = client()
+    changed(%{state | task: guarded_task(fn -> run_check(what, client, opts) end), app: :checking})
+  end
 
-    task =
-      Task.async(fn ->
-        code = if what == :both, do: MobDeliver.check(details: true)
-        {:checked, code, client.check(opts)}
-      end)
-
-    changed(%{state | task: task, app: :checking})
+  defp run_check(what, client, opts) do
+    code = if what == :both, do: MobDeliver.check(details: true)
+    {:checked, code, client.check(opts)}
   end
 
   defp check_opts(config), do: Keyword.take(config, [:repo, :prerelease, :metadata_asset])
@@ -163,9 +162,15 @@ defmodule FMutate.Updates do
     state = %{state | code: code_state(code)}
 
     case app do
-      {:ok, :available, release} -> persist(%{state | app: {:available, release}, release: release, checked_at: now()})
-      {:ok, :up_to_date, _} -> persist(%{state | app: :up_to_date, release: nil, checked_at: now()})
-      {:error, reason} -> %{state | app: {:error, reason}}
+      {:ok, :available, release} ->
+        apk = same_apk(state, release)
+        persist(%{state | app: {:available, release}, release: release, apk: apk, checked_at: now()})
+
+      {:ok, :up_to_date, _} ->
+        persist(%{state | app: :up_to_date, release: nil, apk: nil, checked_at: now()})
+
+      {:error, reason} ->
+        %{state | app: {:error, reason}}
     end
   end
 
@@ -176,6 +181,7 @@ defmodule FMutate.Updates do
 
   defp finished(state, {:installing, {:ok, path}, {:error, reason}}), do: %{state | apk: path, app: {:error, reason}}
   defp finished(state, {:installing, {:error, reason}, nil}), do: %{state | apk: nil, app: {:error, reason}}
+  defp finished(state, {:crashed, reason}), do: %{state | app: {:error, {:crashed, reason}}}
 
   ## Installing
 
@@ -184,19 +190,35 @@ defmodule FMutate.Updates do
   defp start_install(state, release) do
     client = client()
     server = self()
-    downloaded = state.apk
-
-    task =
-      Task.async(fn ->
-        case downloaded || client.download(release, notify: server) do
-          {:error, _} = error -> {:installing, error, nil}
-          {:ok, path} -> {:installing, {:ok, path}, client.install(path, notify: server)}
-          path -> {:installing, {:ok, path}, client.install(path, notify: server)}
-        end
-      end)
-
-    changed(%{state | task: task, release: release, app: {:downloading, 0, release.apk.size}})
+    # the APK an earlier tap downloaded (then the install permission was missing), if it's still there
+    downloaded = if state.apk && File.regular?(state.apk), do: state.apk
+    task = guarded_task(fn -> download_and_install(client, release, downloaded, server) end)
+    changed(%{state | task: task, release: release, apk: downloaded, app: {:downloading, 0, release.apk.size}})
   end
+
+  defp download_and_install(client, release, downloaded, server) do
+    case downloaded || client.download(release, notify: server) do
+      {:error, _} = error -> {:installing, error, nil}
+      {:ok, path} -> {:installing, {:ok, path}, client.install(path, notify: server)}
+      path -> {:installing, {:ok, path}, client.install(path, notify: server)}
+    end
+  end
+
+  # A task is linked to this server: an exception in it (a network library's, a plugin's) is an error to show,
+  # not a crash that takes the server down, restarts it and checks again at once.
+  defp guarded_task(fun), do: Task.async(fn -> guarded(fun) end)
+
+  defp guarded(fun) do
+    fun.()
+  catch
+    kind, reason ->
+      Logger.error("updates: " <> Exception.format(kind, reason, __STACKTRACE__))
+      {:crashed, Exception.format_banner(kind, reason, __STACKTRACE__)}
+  end
+
+  # the downloaded APK still belongs to the release a check found (it's the same file), else nothing
+  defp same_apk(%{apk: apk, release: %{apk: %{sha256: sha}}}, %{apk: %{sha256: sha}}), do: apk
+  defp same_apk(_state, _release), do: nil
 
   # Android replaces the app (and stops this process) on success, so :success is rarely seen here
   defp installer(state, :pending_user_action), do: %{state | app: {:confirm, state.release}}
@@ -230,6 +252,12 @@ defmodule FMutate.Updates do
       {:error, _} -> nil
     end
   end
+
+  defp newer(%{version_code: code, package: package} = release, %{version_code: installed, package: package})
+       when code > installed,
+       do: release
+
+  defp newer(_release, _installed), do: nil
 
   defp updated_from(nil, _installed), do: nil
   defp updated_from(_code, nil), do: nil

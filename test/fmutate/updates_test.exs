@@ -45,15 +45,23 @@ defmodule FMutate.UpdatesTest do
     Application.put_env(:fmutate_app, :app_update_client, FakeClient)
     on_exit(fn -> Application.delete_env(:fmutate_app, :app_update_client) end)
     on_exit(fn -> :persistent_term.erase(FakeClient) end)
+    Process.put(:apk_dir, tmp)
     %{state_file: Path.join(tmp, "updates.term")}
   end
 
   defp script(overrides) do
+    dir = Process.get(:apk_dir)
+
     base = %{
       pid: self(),
       installed: {:ok, %{package: "com.genericjam.fmutate", version_code: 1, version_name: "0.1.0"}},
       check: {:ok, :up_to_date, %{installed: nil, latest: nil}},
-      download: {:ok, "/tmp/fmutate.apk"},
+      # a downloaded APK is a file in the download dir, named after the release's asset
+      download: fn release, _opts ->
+        path = Path.join(dir, release.apk.name)
+        File.write!(path, release.apk.sha256)
+        {:ok, path}
+      end,
       install: :ok,
       open_install_settings: :ok
     }
@@ -140,17 +148,61 @@ defmodule FMutate.UpdatesTest do
     assert_receive {:called, :download, [@release, [notify: pid]]}
     assert pid == GenServer.whereis(Updates)
     await(&match?({:needs_permission, _}, &1.app))
+    assert_receive {:called, :install, _}
 
     # the user allowed installs in Settings and taps Install again
     script(%{check: {:ok, :available, @release}, install: :ok})
     Updates.install()
-    assert_receive {:called, :install, ["/tmp/fmutate.apk", _]}
+    assert_receive {:called, :install, [path, _]}
+    assert Path.basename(path) == "fmutate-0.1.1.apk"
     refute_received {:called, :download, _}
     await(&match?({:confirm, _}, &1.app))
 
     # Android's dialog: the installer's outcome arrives as a message
     send(Updates, {:mob_app_update, {:install, {:failure, 3, "aborted"}}})
     assert {:error, {:install_failed, 3, "aborted"}} = await(&match?({:error, _}, &1.app)).app
+  end
+
+  test "a newer release found after a download installs its own APK, not the one downloaded before", ctx do
+    script(%{check: {:ok, :available, @release}, install: {:error, :install_permission_required}})
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+    Updates.install()
+    await(&match?({:needs_permission, _}, &1.app))
+    assert_receive {:called, :install, _}
+
+    newer = %{@release | version_code: 3, version_name: "0.1.2", apk: %{@release.apk | name: "fmutate-0.1.2.apk", sha256: "11"}}
+    script(%{check: {:ok, :available, newer}})
+    Updates.check()
+    await(&match?({:available, %{version_code: 3}}, &1.app))
+
+    Updates.install()
+    assert_receive {:called, :download, [^newer, _]}
+    assert_receive {:called, :install, [path, _]}
+    assert Path.basename(path) == "fmutate-0.1.2.apk"
+  end
+
+  test "a downloaded APK that was deleted meanwhile is downloaded again", ctx do
+    script(%{check: {:ok, :available, @release}, install: {:error, :install_permission_required}})
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+    Updates.install()
+    assert_receive {:called, :download, _}
+    await(&match?({:needs_permission, _}, &1.app))
+    assert_receive {:called, :install, [path, _]}
+
+    File.rm!(path)
+    Updates.install()
+    assert_receive {:called, :download, [@release, _]}
+  end
+
+  test "an exception in the updater is an error on the screen; the server keeps running", ctx do
+    script(%{check: fn _opts -> raise "GitHub client bug" end})
+    start(ctx)
+    server = GenServer.whereis(Updates)
+
+    assert {:error, {:crashed, _}} = await(&match?({:error, _}, &1.app)).app
+    assert GenServer.whereis(Updates) == server
   end
 
   test "download progress and a failed download are shown", ctx do
@@ -180,5 +232,24 @@ defmodule FMutate.UpdatesTest do
 
     stop_supervised!(Updates)
     assert start(ctx).updated_from == nil
+  end
+
+  test "once the update is installed, its release isn't offered again", ctx do
+    script(%{check: {:ok, :available, @release}})
+    start(ctx)
+    await(&match?({:available, _}, &1.app))
+    stop_supervised!(Updates)
+
+    # the release found above is now installed; the next check (within the interval) fails
+    script(%{
+      installed: {:ok, %{package: "com.genericjam.fmutate", version_code: 2, version_name: "0.1.1"}},
+      check: {:error, {:transport, :nxdomain}}
+    })
+    assert start(ctx).release == nil
+
+    Updates.check()
+    await(&match?({:error, _}, &1.app))
+    Updates.install()
+    refute_receive {:called, :download, _}, 200
   end
 end
