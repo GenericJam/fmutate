@@ -76,9 +76,8 @@ for t in $TARGETS; do
     IPHONEOS_DEPLOYMENT_TARGET=$MIN_IOS cargo rustc -q --release --lib --crate-type staticlib \
         --manifest-path emu/Cargo.toml --target "$rust"
 
-    rm -f "$out/libfm1native.a"
-    xcrun -sdk $sdk libtool -static -o "$out/libfm1native.a" "$obj"/fm1engine.o "$obj"/cart_*.o \
-        "$CARGO_TARGET_DIR/$rust/release/libfm1emu.a" 2>&1 | grep -v "has no symbols" || true
+    sh ios_archive.sh "$sdk" "$out/libfm1native.a" "$obj"/fm1engine.o "$obj"/cart_*.o \
+        "$CARGO_TARGET_DIR/$rust/release/libfm1emu.a"
     echo "$t: $out/libfm1native.a ($(du -h "$out/libfm1native.a" | cut -f1))"
     if [ "$t" = host ]; then
         erts=$(erl -noshell -eval 'io:format("~s/erts-~s/include", [code:root_dir(), erlang:system_info(version)]), halt().')
