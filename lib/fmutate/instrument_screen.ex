@@ -8,7 +8,7 @@ defmodule FMutate.InstrumentScreen do
 
   require FMutate.Subscription
 
-  alias FMutate.{Editor, Instance, Subscription}
+  alias FMutate.{Editor, Instance, MIDI, Subscription}
 
   @instance "a"
   @editor_events Editor.events()
@@ -20,6 +20,9 @@ defmodule FMutate.InstrumentScreen do
         {:ok, view} -> view
         :pending -> placeholder_view()
       end
+
+    # the current layout saved elsewhere (learned MIDI controls cleared in I/O): the editor takes it
+    _ = Subscription.subscribe(:midi, MIDI.via(@instance), fn -> MIDI.subscribe(@instance) end)
 
     socket =
       socket
@@ -70,6 +73,12 @@ defmodule FMutate.InstrumentScreen do
     do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> Editor.firmware(view.firmware)}
 
   def handle_info({:instance, _id, _event}, socket), do: {:noreply, socket}
+
+  def handle_info({:midi, @instance, {:layout, firmware, layout}}, socket),
+    do: {:noreply, Editor.saved_elsewhere(socket, firmware, layout)}
+
+  # MIDI learn (FMutate.MIDI.learn/2, armed from the binding sheet)
+  def handle_info({:midi_learn, @instance, result}, socket), do: {:noreply, Editor.learned(socket, result)}
 
   # the instance restarted (or wasn't up at mount): subscribed again, with its current view
   def handle_info(msg, socket) when Subscription.message?(msg) do
