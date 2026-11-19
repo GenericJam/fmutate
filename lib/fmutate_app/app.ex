@@ -41,7 +41,9 @@ defmodule FmutateApp.App do
       on_surface: FMutate.Style.argb(:text)
     )
 
-    Mob.Screen.start_root(FMutate.InstrumentScreen)
+    # through mob_deliver (FMutate.Updates): its "please update" screen instead if a published manifest ever sets
+    # a forced-update deadline this build is past (FMutate's publishes don't)
+    Mob.Screen.start_root(MobDeliver.root_screen(FMutate.InstrumentScreen))
     # (no Mob.Dist.ensure_started/1: FMutate.Dist owns distribution as fmutate_a@127.0.0.1, see protocol.md)
   end
 

@@ -20,6 +20,11 @@ def keystorePropsFile = rootProject.file('keystore.properties')
 def keystoreProps = new Properties()
 if (keystorePropsFile.exists()) keystoreProps.load(keystorePropsFile.newDataInputStream())
 
+// The app version (versionCode, versionName): android/version.properties, which config/config.exs reads too
+// (the OTA channel is per versionCode) and tools/release.exs publishes.
+def versionProps = new Properties()
+rootProject.file('version.properties').withInputStream { versionProps.load(it) }
+
 def mobOtpRelease     = localProps.getProperty('mob.otp_release',      System.getenv('MOB_ANDROID_OTP_RELEASE')      ?: '')
 def mobOtpReleaseArm32 = localProps.getProperty('mob.otp_release_arm32', System.getenv('MOB_ANDROID_OTP_RELEASE_ARM32') ?: mobOtpRelease)
 def mobOtpReleaseX86_64 = localProps.getProperty('mob.otp_release_x86_64', System.getenv('MOB_ANDROID_OTP_RELEASE_X86_64') ?: mobOtpRelease)
@@ -45,8 +50,8 @@ android {
         applicationId "com.genericjam.fmutate"
         minSdk 28
         targetSdk 35
-        versionCode 1
-        versionName "0.1.0"
+        versionCode versionProps['versionCode'] as int
+        versionName versionProps['versionName']
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
