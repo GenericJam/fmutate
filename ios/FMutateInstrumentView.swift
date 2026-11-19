@@ -350,6 +350,7 @@ final class FMSurfaceState {
     var noteOct = 0                        // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn = false                     // the surface's BEND toggle: keyboard strips bend
     var stayOn: [String: Bool] = [:]       // motion tiles switched on with their corner box
+    var cc7 = -1                           // the volume a swell last sent (-1: none since this state began)
 }
 
 /// What the firmware screen area says about the instance: a title, an action (tap the screen) and a hint.
@@ -713,9 +714,11 @@ final class FMInstrumentSurface: UIView {
     }
 
     /// A new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
-    /// follows the finger gets its full level back, one whose strip now does takes the finger's level at once
-    /// (Kotlin: LaunchedEffect(layout)).
+    /// follows the finger gets its full level back, one whose strip now does takes the finger's level at once. A
+    /// swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
+    /// or no strip swells any more, it is full again (Kotlin: LaunchedEffect(layout)).
     private func heldNotesFollowLayout() {
+        var full = !allControls.values.contains { $0.type == "keyboard" && $0.strikeVelocity && $0.velSwell && !$0.velPressure }
         for g in grabs.values {
             guard let c = g.control, c.type == "keyboard", g.note >= 0, g.sub >= 0 else { continue }
             let l = live(c)
@@ -725,6 +728,11 @@ final class FMInstrumentSurface: UIView {
                 pressureTo(g, 127)
                 g.at = -1
             }
+            if g.cc7 >= 0 && !(l.velSwell && !l.velPressure) { g.cc7 = -1; full = true }
+        }
+        if full && (0...126).contains(state.cc7) {
+            state.cc7 = 127
+            input(["t": "midi", "bytes": [0xB0, 7, 127]])
         }
     }
 
@@ -985,7 +993,8 @@ final class FMInstrumentSurface: UIView {
     private func swellTo(_ g: FMGrab, _ v: Int) {
         if v == g.cc7 { return }
         g.cc7 = v
-        input(["t": "midi", "bytes": [0xB0, 7, fmClamp(v, 0, 127)]])
+        state.cc7 = fmClamp(v, 0, 127)
+        input(["t": "midi", "bytes": [0xB0, 7, state.cc7]])
     }
 
     /// Pressure: the held note's own level (MIDI polyphonic aftertouch), for firmwares that take it.

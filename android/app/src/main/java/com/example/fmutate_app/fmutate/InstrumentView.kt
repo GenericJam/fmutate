@@ -199,6 +199,7 @@ private class SurfaceState {
     var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn by mutableStateOf(false)                    // the surface's BEND toggle: keyboard strips bend
     val stayOn = mutableStateMapOf<String, Boolean>()      // motion tiles switched on with their corner box
+    var cc7 = -1                                           // the volume a swell last sent (-1: none since this state began)
 }
 
 /**
@@ -430,7 +431,8 @@ private fun InstrumentSurface(
     fun swellTo(g: Grab, v: Int) {
         if (v == g.cc7) return
         g.cc7 = v
-        input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, v.coerceIn(0, 127))))
+        state.cc7 = v.coerceIn(0, 127)
+        input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, state.cc7)))
     }
 
     /** Pressure: the held note's own level (MIDI polyphonic aftertouch), for firmwares that take it. */
@@ -968,14 +970,22 @@ private fun InstrumentSurface(
     val onDiag by rememberUpdatedState<(Map<String, Any>) -> Unit> { p -> emit("diag", p) }
 
     // a new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
-    // follows the finger gets its full level back, one whose strip now does takes the finger's level at once
+    // follows the finger gets its full level back, one whose strip now does takes the finger's level at once. A
+    // swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
+    // or no strip swells any more, it is full again
     LaunchedEffect(layout) {
+        var full = allControls.values.none { it.type == "keyboard" && it.strikeVelocity && it.velSwell && !it.velPressure }
         for (g in grabs.values) {
             val c = g.control ?: continue
             if (c.type != "keyboard" || g.note < 0 || g.sub < 0) continue
             val l = live(c)
             if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last)) }
             else if (g.at >= 0) { pressureTo(g, 127); g.at = -1 }
+            if (g.cc7 >= 0 && !(l.velSwell && !l.velPressure)) { g.cc7 = -1; full = true }
+        }
+        if (full && state.cc7 in 0..126) {
+            state.cc7 = 127
+            input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
         }
     }
 

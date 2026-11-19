@@ -135,7 +135,8 @@ flowchart LR
   without `note_pressure` or a layout without a strike-position strip. Held notes go with the new layout at once:
   a held note whose strip stops following gets level 127 back (it is never left quiet), one whose strip starts
   takes the finger's level; the surface reads a held finger's strip from the current layout, not the one it
-  grabbed.
+  grabbed. A swell leaves CC7 where the last finger put it, so when a new layout stops a held finger's strip
+  swelling, or leaves no strip swelling (note level switched on over a swell), CC7 goes back to 127.
 - **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's
   factory patches sustain at 100), so the toggle is a long release instead: CC72 (the standard release time,
   OberVave's and ShineOn's amp RELEASE) to 108 (~2.3 s) while on, so let-go notes fall away on the firmware's own
