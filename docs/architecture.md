@@ -264,7 +264,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
 | `FMutate.MIDI` (+ `FMutate.MIDI.Map`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, notes → keys, bend if `caps.pitch_bend`), clock follow/send/off |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
-| `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
+| `FMutate.Dist`, `FMutate.Remote`, `fmutate_tcp_dist`, `fmutate/DistInitArgs.kt`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps; the custom transport (put in the init arguments by `DistInitArgs` before the first launch) keeps its acceptor parked until the allow list and cookies are installed, and pending provider names stay binaries until Allow (`docs/design/protocol.md` §7) |
 | `FMutate.Pairing`, `FMutate.PairScreen`, mob_pair (`MobPair.Host`, `MobPair.Pairings`, `MobPair.Front`) | pairing sibling apps by QR code or typed code, on this phone or another on the Wi-Fi; TLS distribution for the latter (`docs/design/protocol.md` §7 "Pairing") |
 
 - **Audio route**: the AAudio stream's device id (`FMutate.Audio.stats/0` `device_id`) named through

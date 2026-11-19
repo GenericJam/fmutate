@@ -13,7 +13,7 @@ defmodule FMutate.Dist.AccessTest do
     refute Access.permitted?(a, @rig)
     assert {:refuse, ^a} = Access.nodeup(a, @rig, 2)
 
-    {:ok, a} = Access.allow(a, @rig, 3)
+    {:ok, a, @rig} = Access.allow(a, @rig, 3)
     assert Access.state(a, @rig) == :allowed
     assert Access.permitted?(a, @rig)
     assert Access.allowed(a) == [@rig]
@@ -32,7 +32,7 @@ defmodule FMutate.Dist.AccessTest do
     {:ok, a} = Access.new([@rig]) |> Access.disconnect(@rig, 1)
     {:pending, a} = Access.knock(a, @rig, 2)
     assert Access.state(a, @rig) == :pending
-    {:ok, a} = Access.allow(a, @rig, 3)
+    {:ok, a, @rig} = Access.allow(a, @rig, 3)
     assert {:accept, _} = Access.nodeup(a, @rig, 4)
   end
 
@@ -66,16 +66,31 @@ defmodule FMutate.Dist.AccessTest do
     assert {:ignored, ^a} = Access.knock(a, @rig, 1)
   end
 
+  test "a fresh registration stays binary until the player allows it" do
+    name = "fresh_#{System.unique_integer([:positive])}@127.0.0.1"
+    assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+
+    {:pending, a} = Access.knock(Access.new(), name, 1)
+    assert Access.state(a, name) == :pending
+    assert [%{node: ^name, state: :pending}] = Access.list(a)
+    assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
+
+    {:ok, a, node} = Access.allow(a, name, 2)
+    assert node == String.to_existing_atom(name)
+    assert Access.state(a, name) == nil
+    assert Access.state(a, node) == :allowed
+  end
+
   test "only the latest knocks are kept" do
     a =
       Enum.reduce(1..20, Access.new(), fn i, a ->
-        a |> Access.knock(:"n#{i}@127.0.0.1", i) |> elem(1)
+        a |> Access.knock("n#{i}@127.0.0.1", i) |> elem(1)
       end)
 
     pending = for %{state: :pending, node: n} <- Access.list(a), do: n
     assert length(pending) == 8
-    assert :"n20@127.0.0.1" in pending
-    refute :"n1@127.0.0.1" in pending
+    assert "n20@127.0.0.1" in pending
+    refute "n1@127.0.0.1" in pending
   end
 
   test "list puts connected apps first" do

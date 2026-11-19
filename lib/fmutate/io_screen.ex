@@ -719,7 +719,7 @@ defmodule FMutate.IOScreen do
 
   defp app_name(%{node: node}) do
     node
-    |> Atom.to_string()
+    |> to_string()
     |> String.split("@")
     |> hd()
     |> String.split("_")

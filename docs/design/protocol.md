@@ -94,8 +94,13 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
 
 - **Node and port.** `FMutate.Dist` starts `fmutate_a@127.0.0.1` ~3 s after launch (Android's UI start races
   distribution, see `Mob.Dist`), listening on `127.0.0.1:9150` (instance b: 9151) with **no EPMD**: Android
-  has none, and OTP's `erl_epmd` with `erl_epmd_node_listen_port` runs without one. This replaces Mob's
-  development node; `tools/rpc.exs` reaches the app the same way.
+  has none, and OTP's `erl_epmd` with `erl_epmd_node_listen_port` runs without one. The app puts
+  `-proto_dist fmutate_tcp` in its init arguments (`mob_init_args`, replacing any other `-proto_dist`) before
+  the BEAM's first launch. That transport opens the socket for `Node.start/2` but parks its acceptor until
+  FMutate installs the allow list and cookies, so connections queued during startup cannot create node-name
+  atoms. A release build without it starts no distribution; if the file has no room for it (the launcher keeps
+  63 arguments, 1023 bytes), it is left as it was. This replaces Mob's development node; `tools/rpc.exs`
+  reaches the app the same way.
 - **Connecting** needs only OTP:
   `erl -name <app>@127.0.0.1 -setcookie <cookie> -start_epmd false -erl_epmd_port 9150 -dist_listen false`
   (a hidden node that only connects out), after registering the node name (below). Retry `Node.connect/1`
@@ -109,21 +114,24 @@ A later second emulator adds `fmutate_b@127.0.0.1` and the same API.
   `[a-z][a-z0-9_]{0,63}@127.0.0.1` and not `fmutate_<letter>@…`), `"rate_limited"` (5 a minute per app) or
   `"busy"` (16 registrations not yet picked up). The provider checks the same signature permission. Register
   again after a Disconnect, or whenever the I/O screen should ask again; registering a name FMutate already
-  allowed changes nothing. Why: OTP's handshake turns the name a connecting node declares into an atom before
-  it checks the cookie, unless the node's allow list refuses the name first, and any app on the phone can
-  reach 127.0.0.1:9150. So FMutate's node (release builds) refuses every name that wasn't registered and
-  allowed, or paired, and no other name ever becomes an atom there. A sibling that connects without
-  registering is refused (`not_allowed`) and FMutate never hears of it. (Development builds deployed by
-  mob_dev keep the allow list open for their tools, which connect under names chosen per run.)
+  allowed changes nothing. Registrations remain binaries in FMutate and are capped at eight current pending
+  names. Only an Allow tap turns one into an atom. Why: OTP's handshake turns the name a connecting node
+  declares into an atom before it checks the cookie, unless the node's allow list refuses the name first, and
+  any app on the phone can reach 127.0.0.1:9150. The gated acceptor and allow list mean that no unapproved
+  name ever becomes an atom there. A sibling that connects without registering is refused (`not_allowed`) and
+  FMutate never hears of it. (Development builds deployed by mob_dev keep the allow list open for their tools,
+  which connect under names chosen per run.)
 - **Allow / Disconnect.** A registered app shows on the I/O screen as "wants to connect" with Allow (FMutate
-  picks registrations up within a second, `FMutate.Dist.Requests`). Allow sets the sibling cookie for that node
-  (`Node.set_cookie/2`) and adds it to the allow list; until then its handshakes are refused (this node's
-  default cookie isn't the sibling cookie). Allow is kept across restarts. Disconnect gives the node a
-  throwaway cookie and cuts the connection; it has to register and be allowed again. If the list of allowed
-  apps can't be saved, Disconnect says so (`{:error, :not_saved}`, and I/O shows that a change isn't saved
-  yet), the app stays cut off, the file is deleted if it can be (every sibling then needs Allow again after a
-  restart; if it can't be deleted either, a restart before the retried save works can bring the old list
-  back) and the save is retried until it works. The state machine is `FMutate.Dist.Access`.
+  picks registrations up within a second, `FMutate.Dist.Requests`). Allow atomizes that one name and first
+  persists the new allowed list; only then does it set the sibling cookie (`Node.set_cookie/2`) and add the name
+  to the live allow list. A failed write returns `{:error, :not_saved}` and leaves the app pending, so a Dist
+  crash cannot retain an unlisted app's kernel access. Allow is kept across restarts. Disconnect first gives
+  the node a throwaway cookie, aborts handshakes already using the old cookie, cuts the established connection,
+  and guards late `nodeup` for twice OTP's setup timeout; it has to register and be allowed again. If the list
+  of allowed apps can't be saved, Disconnect says so (`{:error, :not_saved}`, and I/O shows that a change isn't
+  saved yet), the app stays cut off, the file is deleted if it can be (every sibling then needs Allow again
+  after a restart; if it can't be deleted either, a restart before the retried save works can bring the old
+  list back) and the save is retried until it works. The state machine is `FMutate.Dist.Access`.
 - **Facade.** `FMutate.Remote`, registered as `:fmutate_instance` (and globally as `{:fmutate, "a"}`; global
   names don't reach hidden nodes, so use the local name). §2 inputs, §3 subscribe/unsubscribe with `:status`,
   `:leds`, `:screen`; §4 `list_firmware`, `list_layouts`, `get_layout`.

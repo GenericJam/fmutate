@@ -53,19 +53,35 @@ defmodule FMutate.PairingTest do
 
   defmodule PairingTestBoot do
     # what FMutate.Supervisor starts for pairing; `wifi` stands in for the phone's Wi-Fi address
-    def start(inst, data, wifi) do
+    def start(inst, data, wifi, before_allow) do
       addresses = if wifi, do: [{~c"en0", [flags: [:up, :running], addr: wifi]}], else: []
       store = {MobPair.Pairings.FileStore, path: Path.join(data, "pairings.json")}
 
+      before_allow =
+        case before_allow do
+          {ready, release} ->
+            fn ->
+              File.write!(ready, "")
+              wait_file(release)
+            end
+
+          nil ->
+            nil
+        end
+
       children = [
         {MobPair.Pairings, default_cookie: :keep, allow_list: :auto, store: store},
-        {FMutate.Dist, instance: inst, delay: 0},
+        {FMutate.Dist, instance: inst, delay: 0, before_allow: before_allow},
         {FMutate.Pairing, instance: inst, advertise: false, addresses: fn -> addresses end}
       ]
 
       {:ok, sup} = Supervisor.start_link(children, strategy: :one_for_one, name: PairingTestSup)
       Process.unlink(sup)
       {:ok, sup}
+    end
+
+    defp wait_file(path) do
+      if File.exists?(path), do: :ok, else: (Process.sleep(10); wait_file(path))
     end
   end
   """
@@ -83,8 +99,8 @@ defmodule FMutate.PairingTest do
   end
 
   # FMutate in a :peer BEAM, started without distribution (FMutate.Dist starts it); `wifi` is the address
-  # FMutate.Pairing sees as its Wi-Fi interface (nil: none); `data` its data directory (a new one by default)
-  defp start_fmutate(wifi, data \\ nil) do
+  # FMutate.Pairing sees as its Wi-Fi interface (nil: none); `data` its data directory (a new one by default).
+  defp start_fmutate(wifi, data \\ nil, before_allow \\ nil) do
     data =
       data || Path.join(System.tmp_dir!(), "fmutate_peer_#{System.unique_integer([:positive])}")
 
@@ -94,7 +110,13 @@ defmodule FMutate.PairingTest do
     {:ok, peer, :nonode@nohost} =
       :peer.start(%{
         connection: :standard_io,
-        args: [~c"-start_epmd", ~c"false" | Enum.flat_map(:code.get_path(), &[~c"-pa", &1])],
+        args: [
+          ~c"-start_epmd",
+          ~c"false",
+          ~c"-proto_dist",
+          ~c"fmutate_tcp"
+          | Enum.flat_map(:code.get_path(), &[~c"-pa", &1])
+        ],
         env: [{~c"MOB_DATA_DIR", String.to_charlist(data)}, {~c"HOME", String.to_charlist(data)}]
       })
 
@@ -104,7 +126,7 @@ defmodule FMutate.PairingTest do
     {:ok, _} = :peer.call(peer, Application, :ensure_all_started, [:ssl])
     :peer.call(peer, Code, :compile_string, [@screen])
 
-    {:ok, _} = :peer.call(peer, PairingTestBoot, :start, [@inst, data, wifi])
+    {:ok, _} = :peer.call(peer, PairingTestBoot, :start, [@inst, data, wifi, before_allow])
     node = FMutate.Dist.node_name(@inst)
     wait(fn -> :peer.call(peer, Node, :self, []) == node end)
     %{peer: peer, node: node, data: data}
@@ -228,8 +250,8 @@ defmodule FMutate.PairingTest do
                 &(&1 + &2)
               )
 
-  # The first message of a distribution handshake under `name`, and FMutate's answer.
-  defp handshake(name) do
+  # Starts the first message of a distribution handshake under `name`.
+  defp begin_handshake(name) do
     {:ok, socket} =
       :gen_tcp.connect(~c"127.0.0.1", FMutate.Dist.port(@inst), [
         :binary,
@@ -238,6 +260,11 @@ defmodule FMutate.PairingTest do
       ])
 
     :ok = :gen_tcp.send(socket, <<?N, @dist_flags::64, 1::32, byte_size(name)::16, name::binary>>)
+    socket
+  end
+
+  defp handshake(name) do
+    socket = begin_handshake(name)
     answer = :gen_tcp.recv(socket, 0, 5_000)
     :gen_tcp.close(socket)
     answer
@@ -268,6 +295,31 @@ defmodule FMutate.PairingTest do
     assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running
   end
 
+  test "the acceptor stays closed until the startup allow list is installed" do
+    data = Path.join(System.tmp_dir!(), "fmutate_gate_#{System.unique_integer([:positive])}")
+    ready = Path.join(data, "before_allow")
+    release = Path.join(data, "continue")
+    fmutate = start_fmutate(nil, data, {ready, release})
+    wait(fn -> File.exists?(ready) end)
+
+    prefix = "startup_intruder#{System.unique_integer([:positive])}x"
+    names = for i <- 1..16, do: "#{prefix}#{i}@127.0.0.1"
+    sockets = Enum.map(names, &begin_handshake/1)
+
+    for socket <- sockets, do: assert({:error, :timeout} = :gen_tcp.recv(socket, 0, 50))
+    refute Enum.any?(names, &atom_on?(fmutate.peer, &1))
+
+    File.write!(release, "")
+
+    for socket <- sockets do
+      assert {:ok, "snot_allowed"} = :gen_tcp.recv(socket, 0, 5_000)
+      :gen_tcp.close(socket)
+    end
+
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    refute Enum.any?(names, &atom_on?(fmutate.peer, &1))
+  end
+
   # what FMutateSiblingProvider does for `call(…, "register", name)` from an app signed with FMutate's key
   defp register(fmutate, name) do
     dir = Path.join([fmutate.data, "dist", "requests"])
@@ -294,11 +346,13 @@ defmodule FMutate.PairingTest do
     assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).apps == []
 
     register(fmutate, name)
-    node = String.to_atom(name)
-    wait(fn -> match?(%{state: :pending}, app(fmutate, node)) end)
+    wait(fn -> match?(%{state: :pending}, app(fmutate, name)) end)
+    refute atom_on?(fmutate.peer, name)
     refute :net_kernel.hidden_connect_node(fmutate.node)
 
-    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [node])
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [name])
+    assert atom_on?(fmutate.peer, name)
+    node = String.to_atom(name)
     assert :net_kernel.hidden_connect_node(fmutate.node)
     assert :erpc.call(fmutate.node, Node, :self, []) == fmutate.node
     wait(fn -> app(fmutate, node).state == :connected end)
@@ -309,14 +363,104 @@ defmodule FMutate.PairingTest do
     refute :net_kernel.hidden_connect_node(fmutate.node)
   end
 
+  test "Allow is not granted unless the allowed list is durable across a Dist restart" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    name = "unsaved_#{System.unique_integer([:positive])}@127.0.0.1"
+    register(fmutate, name)
+    wait(fn -> match?(%{state: :pending}, app(fmutate, name)) end)
+
+    dist_dir = Path.join(fmutate.data, "dist")
+    File.chmod!(dist_dir, 0o500)
+    on_exit(fn -> File.chmod(dist_dir, 0o700) end)
+
+    assert :peer.call(fmutate.peer, FMutate.Dist, :allow, [name]) == {:error, :not_saved}
+    node = :peer.call(fmutate.peer, :erlang, :binary_to_existing_atom, [name])
+    refute :peer.call(fmutate.peer, FMutate.Dist, :permitted?, [node])
+    assert %{node: ^name, state: :pending} = app(fmutate, name)
+
+    File.chmod!(dist_dir, 0o700)
+    old = :peer.call(fmutate.peer, Process, :whereis, [FMutate.Dist])
+    true = :peer.call(fmutate.peer, Process, :exit, [old, :kill])
+
+    wait(fn ->
+      pid = :peer.call(fmutate.peer, Process, :whereis, [FMutate.Dist])
+      is_pid(pid) and pid != old
+    end)
+
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    assert :peer.call(fmutate.peer, FMutate.Dist, :info, []).apps == []
+    refute sibling_connect(fmutate, name)
+  end
+
+  test "Disconnect aborts a sibling handshake already pending with the old cookie" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    name = "pending_#{System.unique_integer([:positive])}@127.0.0.1"
+    register(fmutate, name)
+    wait(fn -> match?(%{state: :pending}, app(fmutate, name)) end)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [name])
+    node = String.to_atom(name)
+
+    socket = begin_handshake(name)
+    assert {:ok, "sok"} = :gen_tcp.recv(socket, 0, 5_000)
+    assert {:ok, <<?N, _::binary>>} = :gen_tcp.recv(socket, 0, 5_000)
+
+    wait(fn ->
+      case :peer.call(fmutate.peer, :net_kernel, :node_info, [node]) do
+        {:ok, info} -> info[:state] == :pending
+        _ -> false
+      end
+    end)
+
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :disconnect, [node])
+    assert {:error, :closed} = :gen_tcp.recv(socket, 0, 5_000)
+  end
+
+  test "Disconnect aborts an old-cookie handshake parked behind a live sibling" do
+    fmutate = start_fmutate(nil)
+    wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
+    name = "parked_#{System.unique_integer([:positive])}@127.0.0.1"
+    register(fmutate, name)
+    wait(fn -> match?(%{state: :pending}, app(fmutate, name)) end)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [name])
+    node = String.to_atom(name)
+    assert sibling_connect(fmutate, name)
+    wait(fn -> app(fmutate, node).state == :connected end)
+
+    socket = begin_handshake(name)
+    assert {:ok, "salive"} = :gen_tcp.recv(socket, 0, 5_000)
+    :ok = :gen_tcp.send(socket, "strue")
+
+    assert {:ok, <<?N, _::64, challenge::32, _::binary>>} =
+             :gen_tcp.recv(socket, 0, 5_000)
+
+    wait(fn ->
+      case :peer.call(fmutate.peer, :net_kernel, :node_info, [node]) do
+        {:ok, info} -> info[:state] == :up_pending
+        _ -> false
+      end
+    end)
+
+    Node.monitor(fmutate.node, true)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :disconnect, [node])
+    assert_receive {:nodedown, _}, 5_000
+
+    cookie = File.read!(Path.join([fmutate.data, "dist", "sibling_cookie"]))
+    digest = :erlang.md5([cookie, Integer.to_string(challenge)])
+    _ = :gen_tcp.send(socket, <<?r, 42::32, digest::binary>>)
+    assert {:error, :closed} = :gen_tcp.recv(socket, 0, 5_000)
+    refute :peer.call(fmutate.peer, FMutate.Dist, :permitted?, [node])
+  end
+
   test "a Disconnect that can't be saved says so, holds, and is saved once the disk allows it" do
     fmutate = start_fmutate(nil)
     wait(fn -> :peer.call(fmutate.peer, FMutate.Dist, :info, []).status == :running end)
     name = "voice_#{System.unique_integer([:positive])}@127.0.0.1"
-    node = String.to_atom(name)
     register(fmutate, name)
-    wait(fn -> app(fmutate, node) != nil end)
-    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [node])
+    wait(fn -> app(fmutate, name) != nil end)
+    :ok = :peer.call(fmutate.peer, FMutate.Dist, :allow, [name])
+    node = String.to_atom(name)
 
     dist_dir = Path.join(fmutate.data, "dist")
     File.chmod!(dist_dir, 0o500)

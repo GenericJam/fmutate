@@ -5,14 +5,13 @@ defmodule FMutate.Dist.Requests do
 
       call(content://com.genericjam.fmutate.siblings, "register", "<name>@127.0.0.1")
 
-  The provider (`FMutateSiblingProvider`, Android checks the signature permission) validates the name, rate
-  limits the caller and writes an empty file named after it into `Paths.dist_dir()/requests`. `take/1` reads
-  and deletes those files; `FMutate.Dist` lists the names as pending for the player's Allow.
+  The provider (`FMutateSiblingProvider`, protected by Android's signature permission) validates the name,
+  rate-limits the caller and writes an empty file named after it into `Paths.dist_dir()/requests`. `take/1`
+  reads and deletes those files; `FMutate.Dist` lists the names as pending binaries for the player's Allow.
 
-  This is the only way an unknown name gets into this VM: OTP's handshake makes an atom of any name a
-  connecting node declares unless the `net_kernel` allow list refuses it first, and any app on the phone can
-  reach the loopback port. So the allow list holds only allowed and paired names, and a name becomes an atom
-  only here (from a signed sibling, at most 16 at a time) or from a pairing the player allowed.
+  OTP's handshake makes an atom of a connecting node's declared name unless the `net_kernel` allow list
+  refuses it first. Pending provider registrations therefore stay binaries. Only a player's Allow tap turns
+  one into an atom and adds it to the allow list.
   """
 
   # The same rules as FMutateSiblingProvider: a sibling's short name on this phone, not an FMutate instance's.

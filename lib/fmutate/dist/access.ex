@@ -8,9 +8,10 @@ defmodule FMutate.Dist.Access do
                             └──────knock─── disconnected ◀─disconnect─┘ (also from allowed/pending)
 
     * **knock** — a sibling registered its node name through the content provider (`FMutate.Dist.Requests`):
-      it asks to connect. It is listed as pending, waiting for the player's Allow.
-    * **allow** — the player tapped Allow: the node may connect (and reconnect, across restarts) until
-      disconnected.
+      its still-binary name is listed as pending, waiting for the player's Allow. It becomes an atom only
+      when the player allows it.
+    * **allow** — the player tapped Allow: the validated pending name becomes a node atom and may connect
+      (and reconnect, across restarts) until disconnected.
     * **nodeup / nodedown** — an allowed node's connection came up or went away.
     * **disconnect** — the player tapped Disconnect: the connection is cut and the node is refused again
       until it registers and is allowed anew.
@@ -29,8 +30,9 @@ defmodule FMutate.Dist.Access do
   defstruct apps: %{}, dev: false, dev_nodes: MapSet.new()
 
   @type state :: :pending | :allowed | :connected | :disconnected
+  @type node_ref :: node() | String.t()
   @type t :: %__MODULE__{
-          apps: %{optional(node()) => %{state: state(), since: integer()}},
+          apps: %{optional(node_ref()) => %{state: state(), since: integer()}},
           dev: boolean(),
           dev_nodes: MapSet.t(node())
         }
@@ -42,37 +44,56 @@ defmodule FMutate.Dist.Access do
     %__MODULE__{apps: apps, dev: Keyword.get(opts, :dev, false)}
   end
 
-  @doc "A registered sibling asks to connect. `:ignored` for allowed or connected nodes (nothing to ask)."
-  @spec knock(t(), node(), integer()) :: {:pending | :ignored, t()}
+  @doc """
+  A registered sibling asks to connect. Fresh names remain binaries; an existing node atom is reused without
+  creating one. `:ignored` for allowed or connected nodes.
+  """
+  @spec knock(t(), node_ref(), integer()) :: {:pending | :ignored, t()}
   def knock(%__MODULE__{} = access, node, now) do
-    case state(access, node) do
+    key = key(access, node)
+
+    case state(access, key) do
       s when s in [nil, :pending, :disconnected] ->
-        {:pending, put(access, node, :pending, now) |> trim()}
+        {:pending, put(access, key, :pending, now) |> trim()}
 
       _ ->
         {:ignored, access}
     end
   end
 
-  @doc "The player allows a pending (or disconnected) node. Unknown nodes can't be allowed."
-  @spec allow(t(), node(), integer()) :: {:ok, t()} | {:error, :unknown}
+  @doc """
+  Allows a pending (or disconnected) node. A binary pending name is atomized here, after the player's tap.
+  Returns the node atom used by distribution. Unknown nodes can't be allowed.
+  """
+  @spec allow(t(), node_ref(), integer()) :: {:ok, t(), node()} | {:error, :unknown}
   def allow(%__MODULE__{} = access, node, now) do
-    case state(access, node) do
-      nil -> {:error, :unknown}
-      s when s in [:pending, :disconnected] -> {:ok, put(access, node, :allowed, now)}
-      _ -> {:ok, access}
+    key = key(access, node)
+
+    case state(access, key) do
+      nil ->
+        {:error, :unknown}
+
+      state when state in [:pending, :disconnected] ->
+        atom = node_atom(key)
+        apps = Map.delete(access.apps, key)
+        {:ok, put(%{access | apps: apps}, atom, :allowed, now), atom}
+
+      _ ->
+        {:ok, access, node_atom(key)}
     end
   end
 
   @doc "A node the player paired (Pair screen): allowed, or kept connected if it already is."
   @spec pair(t(), node(), integer()) :: t()
   def pair(%__MODULE__{} = access, node, now) do
+    access = %{access | apps: Map.delete(access.apps, Atom.to_string(node))}
     if state(access, node) == :connected, do: access, else: put(access, node, :allowed, now)
   end
 
   @doc "Drops a node whose pairing was revoked."
   @spec forget(t(), node()) :: t()
-  def forget(%__MODULE__{} = access, node), do: %{access | apps: Map.delete(access.apps, node)}
+  def forget(%__MODULE__{} = access, node),
+    do: %{access | apps: access.apps |> Map.delete(node) |> Map.delete(Atom.to_string(node))}
 
   @doc "A connection came up: `:accept` (allowed), `:dev` (development tool) or `:refuse`."
   @spec nodeup(t(), node(), integer()) :: {:accept | :dev | :refuse, t()}
@@ -104,8 +125,8 @@ defmodule FMutate.Dist.Access do
   @spec permitted?(t(), node()) :: boolean()
   def permitted?(%__MODULE__{} = access, node), do: state(access, node) in [:allowed, :connected]
 
-  @doc "The node's state, nil when unknown."
-  @spec state(t(), node()) :: state() | nil
+  @doc "The node reference's state, nil when unknown."
+  @spec state(t(), node_ref()) :: state() | nil
   def state(%__MODULE__{apps: apps}, node), do: get_in(apps, [node, :state])
 
   @doc "Nodes that may connect (to keep across restarts)."
@@ -113,19 +134,40 @@ defmodule FMutate.Dist.Access do
   def allowed(%__MODULE__{apps: apps}),
     do: for({n, %{state: s}} <- apps, s in [:allowed, :connected], do: n) |> Enum.sort()
 
-  @doc "Every known node with its state, connected first, then by name."
-  @spec list(t()) :: [%{node: node(), state: state(), since: integer()}]
+  @doc "Every known node reference with its state, connected first, then by name."
+  @spec list(t()) :: [%{node: node_ref(), state: state(), since: integer()}]
   def list(%__MODULE__{apps: apps}) do
     order = %{connected: 0, pending: 1, allowed: 2, disconnected: 3}
 
     apps
     |> Enum.map(fn {node, info} -> Map.put(info, :node, node) end)
-    |> Enum.sort_by(&{order[&1.state], &1.node})
+    |> Enum.sort_by(&{order[&1.state], to_string(&1.node)})
   end
 
   defp put(access, node, state, now), do: put_in(access.apps[node], %{state: state, since: now})
 
-  # any signed sibling can register any number of names: keep only the latest few
+  defp key(%__MODULE__{apps: apps}, node) when is_atom(node) do
+    name = Atom.to_string(node)
+    if Map.has_key?(apps, name), do: name, else: node
+  end
+
+  defp key(%__MODULE__{apps: apps}, name) when is_binary(name) do
+    case existing_atom(name) do
+      node when is_atom(node) and is_map_key(apps, node) -> node
+      _ -> name
+    end
+  end
+
+  defp node_atom(node) when is_atom(node), do: node
+  defp node_atom(name) when is_binary(name), do: String.to_atom(name)
+
+  defp existing_atom(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> nil
+  end
+
+  # any signed sibling can register any number of names: keep only the latest few binaries
   defp trim(access) do
     pending = for {n, %{state: :pending, since: t}} <- access.apps, do: {t, n}
 

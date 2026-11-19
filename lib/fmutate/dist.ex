@@ -32,16 +32,17 @@ defmodule FMutate.Dist do
     * per allowed node, `Node.set_cookie(node, sibling_cookie)`.
 
   A sibling first registers its node name through the same provider (`FMutate.Dist.Requests`); this process
-  picks the registration up within a second and lists the app as pending. Allow sets its cookie and adds it
-  to the `net_kernel` allow list: its next attempt connects (siblings retry). Disconnect sets a throwaway
-  cookie and cuts the connection. Allowed nodes are kept across restarts. The state machine is
-  `FMutate.Dist.Access`.
+  keeps the validated name as a binary and lists it as pending. Only the player's Allow tap turns it into an
+  atom, sets its cookie and adds it to the `net_kernel` allow list. Its next attempt connects (siblings retry).
+  Disconnect sets a throwaway cookie, aborts pending handshakes and cuts the connection. Allowed nodes are kept
+  across restarts. The state machine is `FMutate.Dist.Access`.
 
   The allow list: OTP's handshake makes an atom of the name a connecting node declares (before the cookie
-  check) unless the allow list refuses it, and any app on the phone can reach the loopback port. So release
-  builds set a non-empty allow list (a placeholder name, the allowed names, and `MobPair.Pairings` adds the
-  paired ones) right after the node starts, and any other name is refused with no atom made. Development
-  builds (mob_dev's cookie) leave it open, because their tools connect under names chosen per run.
+  check) unless the allow list refuses it, and any app on the phone can reach the loopback port. Release
+  builds therefore use `fmutate_tcp_dist`: its socket may listen during `Node.start/2`, but its acceptor stays
+  parked until a non-empty allow list, the allowed-node cookies and paired-node cookies are installed. Any
+  queued connection is handled only after that gate opens. Development builds may leave the list open because
+  their tools connect under names chosen per run.
 
   ## Paired apps
 
@@ -93,8 +94,9 @@ defmodule FMutate.Dist do
   def subscribe, do: GenServer.call(__MODULE__, {:subscribe, self()})
 
   @doc """
-  The player allows a pending app (one that registered, `FMutate.Dist.Requests`). A paired app isn't the
-  sibling cookie's: `{:error, :paired}`.
+  The player allows a pending app (one that registered, `FMutate.Dist.Requests`). The allow list is persisted
+  before the distribution cookie is installed; `{:error, :not_saved}` leaves the app pending. A paired app
+  isn't the sibling cookie's: `{:error, :paired}`.
   """
   def allow(node), do: GenServer.call(__MODULE__, {:allow, node})
 
@@ -155,6 +157,10 @@ defmodule FMutate.Dist do
       paired: paired,
       status: :starting,
       driving: %{},
+      # a disconnected sibling handshake is refused for twice net_kernel's setup time
+      revoked: %{},
+      # test hook: proves sockets queued after Node.start are not accepted before allow/1
+      before_allow: Keyword.get(opts, :before_allow),
       # allowed.term couldn't be written: retried until it is (save_allowed/1)
       unsaved: false,
       pairings_unsaved: false,
@@ -179,16 +185,24 @@ defmodule FMutate.Dist do
 
   # a stale Allow tap (I/O) on an app that has paired meanwhile: its cookie is the pairing's. MobPair.Pairings
   # is asked too: its :added event may still be on its way here.
-  def handle_call({:allow, node}, _from, state) do
-    with false <- paired?(state, node),
-         {:ok, access} <- Access.allow(state.access, node, now()) do
-      if Node.alive?() do
-        Node.set_cookie(node, state.sibling)
-        if not state.access.dev, do: :net_kernel.allow([node])
-      end
+  def handle_call({:allow, node_ref}, _from, state) do
+    with false <- paired?(state, node_ref),
+         {:ok, access, node} <- Access.allow(state.access, node_ref, now()) do
+      candidate = %{state | access: access, revoked: Map.delete(state.revoked, node)}
 
-      state = save_allowed(%{state | access: access})
-      {:reply, :ok, notify(state)}
+      case write_allowed(candidate) do
+        :ok ->
+          if Node.alive?() do
+            Node.set_cookie(node, state.sibling)
+            if not state.access.dev, do: :net_kernel.allow([node])
+          end
+
+          {:reply, :ok, notify(%{candidate | unsaved: false})}
+
+        {:error, reason} ->
+          Logger.error("dist: allowing #{node} wasn't saved: #{inspect(reason)}")
+          {:reply, {:error, :not_saved}, state}
+      end
     else
       true -> {:reply, {:error, :paired}, state}
       error -> {:reply, error, state}
@@ -202,12 +216,8 @@ defmodule FMutate.Dist do
   def handle_call({:disconnect, node}, _from, state) do
     case Access.disconnect(state.access, node, now()) do
       {:ok, access} ->
-        if is_atom(node) and Node.alive?() do
-          Node.set_cookie(node, random_cookie())
-          Node.disconnect(node)
-        end
-
-        state = save_allowed(%{state | access: access})
+        state = cut_sibling(%{state | access: access}, node)
+        state = save_allowed(state)
         {:reply, if(state.unsaved, do: {:error, :not_saved}, else: :ok), notify(state)}
 
       error ->
@@ -240,21 +250,26 @@ defmodule FMutate.Dist do
   def handle_info(:start, state), do: {:noreply, notify(start(state))}
 
   def handle_info({:nodeup, node, _info}, state) do
-    {verdict, access} = Access.nodeup(state.access, node, now())
+    if Map.has_key?(state.revoked, node) do
+      :erlang.disconnect_node(node)
+      {:noreply, state}
+    else
+      {verdict, access} = Access.nodeup(state.access, node, now())
 
-    case verdict do
-      :accept ->
-        Logger.info("dist: #{node} connected")
+      case verdict do
+        :accept ->
+          Logger.info("dist: #{node} connected")
 
-      :dev ->
-        Logger.info("dist: development tool #{node} connected")
+        :dev ->
+          Logger.info("dist: development tool #{node} connected")
 
-      :refuse ->
-        Logger.warning("dist: refusing #{node}")
-        Node.disconnect(node)
+        :refuse ->
+          Logger.warning("dist: refusing #{node}")
+          Node.disconnect(node)
+      end
+
+      {:noreply, notify(%{state | access: access})}
     end
-
-    {:noreply, notify(%{state | access: access})}
   end
 
   def handle_info({:nodedown, node, _info}, state) do
@@ -269,7 +284,7 @@ defmodule FMutate.Dist do
 
     access =
       Enum.reduce(Requests.take(requests_dir()), state.access, fn name, access ->
-        access |> Access.knock(String.to_atom(name), now()) |> elem(1)
+        access |> Access.knock(name, now()) |> elem(1)
       end)
 
     new = %{state | access: access, pairings_unsaved: pairings_unsaved?()}
@@ -314,6 +329,13 @@ defmodule FMutate.Dist do
   def handle_info(:save_allowed, state),
     do: {:noreply, if(state.unsaved, do: save_allowed(%{state | unsaved: false}), else: state)}
 
+  def handle_info({:revoke_window_over, node, ref}, state) do
+    case state.revoked do
+      %{^node => ^ref} -> {:noreply, %{state | revoked: Map.delete(state.revoked, node)}}
+      _ -> {:noreply, state}
+    end
+  end
+
   def handle_info({:mob_pair_pairings, :revoked, pairing}, state) do
     node = String.to_atom(pairing.node)
 
@@ -334,8 +356,11 @@ defmodule FMutate.Dist do
   @impl true
   def format_status(status) do
     Map.update(status, :state, nil, fn
-      %{sibling: _, default: _} = state -> %{state | sibling: :redacted, default: :redacted}
-      other -> other
+      %{sibling: _, default: _} = state ->
+        %{state | sibling: :redacted, default: :redacted, before_allow: :redacted}
+
+      other ->
+        other
     end)
   end
 
@@ -350,11 +375,16 @@ defmodule FMutate.Dist do
       Node.alive?() ->
         %{state | status: {:error, {:already_alive, Node.self()}}}
 
+      not state.access.dev and not :fmutate_tcp_dist.configured() ->
+        Logger.error("dist: refusing to start without the gated fmutate_tcp transport")
+        %{state | status: {:error, :accept_gate_not_configured}}
+
       true ->
         :application.set_env(:kernel, :erl_epmd_node_listen_port, state.port)
         :application.set_env(:kernel, :inet_dist_use_interface, {127, 0, 0, 1})
         # OTP keeps the cookie file under HOME; make sure it can
         File.mkdir_p(Path.join(System.get_env("HOME") || Paths.data_dir(), ".config/erlang"))
+        if :fmutate_tcp_dist.configured(), do: :ok = :fmutate_tcp_dist.prepare()
 
         case Node.start(state.node, :longnames) do
           {:ok, _} ->
@@ -368,11 +398,12 @@ defmodule FMutate.Dist do
     end
   end
 
-  # Release builds: a non-empty allow list first, so OTP refuses any other name before its handshake makes
-  # an atom of it (any app on the phone can connect to the loopback port). MobPair.Pairings adds the paired
-  # names; Allow adds a sibling-cookie name. Development builds (mob_dev's cookie) keep it open: their tools
-  # connect under any name.
+  # Release builds: the custom transport's acceptor is still parked here. Install a non-empty allow list
+  # before it accepts even one queued socket, then set every cookie and open the gate. Development builds
+  # (mob_dev's cookie) intentionally keep an open list for tools whose names vary.
   defp configure(state) do
+    if is_function(state.before_allow, 0), do: state.before_allow.()
+
     allowed =
       for node <- Access.allowed(state.access), not is_map_key(state.paired, node), do: node
 
@@ -385,6 +416,7 @@ defmodule FMutate.Dist do
     if Process.whereis(MobPair.Pairings), do: MobPair.Pairings.distribution_started()
 
     :ok = :net_kernel.monitor_nodes(true, node_type: :all)
+    if :fmutate_tcp_dist.configured(), do: :ok = :fmutate_tcp_dist.activate()
     if state.status != :running, do: send(self(), :requests)
     %{state | status: :running}
   end
@@ -469,12 +501,7 @@ defmodule FMutate.Dist do
   # the allowed ones need Allow again then; if the delete fails too, a restart before the retry works can bring
   # the old list back), the state is kept here and the write retried every few seconds.
   defp save_allowed(state) do
-    names =
-      for node <- Access.allowed(state.access),
-          not is_map_key(state.paired, node),
-          do: Atom.to_string(node)
-
-    case MobPair.Pairings.write_private(allowed_path(), :erlang.term_to_binary(names)) do
+    case write_allowed(state) do
       :ok ->
         %{state | unsaved: false}
 
@@ -494,6 +521,15 @@ defmodule FMutate.Dist do
     end
   end
 
+  defp write_allowed(state) do
+    names =
+      for node <- Access.allowed(state.access),
+          not is_map_key(state.paired, node),
+          do: Atom.to_string(node)
+
+    MobPair.Pairings.write_private(allowed_path(), :erlang.term_to_binary(names))
+  end
+
   defp allowed_path, do: Path.join(Paths.dist_dir(), "allowed.term")
 
   # ── pairings (MobPair.Pairings; absent in tests that run Dist alone) ──
@@ -509,9 +545,53 @@ defmodule FMutate.Dist do
 
   defp pairings, do: if(Process.whereis(MobPair.Pairings), do: MobPair.Pairings.list(), else: [])
 
-  defp paired?(state, node) do
-    is_map_key(state.paired, node) or
-      (Process.whereis(MobPair.Pairings) != nil and MobPair.Pairings.get(to_string(node)) != nil)
+  defp paired?(state, node_ref) do
+    name = to_string(node_ref)
+
+    in_state =
+      case existing_atom(name) do
+        nil -> false
+        node -> is_map_key(state.paired, node)
+      end
+
+    in_state or (Process.whereis(MobPair.Pairings) != nil and MobPair.Pairings.get(name) != nil)
+  end
+
+  # A pending provider name is still a binary and cannot have reached a distribution handshake.
+  defp cut_sibling(state, node) when is_binary(node), do: state
+
+  # A handshake may already have copied the sibling cookie when Disconnect is tapped. Change the cookie
+  # first, abort a pending owner, cut an established connection, then abort an up_pending handshake promoted
+  # behind it. Keep a nodeup guard for twice net_kernel's setup timeout.
+  defp cut_sibling(state, node) when is_atom(node) do
+    if Node.alive?() do
+      Node.set_cookie(node, random_cookie())
+      abort_handshake(node)
+      :erlang.disconnect_node(node)
+      abort_handshake(node)
+    end
+
+    ref = make_ref()
+    Process.send_after(self(), {:revoke_window_over, node, ref}, revoke_window())
+    %{state | revoked: Map.put(state.revoked, node, ref)}
+  end
+
+  defp revoke_window, do: 2 * :net_kernel.connecttime()
+
+  defp abort_handshake(node) do
+    case :net_kernel.node_info(node) do
+      {:ok, info} ->
+        if info[:state] == :pending, do: Process.exit(info[:owner], :kill)
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  defp existing_atom(name) do
+    String.to_existing_atom(name)
+  rescue
+    ArgumentError -> nil
   end
 
   # The pairing is revoked at once whatever the store says; `{:error, :not_saved}` (and I/O says so) when

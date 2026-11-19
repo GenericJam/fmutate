@@ -484,12 +484,13 @@ defmodule FMutate.PairScreenTest do
     stop_supervised!(Pairings)
     start_supervised!({Pairings, default_cookie: :keep, allow_list: false})
     node = :"humdinger_race@127.0.0.1"
+    name = Atom.to_string(node)
     register(node)
-    assert %{apps: [%{node: ^node, state: :pending}]} = Dist.info()
+    assert %{apps: [%{node: ^name, state: :pending}]} = Dist.info()
 
-    {:ok, _} = Pairings.add(pairing(Atom.to_string(node)))
+    {:ok, _} = Pairings.add(pairing(name))
     assert Dist.allow(node) == {:error, :paired}
-    assert %{apps: [%{node: ^node, state: :pending}]} = Dist.info()
+    assert %{apps: [%{node: ^name, state: :pending}]} = Dist.info()
   end
 
   @tag cert: :unreadable
