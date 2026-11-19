@@ -74,13 +74,11 @@ defmodule FMutate.Release do
       do: fail("FMUTATE_UPDATE_TRACK (#{System.get_env("FMUTATE_UPDATE_TRACK")}) must match --track #{track}")
 
     if release_exists?(tag), do: fail("#{tag} is already released; raise android/version.properties first")
+    published_from_commit!(opts)
 
     apk = opts[:apk] || build_apk(version)
     check_apk!(apk, version, opts[:signer_sha256] || @release_signer)
     head = git!(["rev-parse", "HEAD"])
-
-    unless git_ok?(["branch", "-r", "--contains", head]),
-      do: fail("push #{head} first: the release is tagged at it")
 
     publish = [
       "--repo", @repo, "--apk", apk, "--tag", tag, "--title", "FMutate #{version["versionName"]}",
@@ -91,7 +89,7 @@ defmodule FMutate.Release do
 
     # the new build's channel starts with an empty manifest (its bundled code): checks find something to verify
     # rather than a 404, and the floor starts at this release
-    ota(Keyword.merge(opts, since: "HEAD", force: false))
+    ota(Keyword.merge(opts, since: "HEAD", force: false, checked_commit: true))
   end
 
   defp build_apk(version) do
@@ -144,7 +142,9 @@ defmodule FMutate.Release do
     track = Keyword.get(opts, :track, "production")
     channel = "#{track}-#{version["versionCode"]}"
     since = opts[:since] || "v#{version["versionName"]}"
+    unless opts[:checked_commit], do: published_from_commit!(opts)
     files = changed_lib_files!(since, opts[:force])
+    head = git!(["rev-parse", "HEAD"])
     private_key = signing_key(opts)
     check_key!(private_key)
 
@@ -177,7 +177,7 @@ defmodule FMutate.Release do
         |> ok!("publish")
 
       IO.puts("signed #{channel} issued_at #{fields["issued_at"]} into #{root}")
-      commit_site!(site, "OTA #{channel} #{fields["issued_at"]}: #{map_size(build)} module(s)", opts[:push])
+      commit_site!(site, "OTA #{channel} #{fields["issued_at"]} from #{head}: #{map_size(build)} module(s)", opts[:push])
     end
   end
 
@@ -206,6 +206,24 @@ defmodule FMutate.Release do
       do: IO.puts("note: deleted since #{since} (still in the APK, OTA can't remove them): #{Enum.join(deleted, ", ")}")
 
     present
+  end
+
+  # What users get must be a commit anyone can check out: the APK is tagged at HEAD, and an OTA's gh-pages commit
+  # names the commit it was compiled from. So no uncommitted changes (untracked files outside lib/, such as the
+  # release notes, don't ship) and HEAD on the remote. --dry-run previews the working tree as it is.
+  defp published_from_commit!(opts) do
+    unless opts[:dry_run] do
+      dirty =
+        git!(["status", "--porcelain", "--untracked-files=no"]) <>
+          "\n" <> git!(["ls-files", "--others", "--exclude-standard", "--", "lib"])
+
+      if String.trim(dirty) != "", do: fail("commit first; these aren't committed:\n#{String.trim_trailing(dirty)}")
+
+      head = git!(["rev-parse", "HEAD"])
+
+      if git!(["branch", "-r", "--contains", head]) == "",
+        do: fail("push #{head} first: what's published must be on GitHub")
+    end
   end
 
   defp build!(files), do: files |> MobDeliverServer.build() |> ok!("build")

@@ -14,7 +14,8 @@ config :mob, :repo, FmutateApp.Repo
 # mob_dev evaluates this file on the build machine and ships the result inside the native build, so all of this
 # is fixed per build.
 version =
-  for line <- File.read!(Path.expand("../android/version.properties", __DIR__)) |> String.split("\n"),
+  for line <-
+        File.read!(Path.expand("../android/version.properties", __DIR__)) |> String.split("\n"),
       [key, value] <- [String.split(String.trim(line), "=", parts: 2)],
       into: %{},
       do: {key, value}

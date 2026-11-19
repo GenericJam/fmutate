@@ -63,7 +63,8 @@ endpoint, channel `<track>-<versionCode>`).
 | What | Command |
 |---|---|
 | Release the app (raise `android/version.properties` and `mix.exs` first, commit, push) | `mise exec -- mix run --no-start tools/release.exs apk --notes-file NOTES.md` |
-| Ship Elixir-only changes to the installed build | `mise exec -- mix run --no-start tools/release.exs ota --push` |
+| Ship Elixir-only changes to the installed build (committed and pushed, on a branch from the build's tag) | `mise exec -- mix run --no-start tools/release.exs ota --push` |
+| Take a bad OTA back (an empty manifest: devices run the APK's own code from their next start) | `mise exec -- mix run --no-start tools/release.exs ota --since HEAD --push` |
 | A test build that follows pre-releases and its own OTA channel | `FMUTATE_UPDATE_TRACK=updates-test mise exec -- mix mob.deploy --native --android --device <serial>` |
 
 - **The release key is not on every machine** (it isn't on Kevin's Mac). Release APKs must be signed with
