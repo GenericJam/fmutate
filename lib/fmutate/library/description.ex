@@ -10,7 +10,8 @@ defmodule FMutate.Library.Description do
        (`Readme.md`, `readme.md`, `README` when that is missing; the default branch when the catalogue pins no ref), HTTPS through
        `FMutate.Library.HTTP`, at most 512 KB. Cached per repository and ref under `FMutate.Paths.descriptions_dir/0`
        with its `ETag` and `Last-Modified`, so reading it again is a conditional GET that a 304 answers;
-    2. that cached copy, when the host can't be reached (offline): `status: :cached` with when it was read;
+    2. that cached copy, when the read fails (offline, no README at the ref, another HTTP status, too large):
+       `status: :cached` with when it was read and `error` saying why;
     3. nothing (`:missing`, or `:none` without a GitHub repository, e.g. an imported package): the page shows the
        Hub's card text (`about`) or a plain note.
 
@@ -30,8 +31,8 @@ defmodule FMutate.Library.Description do
   @type source :: %{repo: String.t(), ref: String.t() | nil}
 
   @typedoc """
-  What the page shows: `status` `:fresh` (read or confirmed by the host now), `:cached` (the host couldn't be
-  reached: the copy read at `fetched_at`), `:missing` (no README read, none cached; `error` says why) or `:none`
+  What the page shows: `status` `:fresh` (read or confirmed by the host now), `:cached` (the read failed, `error`
+  says why: the copy read at `fetched_at`), `:missing` (no README read, none cached; `error` says why) or `:none`
   (no repository to read); `readme` the blocks; `file` the README's name in the repository.
   """
   @type t :: %{

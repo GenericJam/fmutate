@@ -45,16 +45,20 @@ flowchart LR
 - **Synth pages** (`FMutate.FirmwareScreen`, opened by a tap on a library card; the card's actions are shared
   through `FMutate.LibraryUI`): a firmware's fuller description is its repository's README, read by
   `FMutate.Library.Description` when the page opens (`Mob.Socket.start_async/3`) from
-  `https://raw.githubusercontent.com/<owner>/<name>/<ref>/README.md` (`readme.md` after a 404), over
+  `https://raw.githubusercontent.com/<owner>/<name>/<ref>/README.md` (then `Readme.md`, `readme.md`, `README` after a 404), over
   `FMutate.Library.HTTP` with a 512 KB cap. The ref is the one the build or package comes from: a Hub package's
   verified build commit (`provenance.commit`), else `srcref`, else its release `tag`, else the default branch
   (`HEAD`); a native build's index `commit`; a bundled cartridge's commit in `native/build_android.sh` (also in
   `FMutate.Firmware`'s `@bundled`). Cached per repository and ref as `<data>/descriptions/<hash>.md` + `.term`
-  (ETag, Last-Modified, when, file name): the page shows the copy at once and the read is conditional (a 304
-  keeps it); offline it stays, "as read on <date>"; with no copy the Hub's card text (`what`, the maker's
-  `fmhub.json`) is what there is. `FMutate.Library.Readme` turns the untrusted Markdown/HTML into headings,
+  (ETag, Last-Modified, when, file name). The page parses nothing in mount: the copy comes from one task, the
+  conditional read (a 304 keeps the copy) from another, and the read wins. A failed read keeps the copy and says
+  why: "Offline: couldn't reach GitHub.", "No README at <ref>.", "GitHub answered <status>." or "too large",
+  then "Showing the copy read on <date>"; with no copy the Hub's card text (`what`, the maker's `fmhub.json`) is
+  what there is. `FMutate.Library.Readme` turns the untrusted Markdown/HTML into headings,
   paragraphs and lists for Mob text components (Mob has no Markdown or HTML view): pictures, badges, HTML,
-  code blocks and link noise go; it reads at most 64 KB and stops at a section boundary past 4000 characters,
+  code blocks and link noise go; it reads at most 64 KB, its patterns look a bounded distance ahead, headings
+  are cut at 300 characters, and it stops at a section boundary past 4000 characters (each block or item counts
+  at least 20, so at most 200 are drawn),
   with "Read the full README" opening GitHub's page at the same ref in the browser (`Mob.Device.open_url/1`).
   The Hub's card picture (`card`, a path under thefirmwarehub.com only) is read once into the same directory
   (2 MB cap) and shown from the file. The Hub's terms: card texts and pictures are their makers', so the page

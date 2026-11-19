@@ -9,12 +9,13 @@ defmodule FMutate.Library.Readme do
       `<svg>`, media and frames with what is in them, code blocks, link reference definitions, and every
       other HTML tag (its text stays); a link keeps its text, inline code and emphasis lose their marks, the
       common HTML entities are decoded;
-    * keeps headings (Markdown and `<h1>`…`<h6>`), paragraphs, lists (nested ones flattened) and tables (a row
-      becomes a list item, its cells joined with " — ");
+    * keeps headings (Markdown and `<h1>`…`<h6>`, cut at 300 characters), paragraphs, lists (nested ones
+      flattened) and tables (a row becomes a list item, its cells joined with " — ");
     * drops a first heading that only repeats the firmware's `name`;
     * stops at a section boundary (before a heading) once the text passes `budget` characters (4000), or
       inside the first section at a paragraph when that section alone is longer; `truncated` then says the
-      rest is in the full README.
+      rest is in the full README. Every block and list item counts at least 20 characters, so at most 200 are
+      drawn; every pattern looks a bounded distance ahead, so a hostile README can't make it backtrack for long.
   """
 
   @type block :: {:heading, 1..6, String.t()} | {:paragraph, String.t()} | {:list, [String.t()]}

@@ -9,9 +9,10 @@ defmodule FMutate.FirmwareScreen do
       Run anyway;
     * the Hub's card text (the maker's), then the README of the firmware's repository at the ref its build or
       package comes from (`FMutate.Library.Description`), as headings, paragraphs and lists, cut at a section
-      boundary with "Read the full README" (the browser). The README shows from the phone's copy at once and
-      is read again in the background (`Mob.Socket.start_async/3`); offline, the copy stays, with when it was
-      read; with neither, the card text is what there is;
+      boundary with "Read the full README" (the browser). Nothing untrusted is parsed in mount: the phone's copy
+      comes from one task and the read from GitHub from another (`Mob.Socket.start_async/3`), which wins; a read
+      that fails keeps the copy and says why (offline, no README at the ref, GitHub's status, too large) and when
+      the copy was read; with neither, the card text is what there is;
     * whose each text and picture is, with a link to their repository, and the Hub's list licence.
 
   Built-in firmwares read the README at the commit the app's cartridge was built from; an imported package has
