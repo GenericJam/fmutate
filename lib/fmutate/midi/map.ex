@@ -18,6 +18,30 @@ defmodule FMutate.MIDI.Map do
   Control change, program change and aftertouch go to the firmware's MIDI in on accepted channels; CC 120
   (all sound off) and 123 (all notes off) also let go of the keys this source holds. Messages passed on
   keep their channel. System exclusive, active sensing and reset are dropped.
+
+  ## Learned controls (MIDI learn)
+
+  Two more settings, which `FMutate.MIDI` sets per source from the current layout:
+
+    * `learned` — the `key/1`s of channel messages a layout control has learned (for this source or for any
+      device). Such a message is `{:learned, event}` instead of its default path, on any channel (the
+      channel filter is for the default path), so it plays nothing else. A note off whose note this source
+      holds by the default path still lets go there.
+    * `learning` — while the editor is learning: every channel message except a note off is
+      `{:learn, event}` and plays nothing.
+
+  And automap (`FMutate.MIDI.Automap`), per source, below learned controls and only on channels the filter
+  accepts:
+
+    * `auto` — the keys of this source's automapped knobs and pads: `{:auto, event}` instead of the default
+      path.
+    * `auto_open` — `%{knobs: bool, pads: bool}`, whether first touch still takes new ones: a message that
+      would be one (`FMutate.MIDI.Automap.candidate?/2`) is `{:auto, event}` too, and its key joins `auto`
+      at once (so its note off, in the same packet, follows it).
+
+  `event`s are `{:note, ch, note, velocity}` (velocity 0: off), `{:cc, ch, number, value}`,
+  `{:pitch_bend, ch, 0..16383}`, `{:channel_pressure, ch, value}`, `{:poly_pressure, ch, note, value}` and
+  `{:program, ch, number}`, with `ch` 1..16.
   """
 
   @key_low 53
@@ -27,6 +51,10 @@ defmodule FMutate.MIDI.Map do
             notes: :keys,
             bend: false,
             clock: :follow,
+            learned: MapSet.new(),
+            learning: false,
+            auto: MapSet.new(),
+            auto_open: %{knobs: false, pads: false},
             status: nil,
             data: [],
             sysex: false,
@@ -38,15 +66,32 @@ defmodule FMutate.MIDI.Map do
           notes: :keys | :firmware,
           bend: boolean(),
           clock: clock(),
+          learned: MapSet.t(),
+          learning: boolean(),
+          auto: MapSet.t(),
+          auto_open: %{knobs: boolean(), pads: boolean()},
           status: nil | byte(),
           data: [byte()],
           sysex: boolean(),
           held: %{optional(byte()) => {:key, 0..26} | :firmware}
         }
 
-  @type input :: {:key, 0..26, :down | :up} | {:midi, binary()}
+  @type event ::
+          {:note, 1..16, byte(), byte()}
+          | {:cc, 1..16, byte(), byte()}
+          | {:pitch_bend, 1..16, 0..16383}
+          | {:channel_pressure, 1..16, byte()}
+          | {:poly_pressure, 1..16, byte(), byte()}
+          | {:program, 1..16, byte()}
 
-  @doc "A parser with `opts` (`:channel`, `:notes`, `:bend`, `:clock`)."
+  @type input ::
+          {:key, 0..26, :down | :up}
+          | {:midi, binary()}
+          | {:learned, event()}
+          | {:learn, event()}
+          | {:auto, event()}
+
+  @doc "A parser with `opts` (`:channel`, `:notes`, `:bend`, `:clock`, `:learned`, `:learning`, `:auto`, `:auto_open`)."
   @spec new(keyword()) :: t()
   def new(opts \\ []), do: configure(%__MODULE__{}, opts)
 
@@ -65,6 +110,18 @@ defmodule FMutate.MIDI.Map do
 
       {:clock, mode}, m when mode in [:follow, :send, :off] ->
         %{m | clock: mode}
+
+      {:learned, %MapSet{} = keys}, m ->
+        %{m | learned: keys}
+
+      {:learning, on}, m when is_boolean(on) ->
+        %{m | learning: on}
+
+      {:auto, %MapSet{} = keys}, m ->
+        %{m | auto: keys}
+
+      {:auto_open, %{knobs: k, pads: p} = open}, m when is_boolean(k) and is_boolean(p) ->
+        %{m | auto_open: open}
 
       {key, value}, _ ->
         raise ArgumentError, "bad MIDI setting #{inspect(key)}: #{inspect(value)}"
@@ -94,6 +151,18 @@ defmodule FMutate.MIDI.Map do
 
     {inputs, %{map | held: %{}}}
   end
+
+  @doc """
+  What identifies a channel message for MIDI learn: its type, channel and number (`nil` for pitch bend and
+  channel pressure). A note's on and off share it.
+  """
+  @spec key(event()) :: {atom(), 1..16, byte() | nil}
+  def key({:note, ch, n, _v}), do: {:note, ch, n}
+  def key({:cc, ch, n, _v}), do: {:cc, ch, n}
+  def key({:poly_pressure, ch, n, _v}), do: {:poly_pressure, ch, n}
+  def key({:program, ch, n}), do: {:program, ch, n}
+  def key({:pitch_bend, ch, _v}), do: {:pitch_bend, ch, nil}
+  def key({:channel_pressure, ch, _v}), do: {:channel_pressure, ch, nil}
 
   ## Parser
 
@@ -151,10 +220,40 @@ defmodule FMutate.MIDI.Map do
   defp message(st, _data, acc, map) when st >= 0xF0, do: {acc, map}
 
   defp message(st, data, acc, map) do
-    if accepts?(map, rem(st, 16) + 1),
-      do: channel_message(div(st, 16), st, data, acc, map),
-      else: {acc, map}
+    ch = rem(st, 16) + 1
+    ev = event(div(st, 16), ch, data)
+
+    cond do
+      map.learning and not off?(ev) -> {[{:learn, ev} | acc], map}
+      learned?(map, ev) -> {[{:learned, ev} | acc], map}
+      not accepts?(map, ch) -> {acc, map}
+      auto?(map, ev) -> {[{:auto, ev} | acc], %{map | auto: MapSet.put(map.auto, key(ev))}}
+      true -> channel_message(div(st, 16), st, data, acc, map)
+    end
   end
+
+  defp event(0x8, ch, [n, _v]), do: {:note, ch, n, 0}
+  defp event(0x9, ch, [n, v]), do: {:note, ch, n, v}
+  defp event(0xA, ch, [n, v]), do: {:poly_pressure, ch, n, v}
+  defp event(0xB, ch, [n, v]), do: {:cc, ch, n, v}
+  defp event(0xC, ch, [n]), do: {:program, ch, n}
+  defp event(0xD, ch, [v]), do: {:channel_pressure, ch, v}
+  defp event(0xE, ch, [lsb, msb]), do: {:pitch_bend, ch, msb * 128 + lsb}
+
+  defp off?({:note, _ch, _n, 0}), do: true
+  defp off?(_ev), do: false
+
+  # a note this source holds by the default path (on before it was learned) comes off there
+  defp learned?(%{held: held} = map, {:note, _ch, n, 0} = ev),
+    do: not Map.has_key?(held, n) and MapSet.member?(map.learned, key(ev))
+
+  defp learned?(map, ev), do: MapSet.member?(map.learned, key(ev))
+
+  # automapped, or a new knob or pad first touch takes (a held default-path note comes off there)
+  defp auto?(%{held: held}, {:note, _ch, n, 0}) when is_map_key(held, n), do: false
+
+  defp auto?(map, ev),
+    do: MapSet.member?(map.auto, key(ev)) or FMutate.MIDI.Automap.candidate?(ev, map.auto_open)
 
   defp accepts?(%{channel: :all}, _ch), do: true
   defp accepts?(%{channel: want}, ch), do: want == ch
