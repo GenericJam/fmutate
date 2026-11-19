@@ -1,4 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 zvenson (web/sim/sim.c and tests/host.c in zvenson/obervave, which this file copies and
+ * adapts). Modified for FMutate by GenericJam from 2026-11-10: a native shared library instead of the WASM
+ * simulator; the sim_* calls renamed fm1c_*. See THIRD_PARTY_NOTICES.md. */
 /* A firmware cartridge: one FM-1 firmware of the Dinghy/zvenson platform family (OberVave, Shine On, ...) as a
  * native shared library, on its authors' own fake FM-1 (tests/host.c, the build their browser simulator uses:
  * OBV_HOST + OBV_WASM, web/sim/sim.c). The exported fm1c_* calls are web/sim/sim.c's sim_* panel API, natively.

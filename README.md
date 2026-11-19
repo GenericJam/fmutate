@@ -131,8 +131,9 @@ for the source boundary, pinned upstream sources and redistribution requirements
   `native/engine/live.c` and the OberVave patches in `native/patches/obervave/`. FMutate patches OberVave to
   take MIDI polyphonic aftertouch as a note's level.
 - [fm1-emu](https://github.com/joakimeriksson/fm1-emu) by Joakim Eriksson (MIT).
-- The firmware catalogue comes from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) (CC BY 4.0). Every
-  firmware belongs to its author and is downloaded from where they publish it.
+- The firmware list comes from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) (CC BY 4.0; card texts and
+  pictures belong to each firmware's maker). Every firmware belongs to its author and is downloaded from where
+  they publish it.
 
 The native build compiles GPL firmware into cartridges and dynamically loads them into the engine. Distributing
 those cartridges or a GPL-covered combined work requires GPL compliance, including corresponding source and
