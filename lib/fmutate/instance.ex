@@ -179,33 +179,43 @@ defmodule FMutate.Instance do
       app_crashes: saved[:app_crashes] || %{}
     }
 
-    {:ok, app_crashed(state, Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)),
-     {:continue, :boot}}
+    {:ok,
+     app_crashed(
+       state,
+       Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)
+     ), {:continue, :boot}}
   end
 
-  # In-process engines (iOS): the firmware this instance ran ended the app (FMutate.CrashMarker). Twice with less
-  # than a minute of clean running in between quarantines it, as two crashes within a minute do on Android.
+  # In-process engines (iOS): firmwares that ended the app (FMutate.CrashMarker). Each counts against itself, the
+  # current firmware or not (the one a crossfade was leaving also runs then): twice with less than a minute of
+  # clean running in between quarantines it, as two crashes within a minute do on Android. Only the current
+  # firmware's crash shows as its last exit and restart count.
+  defp app_crashed(state, []), do: state
+
   defp app_crashed(state, crashed) do
-    fw = state.firmware
+    state = Enum.reduce(crashed, state, &app_crash/2)
+    save_state(state)
+    state
+  end
 
-    if fw in crashed do
-      n = Map.get(state.app_crashes, fw, 0) + 1
+  defp app_crash(fw, state) do
+    n = Map.get(state.app_crashes, fw, 0) + 1
 
-      Logger.warning(
-        "instance #{state.id}: #{fw} ended the app (#{n} time(s) without a clean minute since)"
-      )
+    Logger.warning(
+      "instance #{state.id}: #{fw} ended the app (#{n} time(s) without a clean minute since)"
+    )
 
-      state = %{state | app_crashes: Map.put(state.app_crashes, fw, n), last_exit: :app_crash}
+    state = %{state | app_crashes: Map.put(state.app_crashes, fw, n)}
 
-      state =
-        if n >= @quarantine_after,
-          do: %{state | quarantined: MapSet.put(state.quarantined, fw)},
-          else: %{state | restarts: n}
+    state =
+      if n >= @quarantine_after,
+        do: %{state | quarantined: MapSet.put(state.quarantined, fw)},
+        else: state
 
-      save_state(state)
-      state
-    else
-      state
+    cond do
+      fw != state.firmware -> state
+      n >= @quarantine_after -> %{state | last_exit: :app_crash}
+      true -> %{state | last_exit: :app_crash, restarts: n}
     end
   end
 

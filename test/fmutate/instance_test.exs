@@ -103,7 +103,7 @@ defmodule FMutate.InstanceTest do
     refute view.quarantined
     stop_supervised!({:instance, "a"})
 
-    # (another firmware's crash isn't counted against it)
+    # (another firmware's crash isn't counted against this one)
     start_supervised!({Instance, id: "a", crashed: ["shineon"]}, id: {:instance, "a"})
     Instance.subscribe("a", status: true)
     await_state(running?("obervave"))
@@ -111,6 +111,22 @@ defmodule FMutate.InstanceTest do
 
     start_supervised!({Instance, id: "a", crashed: ["obervave"]}, id: {:instance, "a"})
     assert %{phase: :safe_mode, quarantined: true, last_exit: :app_crash} = Instance.view("a")
+  end
+
+  test "a crash marker of a firmware other than the current one (a crossfade's old one) quarantines that firmware" do
+    start_supervised!({Instance, id: "a", crashed: ["shineon"]}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    await_state(running?("obervave"))
+    assert Instance.quarantined("a") == []
+    stop_supervised!({:instance, "a"})
+
+    start_supervised!({Instance, id: "a", crashed: ["shineon"]}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    view = await_state(running?("obervave"))
+    assert Instance.quarantined("a") == ["shineon"]
+    refute view.quarantined
+    refute view.last_exit == :app_crash
+    assert {:error, :quarantined} = Instance.switch_firmware("a", "shineon")
   end
 
   test "a crashed engine is restarted in place" do
