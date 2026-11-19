@@ -76,6 +76,20 @@ defmodule FMutate.Cartridges do
     end
   end
 
+  @doc """
+  Whether a verified `index` was generated before `current` (the last good one): an old index served again,
+  which would bring back builds since replaced. Refused like one that doesn't verify.
+  """
+  @spec older?(map, map | nil) :: boolean
+  def older?(%{"generated" => new}, %{"generated" => current}) when is_binary(new) and is_binary(current) do
+    case {DateTime.from_iso8601(new), DateTime.from_iso8601(current)} do
+      {{:ok, n, _}, {:ok, c, _}} -> DateTime.before?(n, c)
+      _ -> false
+    end
+  end
+
+  def older?(_index, _current), do: false
+
   @doc "Whether `sig` (raw 64 bytes) is `key`'s Ed25519 signature of `data`."
   @spec signed?(binary, binary | nil, binary | nil) :: boolean
   def signed?(data, sig, key) when is_binary(sig) and is_binary(key) do
@@ -116,7 +130,7 @@ defmodule FMutate.Cartridges do
   def entries(_index, _platform), do: %{}
 
   # ids and versions become file names
-  defp safe?(s), do: is_binary(s) and s =~ ~r/^[A-Za-z0-9][\w.+-]*$/
+  defp safe?(s), do: is_binary(s) and s =~ ~r/\A[A-Za-z0-9][\w.+-]*\z/
 
   defp asset?(%{"url" => url, "size" => size, "sha256" => sha, "sig" => sig}),
     do: is_binary(url) and is_integer(size) and is_binary(sha) and is_binary(sig)

@@ -89,8 +89,11 @@ defmodule FMutate.CartridgesTest do
 
       {_, skiff} = cart("skiff", "2.6", priv)
       {_, x86_only} = cart("dinghy", "1.0", priv, "android-x86_64")
+      # ids and versions become file names: nothing that leaves the directory or breaks a line
       {_, evil} = cart("../evil", "1.0", priv)
-      body = index([skiff, x86_only, evil])
+      {_, evil_version} = cart("felucca", "1.0/../../x", priv)
+      {_, newline} = cart("sloop\n", "1.0", priv)
+      body = index([skiff, x86_only, evil, evil_version, newline])
 
       assert Map.keys(entries_of(body)) == ["skiff"]
       assert Map.keys(entries_of(body, "android-x86_64")) == ["dinghy"]
@@ -300,6 +303,22 @@ defmodule FMutate.CartridgesTest do
 
       assert %{backend: :native} = Firmware.get("skiff")
       assert Firmware.get("dinghy") == nil
+    end
+
+    test "an older signed index served again is refused: its replaced builds don't come back",
+         %{server: server, priv: priv, dir: dir} do
+      start_supervised!(Library)
+      wait(fn -> Library.info().index_generated != nil end)
+
+      {_, skiff25} = cart("skiff", "2.5", priv)
+      body = index([skiff25], %{"generated" => "2026-11-01T03:00:00Z"})
+      serve(server, "/index.json", {200, [], body})
+      serve(server, "/index.json.sig", {200, [], sign(body, priv)})
+      Library.refresh()
+      wait(fn -> Library.info().index_error != nil end)
+
+      assert %{version: "2.6"} = Firmware.get("skiff")
+      refute File.read!(Path.join([dir, "cartridges", "index.json"])) == body
     end
 
     test "Download fetches the cartridge: available, then on the phone and native; an update keeps the old one until it's in",

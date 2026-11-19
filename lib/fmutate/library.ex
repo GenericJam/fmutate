@@ -405,13 +405,17 @@ defmodule FMutate.Library do
   defp finish_index(:not_modified, state), do: changed(%{state | index_error: nil})
 
   defp finish_index({:ok, index, body, sig, etag}, state) do
-    write_atomic(index_path(), body)
-    write_atomic(index_path() <> ".sig", sig)
-    if etag, do: write_atomic(etag_path(), etag), else: File.rm(etag_path())
-    changed(apply_index(%{state | etag: etag, index_error: nil}, index, :fetch))
+    if Cartridges.older?(index, state.index) do
+      finish_index({:error, :older}, state)
+    else
+      write_atomic(index_path(), body)
+      write_atomic(index_path() <> ".sig", sig)
+      if etag, do: write_atomic(etag_path(), etag), else: File.rm(etag_path())
+      changed(apply_index(%{state | etag: etag, index_error: nil}, index, :fetch))
+    end
   end
 
-  defp finish_index({:error, reason}, state) when reason in [:signature, :json, :schema, :engine_abi] do
+  defp finish_index({:error, reason}, state) when reason in [:signature, :json, :schema, :engine_abi, :older] do
     Logger.warning("library: cartridge index refused: #{reason}")
     changed(%{state | index_error: "The native builds' list didn't verify; the last good one stays."})
   end
@@ -510,7 +514,7 @@ defmodule FMutate.Library do
     progress = fn got, total -> send(lib, {:progress, fw.id, got, total}) end
 
     result =
-      with :ok <- HTTP.download(fw.url, part, progress),
+      with :ok <- HTTP.download(fw.url, part, progress, fw.size),
            :ok <- verify(fw, part),
            do: File.rename(part, dest)
 
@@ -523,7 +527,7 @@ defmodule FMutate.Library do
     part = Path.join(dir, Cartridges.file_name(native) <> ".part")
     progress = fn got, total -> send(lib, {:progress, native.id, got, total}) end
 
-    with :ok <- HTTP.download(native.url, part, progress),
+    with :ok <- HTTP.download(native.url, part, progress, native.size),
          {:ok, _path} <- Cartridges.install(part, native, dir, Cartridges.public_key()) do
       :ok
     else

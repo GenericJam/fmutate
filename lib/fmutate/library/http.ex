@@ -28,35 +28,42 @@ defmodule FMutate.Library.HTTP do
   end
 
   @doc """
-  GET `url` into the file `dest`, calling `progress.(bytes_so_far, total_or_nil)` as it arrives.
+  GET `url` into the file `dest`, calling `progress.(bytes_so_far, total_or_nil)` as it arrives. With `max`
+  (the size the file is listed at), a body that grows past it is cut off: `{:error, :size}`.
   """
-  @spec download(String.t(), Path.t(), (non_neg_integer, non_neg_integer | nil -> any)) :: :ok | {:error, term}
-  def download(url, dest, progress) do
+  @spec download(String.t(), Path.t(), (non_neg_integer, non_neg_integer | nil -> any), non_neg_integer | nil) ::
+          :ok | {:error, term}
+  def download(url, dest, progress, max \\ nil) do
     opts = [sync: false, stream: :self, body_format: :binary]
 
     with :ok <- start(),
          {:ok, ref} <- :httpc.request(:get, {to_charlist(url), headers()}, http_opts(url), opts),
          {:ok, io} <- File.open(dest, [:write, :binary]) do
       try do
-        receive_body(ref, io, 0, nil, progress)
+        receive_body(ref, io, 0, nil, {progress, max})
       after
         File.close(io)
       end
     end
   end
 
-  defp receive_body(ref, io, got, total, progress) do
+  defp receive_body(ref, _io, got, _total, {_progress, max}) when is_integer(max) and got > max do
+    :httpc.cancel_request(ref)
+    {:error, :size}
+  end
+
+  defp receive_body(ref, io, got, total, {progress, _max} = ctx) do
     receive do
       {:http, {^ref, :stream_start, headers}} ->
         total = content_length(headers)
         progress.(0, total)
-        receive_body(ref, io, got, total, progress)
+        receive_body(ref, io, got, total, ctx)
 
       {:http, {^ref, :stream, chunk}} ->
         :ok = IO.binwrite(io, chunk)
         got = got + byte_size(chunk)
         progress.(got, total)
-        receive_body(ref, io, got, total, progress)
+        receive_body(ref, io, got, total, ctx)
 
       {:http, {^ref, :stream_end, _headers}} ->
         :ok
