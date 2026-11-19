@@ -115,7 +115,21 @@ android {
         }
         debug   { jniDebuggable true }
     }
+
+    // The licences travel with the APK (THIRD_PARTY_NOTICES.md "How FMutate's builds do this").
+    sourceSets {
+        main { assets.srcDirs += layout.buildDirectory.dir('generated/licenseAssets') }
+    }
 }
+
+def copyLicenseAssets = tasks.register('copyLicenseAssets', Copy) {
+    from(rootProject.file('../LICENSE'))
+    from(rootProject.file('../THIRD_PARTY_NOTICES.md'))
+    from(rootProject.file('../LICENSES')) { into 'LICENSES' }
+    into layout.buildDirectory.dir('generated/licenseAssets/licenses')
+}
+
+tasks.named('preBuild') { dependsOn copyLicenseAssets }
 
 // Strong skipping (on by default since Kotlin 2.0.20) changes which
 // composables recompose: an unstable parameter passed the same instance now

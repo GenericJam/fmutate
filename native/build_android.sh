@@ -11,14 +11,16 @@
 #
 #   native/build_android.sh               all ABIs
 #   ABIS="arm64-v8a" native/build_android.sh
+#   ABIS="" native/build_android.sh       only fetch the firmwares (native/build_host.sh, native/build_ios.sh)
 set -e
 cd "$(dirname "$0")"
 HERE=$(pwd)
 ROOT=$(cd .. && pwd)
 NDK=${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}
-TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+[ -d "$NDK" ] || NDK=$HOME/Library/Android/sdk/ndk/27.2.12479018    # (macOS's default SDK location)
+TC=$NDK/toolchains/llvm/prebuilt/$(uname -s | tr 'A-Z' 'a-z')-x86_64/bin   # (darwin-x86_64 on Apple silicon too)
 API=28                                          # minSdk (android/app/build.gradle)
-ABIS=${ABIS:-"arm64-v8a armeabi-v7a x86_64"}
+ABIS=${ABIS-"arm64-v8a armeabi-v7a x86_64"}
 CFLAGS="-O2 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
 # 16 KB pages (Android 15+ devices and the current emulator images) need 16 KB-aligned LOAD segments
 LDFLAGS="-Wl,-z,max-page-size=16384"

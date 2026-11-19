@@ -38,6 +38,22 @@ defmodule FMutate.PanelEdgesTest.Rig do
     Stream.repeatedly(fn -> next_status(pid) end) |> Enum.find(fn _ -> System.monotonic_time(:millisecond) >= deadline end)
   end
 
+  # the next status the engine sends, after any already waiting (one comes per 100 ms of wall time)
+  def fresh_status(pid) do
+    receive do
+      {:engine, ^pid, {:status, _}} -> fresh_status(pid)
+    after
+      0 -> next_status(pid)
+    end
+  end
+
+  # wait until the firmware's own clock (STATUS `ms`) is at least `ms` past where it is now. A firmware runs only as
+  # fast as the mixer drains its ring, so on a loaded host its time falls behind the wall clock's.
+  def firmware_wait(pid, ms) do
+    target = fresh_status(pid).ms + ms
+    Stream.repeatedly(fn -> next_status(pid) end) |> Enum.find(&(&1.ms >= target))
+  end
+
   # the loudest sample the engine writes into its ring over the next `ms` of wall time (the ring holds ~93 ms:
   # read every 10 ms, each time what was written since)
   def peak_during(prefix, ms) do
