@@ -29,6 +29,7 @@ import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import java.io.File
 import java.lang.ref.WeakReference
 import java.security.MessageDigest
@@ -53,6 +54,11 @@ object MobAppUpdateBridge : io.mob.plugin.MobActivityAware {
 
     // Downloads live in <cacheDir>/mob_app_update; emptied once per process.
     private const val DIR = "mob_app_update"
+
+    // priv/mob_plugin.exs android.min_sdk: SigningInfo / longVersionCode are API 28.
+    private const val MIN_SDK = 28
+
+    private const val TAG = "mob_app_update"
 
     @Volatile private var appContext: Context? = null
     private var activityRef: WeakReference<Activity>? = null
@@ -92,18 +98,39 @@ object MobAppUpdateBridge : io.mob.plugin.MobActivityAware {
         }
         // A download or an install the previous process didn't finish (an
         // update that succeeded kills the process before it can clean up).
-        worker.execute { File(ctx.cacheDir, DIR).listFiles()?.forEach { it.delete() } }
+        worker.execute { File(ctx.cacheDir, DIR).listFiles()?.forEach { delete(it) } }
     }
+
+    // The plugin manifest declares min_sdk 28; a host that builds lower anyway
+    // gets {"error": "unsupported_sdk"} (MobAppUpdate: {:error, :unsupported})
+    // instead of a NoSuchMethodError from the API 28 SigningInfo calls.
+    private fun unsupportedSdk(): ByteArray? =
+        if (Build.VERSION.SDK_INT < MIN_SDK) {
+            JSONObject().put("error", "unsupported_sdk").toString().toByteArray(Charsets.UTF_8)
+        } else {
+            null
+        }
 
     // The installed package as JSON, plus the download directory; null before
     // the Activity arrives.
     @JvmStatic
     fun info(): ByteArray? {
+        unsupportedSdk()?.let { return it }
         val ctx = appContext ?: return null
         val pi = installedInfo(ctx.packageManager, ctx.packageName)
         val dir = File(ctx.cacheDir, DIR)
         dir.mkdirs()
         return describe(pi).put("download_dir", dir.absolutePath).toString().toByteArray(Charsets.UTF_8)
+    }
+
+    // {"free_bytes": N}: the space this app may use on the file system holding
+    // `path` (File.getUsableSpace); MobAppUpdate compares it with what it is
+    // about to write. Android's own allocation in openWrite still applies.
+    @JvmStatic
+    fun freeSpace(path: ByteArray): ByteArray? {
+        val file = File(String(path, Charsets.UTF_8))
+        if (!file.exists()) return null
+        return JSONObject().put("free_bytes", file.usableSpace).toString().toByteArray(Charsets.UTF_8)
     }
 
     @JvmStatic
@@ -129,6 +156,7 @@ object MobAppUpdateBridge : io.mob.plugin.MobActivityAware {
     // the Activity arrives.
     @JvmStatic
     fun inspect(path: ByteArray): ByteArray? {
+        unsupportedSdk()?.let { return it }
         val ctx = appContext ?: return null
         val file = String(path, Charsets.UTF_8)
         val pm = ctx.packageManager
@@ -185,12 +213,9 @@ object MobAppUpdateBridge : io.mob.plugin.MobActivityAware {
         } catch (e: Exception) {
             if (sessionId != -1) {
                 sessions.remove(sessionId)
-                try {
-                    installer.abandonSession(sessionId)
-                } catch (_: Exception) {
-                }
+                abandon(ctx, sessionId)
             }
-            apk.delete()
+            delete(apk)
             val message = e.message ?: e.javaClass.name
             nativeDeliverInstall(pid, PackageInstaller.STATUS_FAILURE, message.toByteArray(Charsets.UTF_8))
         }
@@ -224,15 +249,21 @@ object MobAppUpdateBridge : io.mob.plugin.MobActivityAware {
 
     private fun finish(id: Int, pending: Pending, status: Int, message: String?) {
         sessions.remove(id)
-        pending.apk.delete()
+        delete(pending.apk)
         nativeDeliverInstall(pending.pid, status, (message ?: "").toByteArray(Charsets.UTF_8))
     }
 
     private fun abandon(ctx: Context, id: Int) {
         try {
             ctx.packageManager.packageInstaller.abandonSession(id)
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "could not abandon install session $id", e)
         }
+    }
+
+    // Logged, not thrown: a leftover is retried at the next start (setActivity).
+    private fun delete(file: File) {
+        if (!file.delete() && file.exists()) Log.w(TAG, "could not delete ${file.absolutePath}")
     }
 
     private fun confirmationIntent(intent: Intent): Intent? =
