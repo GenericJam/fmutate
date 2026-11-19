@@ -18,7 +18,8 @@ enum FMTarget: Equatable {
     case button(String)
     case midi(type: String, channel: Int, number: Int, jump: Bool, on: Int, off: Int)
     case page(String)
-    /// App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending.
+    /// App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending;
+    /// "note_level" (`isNoteLevel`) switches note level on the layout's strike-position strips on each press.
     case action(String)
 
     /// Absolute targets share one value between every control bound to them (HANDOFF §6 rule 7).
@@ -44,6 +45,8 @@ enum FMTarget: Equatable {
 
     var isKey: Bool { if case .key = self { return true }; return false }
     var buttonId: String? { if case let .button(id) = self { return id }; return nil }
+    /// The note-level toggle's target: a press asks FMutate.Editor to switch it (saved with the layout).
+    var isNoteLevel: Bool { self == .action("note_level") }
 }
 
 struct FMBinding: Equatable {
@@ -84,7 +87,7 @@ struct FMControl: Equatable {
     var velMin = 40
     var velMax = 127
     var velSwell = false                  // position, opt-in: front/back on a held key sets CC7 (every sounding note)
-    var velPressure = false               // position, opt-in: the held note's own level follows the finger (poly aftertouch)
+    var velPressure = false               // position: the held note's own level follows the finger (poly aftertouch); FMutate.LayoutEdit.surface/2 resolves it
     // pad_grid
     var padCols = 1
     var padRows = 1

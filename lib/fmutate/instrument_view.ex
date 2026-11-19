@@ -38,6 +38,8 @@ defmodule FMutate.InstrumentView do
       phase: to_string(view.phase),
       master: view.master,
       bend: cap?(view.firmware, :pitch_bend),
+      # per-note pressure: a note-level toggle on the layout is greyed out without it
+      note_pressure: cap?(view.firmware, :note_pressure),
       # pressing OCT− and OCT+ together sets the firmware's octave to 0 (strike-velocity strips start in step)
       oct0: cap?(view.firmware, :octave_reset_both),
       # the Opling's mood (docs/design/creature.md) and the message in the screen area

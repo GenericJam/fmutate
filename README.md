@@ -27,7 +27,8 @@ early: Android only, installed from source.
 - **A playable surface**: multitouch where every finger owns the control it touched, glissando, knobs that never
   jump, fine mode, a firmware screen drawn as large as it fits and kept sharp.
   - **Velocity** from where you strike a key (front loud, back soft).
-  - **Note level**: with FMutate's OberVave, a held note's volume follows your finger on the key.
+  - **Note level**: with FMutate's OberVave, a held note's volume follows your finger on the key. On by default;
+    switch it from a button on the surface (bind it to "note level on/off") or in the keyboard strip's settings.
   - **Bend** a held note by sliding sideways, and a long-release **sustain**.
 - **Your own layouts**, edited in place: drag, resize, add controls, pages, bindings to firmware inputs, MIDI notes
   and CCs, portrait or landscape. Saved per firmware.

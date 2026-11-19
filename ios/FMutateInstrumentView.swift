@@ -467,6 +467,7 @@ final class FMInstrumentSurface: UIView {
     private(set) var layout: FMLayout?
     private var fbPath: String?
     private var bendOk = false
+    private var notePressureOk = false
     private var oct0 = false
     private(set) var phase = ""
     private var quarantined = false
@@ -501,6 +502,13 @@ final class FMInstrumentSurface: UIView {
     // and when each one's bubble was last moved (it goes once the control has been still for a moment)
     private var allControls: [String: FMControl] = [:]
     private var midiStill: [String: Int64] = [:]
+    // the note-level toggle (binding target .action("note_level")): the controls bound to it; lit while any
+    // strike-position strip has note level on (as FMutate.LayoutEdit.surface/2 resolved it); greyed out on a
+    // firmware without per-note pressure or a layout without such a strip; a press asks FMutate.Editor to switch
+    // it, which saves it and sends the new layout
+    private var noteLevelIds: Set<String> = []
+    private var noteLevelOn = false
+    private var noteLevelUsable: Bool { notePressureOk && hasVelocityStrip }
 
     private var shm: FMFirmwareShm?
     private let screenScaler = FMScreenScaler()
@@ -599,6 +607,8 @@ final class FMInstrumentSurface: UIView {
             }
             layout = next
             allControls = next.map { l in Dictionary((l.dock + l.pages.flatMap(\.controls)).map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a }) } ?? [:]
+            noteLevelIds = Set(allControls.values.filter { c in c.bindings.contains { $0.to.isNoteLevel } }.map(\.id))
+            noteLevelOn = allControls.values.contains { $0.type == "keyboard" && $0.strikeVelocity && $0.velPressure }
             keyGeometry.removeAll()
             structure = true
         }
@@ -617,6 +627,8 @@ final class FMInstrumentSurface: UIView {
         let newToastSeq = num("toast_seq")?.int64Value ?? 0
         let master = num("master")?.floatValue ?? -1
         bendOk = bool("bend")
+        let newNotePressure = bool("note_pressure")
+        if newNotePressure != notePressureOk { notePressureOk = newNotePressure; controlsView.setNeedsDisplay() }
         oct0 = bool("oct0")
 
         if newPhase != phase || newRestarts != restarts || newSlow != slow || newSpeed != speed || newHint != hint {
@@ -685,6 +697,7 @@ final class FMInstrumentSurface: UIView {
         }
 
         if structure { structureChanged() }
+        if layoutJsonChanged { heldNotesFollowLayout() }
         if screenText {
             message = screenMessage(phase, restarts, slow, speed, hint)
             screenMsgView.setNeedsDisplay()
@@ -698,6 +711,25 @@ final class FMInstrumentSurface: UIView {
 
         if phaseChanged { phaseEffect() }
     }
+
+    /// A new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
+    /// follows the finger gets its full level back, one whose strip now does takes the finger's level at once
+    /// (Kotlin: LaunchedEffect(layout)).
+    private func heldNotesFollowLayout() {
+        for g in grabs.values {
+            guard let c = g.control, c.type == "keyboard", g.note >= 0, g.sub >= 0 else { continue }
+            let l = live(c)
+            if l.velPressure {
+                if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last)) }
+            } else if g.at >= 0 {
+                pressureTo(g, 127)
+                g.at = -1
+            }
+        }
+    }
+
+    /// A control as the current layout has it: a finger keeps the control it grabbed, a new layout may change it.
+    private func live(_ c: FMControl) -> FMControl { allControls[c.id] ?? c }
 
     /// Once a new engine's firmware is up (its own boot takes ~1.5-2 s after the engine runs): toggles again, and
     /// strike-velocity strips' octave and the firmware's put in step at 0 (OCT− and OCT+ together, where the
@@ -726,7 +758,7 @@ final class FMInstrumentSurface: UIView {
 
     private func toggled() -> [FMTarget] {
         controls.flatMap { c in
-            state.toggles[c.id] == true ? c.bindings.filter { $0.mode == "toggle" }.map(\.to) : []
+            state.toggles[c.id] == true ? c.bindings.filter { $0.mode == "toggle" && !$0.to.isNoteLevel }.map(\.to) : []
         }
     }
 
@@ -936,7 +968,8 @@ final class FMInstrumentSurface: UIView {
                 input(["t": "midi", "bytes": [0xB0 | (channel - 1), number, fmClamp(v, 0, 127)]])
             default: break
             }
-        case let .action(id): if id == "bend" { state.bendOn = down }
+        case let .action(id):
+            if id == "bend" { state.bendOn = down } else if id == "note_level" && down && noteLevelUsable { emit("note_level") }
         case let .page(ref): if down { goPage(ref) }
         case let .encoder(id, _, invert): if down { input(["t": "encoder", "id": id, "clicks": invert ? -1 : 1]) }
         case .pot: break
@@ -970,7 +1003,8 @@ final class FMInstrumentSurface: UIView {
             g.note = fmClamp(53 + k + 12 * state.noteOct, 0, 127)
             g.at = -1
             input(["t": "midi", "bytes": [0x90, g.note, fmClamp(g.vel, 1, 127)]])
-            if c.velSwell && !c.velPressure && g.cc7 < 0 { swellTo(g, g.vel) }
+            let l = live(c)
+            if l.velSwell && !l.velPressure && g.cc7 < 0 { swellTo(g, g.vel) }
         } else {
             g.note = -1
             fire(.key(k), true)
@@ -990,7 +1024,7 @@ final class FMInstrumentSurface: UIView {
     private func pressBindings(_ key: String, _ bindings: [FMBinding], _ down: Bool) {
         let press = bindings.filter { $0.on == "press" }
         var on: Bool?
-        if down && press.contains(where: { $0.mode == "toggle" }) {
+        if down && press.contains(where: { $0.mode == "toggle" && !$0.to.isNoteLevel }) {
             let flipped = !(state.toggles[key] ?? false)
             state.toggles[key] = flipped
             dirtyControl(key)
@@ -998,7 +1032,10 @@ final class FMInstrumentSurface: UIView {
             on = flipped
         }
         for b in press {
-            if b.mode == "toggle" {
+            // the note-level toggle switches on each press whatever the mode: its state is the layout's, not a toggle's
+            if b.to.isNoteLevel {
+                fire(b.to, down)
+            } else if b.mode == "toggle" {
                 if let on { fire(b.to, on) }
             } else {
                 fire(b.to, down)
@@ -1214,7 +1251,7 @@ final class FMInstrumentSurface: UIView {
                 g.vel = strikeVelocity(c, r, k, p)
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if c.velPressure { pressureTo(g, levelAt(c, r, k, p)) }
+                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p)) }
             }
         case "strum":
             if let s = stringAt(c, r, p) { g.sub = s; setHeld("\(c.id)#\(s)", true); fire(.key(c.strings[s]), true) }
@@ -1283,8 +1320,9 @@ final class FMInstrumentSurface: UIView {
             if g.sub == FM_RAIL_GRAB { setKbOffset(c.id, fmRailStart(r, p.y, c.toKey - c.fromKey) - c.fromKey); return }
             if g.sub < 0 { return }
             if g.note >= 0 {
-                if c.velPressure { pressureTo(g, levelAt(c, r, g.sub, p)) }
-                else if c.velSwell { swellTo(g, strikeVelocity(c, r, g.sub, p)) }
+                let l = live(c)
+                if l.velPressure { pressureTo(g, levelAt(c, r, g.sub, p)) }
+                else if l.velSwell { swellTo(g, strikeVelocity(c, r, g.sub, p)) }
             }
             if bends(c) { bend(c, g, r, p); return }
             if let k = keyAt(c, r, p), k != g.sub {
@@ -1293,7 +1331,7 @@ final class FMInstrumentSurface: UIView {
                 g.sub = k
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if c.velPressure { pressureTo(g, levelAt(c, r, k, p)) }
+                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p)) }
             }
         case "strum":
             let s = stringAt(c, r, p)
@@ -1510,7 +1548,7 @@ final class FMInstrumentSurface: UIView {
         for c in controls {
             guard let r = rectOf(c), r.cg.insetBy(dx: -6, dy: -6).intersects(dirty) else { continue }
             switch c.type {
-            case "button", "key": dr.button(c, r, state, ledFor(c, state))
+            case "button", "key": dr.button(c, r, state, ledFor(c, state), noteLevelIds.contains(c.id) ? noteLevelOn : state.toggles[c.id] == true)
             case "knob": dr.knob(c, r, state)
             case "slider": dr.slider(c, r, state)
             case "xy_pad": dr.xy(c, r, state)
@@ -1520,7 +1558,7 @@ final class FMInstrumentSurface: UIView {
             case "page_switcher": dr.switcher(c, r, layout, state.page)
             default: break
             }
-            if r7.stale(c) { fmDimOver(g, r) }
+            if r7.stale(c) || (!noteLevelUsable && noteLevelIds.contains(c.id)) { fmDimOver(g, r) }
         }
     }
 
@@ -1715,7 +1753,9 @@ extension FMInstrumentSurface: FMMidiShower {
         for s in shows {
             switch s {
             case let .press(key, down):
-                for b in pressBindingsOf(key) where b.on == "press" && b.mode != "toggle" { showLocally(b.to, down) }
+                for b in pressBindingsOf(key) where b.on == "press" {
+                    if b.to.isNoteLevel { if down { fire(b.to, true) } } else if b.mode != "toggle" { showLocally(b.to, down) }
+                }
                 pressedOrHeld(key, down)
             case let .toggle(key, on):
                 state.toggles[key] = on
@@ -1755,9 +1795,8 @@ struct FMDraw {
         ink.draw(g, t, cx, cy, size, color, mono: mono, weight: weight)
     }
 
-    func button(_ c: FMControl, _ r: FMGrid.Rect, _ st: FMSurfaceState, _ lit: Bool) {
+    func button(_ c: FMControl, _ r: FMGrid.Rect, _ st: FMSurfaceState, _ lit: Bool, _ on: Bool) {
         let pressed = st.pressed[c.id] == true
-        let on = st.toggles[c.id] == true
         let y = pressed ? r.y + 2 : r.y
         let bg = pressed ? FMC.fm : on ? FMC.selected : c.color != "default" ? FMC.pad(c.color) : FMC.raised
         rr(r.x, y, r.w, r.h, 10, bg)
