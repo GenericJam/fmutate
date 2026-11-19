@@ -64,8 +64,12 @@ endpoint, channel `<track>-<versionCode>`).
 |---|---|
 | Release the app (raise `android/version.properties` and `mix.exs` first, commit, push) | `mise exec -- mix run --no-start tools/release.exs apk --notes-file NOTES.md` |
 | Ship Elixir-only changes to the installed build (committed and pushed, on a branch from the build's tag) | `mise exec -- mix run --no-start tools/release.exs ota --push` |
-| Take a bad OTA back (an empty manifest: devices run the APK's own code from their next start) | `mise exec -- mix run --no-start tools/release.exs ota --since HEAD --push` |
+| Take a bad OTA back (on the build's branch; an empty manifest: devices run the APK's own code from their next start) | `mise exec -- mix run --no-start tools/release.exs ota --since HEAD --push` |
 | A test build that follows pre-releases and its own OTA channel | `FMUTATE_UPDATE_TRACK=updates-test mise exec -- mix mob.deploy --native --android --device <serial>` |
+
+Builds made without `FMUTATE_UPDATE_TRACK` (any plain `mix mob.deploy`) are on the `dev` track: they read OTA
+channel `dev-<versionCode>`, never production's. Only `tools/release.exs apk` makes production builds, and it
+checks the channel inside the APK it publishes.
 
 - **The release key is not on every machine** (it isn't on Kevin's Mac). Release APKs must be signed with
   FMutate's release certificate (SHA-256 `154ffa7b77ae7ab1cf427e4d01af941663778392eb28207830bdf80f8440e28f`, since
@@ -73,8 +77,10 @@ endpoint, channel `<track>-<versionCode>`).
   pointing at that keystore and refuses an APK signed with anything else. Never make a new "release" key.
 - **The OTA key** is `~/.config/fmutate/mob_deliver_signing.key` on the publishing machine (its public half is
   `config :mob_deliver, :trusted_publish_key`). Back it up; neither key goes into GitHub secrets without Kevin's OK.
+  `apk` needs both keys on the same machine (it also starts the new build's OTA channel), and checks the OTA key
+  before it builds or publishes anything.
 - Test releases are GitHub **pre-releases** (`--prerelease`, with `--track updates-test`); only builds made with
-  `FMUTATE_UPDATE_TRACK` see them. Delete them (`gh release delete <tag> --cleanup-tag`) when done.
+  a test `FMUTATE_UPDATE_TRACK` see them. Delete them (`gh release delete <tag> --cleanup-tag`) when done.
 
 ## Looking at the running app
 

@@ -70,14 +70,21 @@ defmodule FMutate.Release do
 
     if track != "production" and not opts[:prerelease], do: fail("a #{track} build must be --prerelease")
     if opts[:signer_sha256] && !opts[:prerelease], do: fail("--signer-sha256 is for --prerelease test builds only")
-    if System.get_env("FMUTATE_UPDATE_TRACK", "production") != track,
-      do: fail("FMUTATE_UPDATE_TRACK (#{System.get_env("FMUTATE_UPDATE_TRACK")}) must match --track #{track}")
+    use_track!(track)
 
     if release_exists?(tag), do: fail("#{tag} is already released; raise android/version.properties first")
-    published_from_commit!(opts)
+    published_from_commit!(opts, except: [notes])
+
+    # everything the OTA half needs, before anything is built or published: a GitHub release can't be taken back
+    unless opts[:dry_run] do
+      check_key!(signing_key(opts))
+      site!(opts)
+    end
 
     apk = opts[:apk] || build_apk(version)
-    check_apk!(apk, version, opts[:signer_sha256] || @release_signer)
+    check_apk!(apk, version, opts[:signer_sha256] || @release_signer, "#{track}-#{version["versionCode"]}")
+    # the build regenerates committed files (plugin glue, the NIF table): they must have been committed as built
+    published_from_commit!(opts, except: [notes])
     head = git!(["rev-parse", "HEAD"])
 
     publish = [
@@ -89,7 +96,17 @@ defmodule FMutate.Release do
 
     # the new build's channel starts with an empty manifest (its bundled code): checks find something to verify
     # rather than a 404, and the floor starts at this release
-    ota(Keyword.merge(opts, since: "HEAD", force: false, checked_commit: true))
+    ota(Keyword.merge(opts, since: "HEAD", force: false, from_apk: true))
+  end
+
+  # The track is fixed in the build (config/config.exs reads FMUTATE_UPDATE_TRACK, "dev" when unset), and mob.release
+  # reads the config afresh, so setting it here makes the build follow --track.
+  defp use_track!(track) do
+    case System.get_env("FMUTATE_UPDATE_TRACK") do
+      nil -> System.put_env("FMUTATE_UPDATE_TRACK", track)
+      ^track -> :ok
+      other -> fail("FMUTATE_UPDATE_TRACK (#{other}) must match --track #{track}")
+    end
   end
 
   defp build_apk(version) do
@@ -108,7 +125,7 @@ defmodule FMutate.Release do
     out
   end
 
-  defp check_apk!(apk, version, signer) do
+  defp check_apk!(apk, version, signer, channel) do
     badging = cmd!(tool("aapt2"), ["dump", "badging", apk])
     [_, package, code, name] = Regex.run(~r/package: name='([^']+)' versionCode='(\d+)' versionName='([^']*)'/, badging)
 
@@ -130,7 +147,34 @@ defmodule FMutate.Release do
           "#{apk} is signed by #{inspect(signers)}, not #{signer}: installed copies would refuse it as an update"
         )
 
-    IO.puts("#{apk}: #{package} #{name} (#{code}), signer #{signer}")
+    built_channel = apk_channel!(apk)
+
+    if built_channel != channel,
+      do: fail("#{apk} follows OTA channel #{built_channel}, not #{channel}: build it with FMUTATE_UPDATE_TRACK set")
+
+    IO.puts("#{apk}: #{package} #{name} (#{code}), signer #{signer}, OTA channel #{channel}")
+  end
+
+  # The channel the APK's own build config (mob_app_config in assets/otp.zip) gives mob_deliver, read in a separate
+  # VM so this one doesn't load another build's config module.
+  defp apk_channel!(apk) do
+    with {:ok, [{_, otp}]} <- :zip.extract(String.to_charlist(apk), [:memory, file_list: [~c"assets/otp.zip"]]),
+         {:ok, [{_, beam}]} <- :zip.extract(otp, [:memory, file_list: [~c"fmutate_app/mob_app_config.beam"]]) do
+      dir = Path.join(System.tmp_dir!(), "fmutate-release-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      File.write!(Path.join(dir, "mob_app_config.beam"), beam)
+
+      eval =
+        ~s|io:format("~s", [proplists:get_value(channel, proplists:get_value(mob_deliver, mob_app_config:config(), []), "")]), halt().|
+
+      try do
+        cmd!("erl", ["-noshell", "-pa", dir, "-eval", eval])
+      after
+        File.rm_rf!(dir)
+      end
+    else
+      _ -> fail("#{apk} has no assets/otp.zip with fmutate_app/mob_app_config.beam: not a Mob release build")
+    end
   end
 
   defp release_exists?(tag), do: git_ok?(["ls-remote", "--exit-code", "--tags", "origin", "refs/tags/#{tag}"])
@@ -142,7 +186,19 @@ defmodule FMutate.Release do
     track = Keyword.get(opts, :track, "production")
     channel = "#{track}-#{version["versionCode"]}"
     since = opts[:since] || "v#{version["versionName"]}"
-    unless opts[:checked_commit], do: published_from_commit!(opts)
+
+    # the channel comes from android/version.properties: it must be a released build's (from apk: it just was)
+    unless opts[:from_apk] do
+      published_from_commit!(opts)
+
+      unless release_exists?("v#{version["versionName"]}"),
+        do:
+          fail(
+            "v#{version["versionName"]} (versionCode #{version["versionCode"]}) isn't released, so no device reads " <>
+              "#{channel}: run this on the build's branch (from its tag)"
+          )
+    end
+
     files = changed_lib_files!(since, opts[:force])
     head = git!(["rev-parse", "HEAD"])
     private_key = signing_key(opts)
@@ -209,21 +265,35 @@ defmodule FMutate.Release do
   end
 
   # What users get must be a commit anyone can check out: the APK is tagged at HEAD, and an OTA's gh-pages commit
-  # names the commit it was compiled from. So no uncommitted changes (untracked files outside lib/, such as the
-  # release notes, don't ship) and HEAD on the remote. --dry-run previews the working tree as it is.
-  defp published_from_commit!(opts) do
+  # names the commit it was compiled from. So no uncommitted changes and HEAD on the remote. Untracked files count
+  # where they would ship: anywhere for an APK (Gradle, priv/ and the native build take whatever is in the tree;
+  # `except:` names the release notes), under lib/ for an OTA. --dry-run previews the working tree as it is.
+  defp published_from_commit!(opts, apk \\ nil) do
     unless opts[:dry_run] do
-      dirty =
-        git!(["status", "--porcelain", "--untracked-files=no"]) <>
-          "\n" <> git!(["ls-files", "--others", "--exclude-standard", "--", "lib"])
+      untracked =
+        case apk do
+          nil -> git!(["ls-files", "--others", "--exclude-standard", "--", "lib"])
+          [except: paths] -> untracked_except(paths)
+        end
 
-      if String.trim(dirty) != "", do: fail("commit first; these aren't committed:\n#{String.trim_trailing(dirty)}")
+      dirty = git!(["status", "--porcelain", "--untracked-files=no"]) <> "\n" <> untracked
+
+      if String.trim(dirty) != "", do: fail("commit first; these aren't committed:\n#{String.trim(dirty)}")
 
       head = git!(["rev-parse", "HEAD"])
 
       if git!(["branch", "-r", "--contains", head]) == "",
         do: fail("push #{head} first: what's published must be on GitHub")
     end
+  end
+
+  defp untracked_except(paths) do
+    except = MapSet.new(paths, &Path.relative_to_cwd(Path.expand(&1)))
+
+    git!(["ls-files", "--others", "--exclude-standard"])
+    |> String.split("\n", trim: true)
+    |> Enum.reject(&MapSet.member?(except, &1))
+    |> Enum.join("\n")
   end
 
   defp build!(files), do: files |> MobDeliverServer.build() |> ok!("build")

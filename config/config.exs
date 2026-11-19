@@ -20,14 +20,16 @@ version =
       into: %{},
       do: {key, value}
 
-# "production" for releases; a test build sets FMUTATE_UPDATE_TRACK (e.g. "updates-test") so it follows GitHub
-# pre-releases and its own OTA channel, never what users get.
-track = System.get_env("FMUTATE_UPDATE_TRACK", "production")
+# The update track: "production" only for release builds (tools/release.exs apk sets it); a test build sets
+# FMUTATE_UPDATE_TRACK (e.g. "updates-test") so it follows GitHub pre-releases and its own OTA channel. Anything
+# else (mix mob.deploy) is "dev": a developer's build of master never installs what production builds of the same
+# versionCode get over the air.
+track = System.get_env("FMUTATE_UPDATE_TRACK", "dev")
 
 # The app (APK): a newer release of this repository on GitHub, installed only when the user taps Install.
 config :fmutate_app, :updates,
   repo: "GenericJam/fmutate",
-  prerelease: track != "production",
+  prerelease: track not in ["production", "dev"],
   launch_check_after: :timer.hours(12)
 
 # The code (Elixir): signed BEAMs from GitHub Pages (the gh-pages branch's ota/ directory, written by
