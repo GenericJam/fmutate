@@ -27,6 +27,8 @@ defmodule FMutate.CartridgesTest do
 
   defp sign(data, priv), do: Base.encode64(:crypto.sign(:eddsa, :none, data, [priv, :ed25519]))
 
+  defp file(id, version, platform \\ @platform, abi \\ 1), do: "libcart_#{id}@#{version}@#{platform}@abi#{abi}.so"
+
   # a cartridge's bytes and its index entry (asset for `platform`)
   defp cart(id, version, priv, platform \\ @platform) do
     bytes = :crypto.strong_rand_bytes(300) <> "#{id} #{version}"
@@ -136,9 +138,9 @@ defmodule FMutate.CartridgesTest do
       assert %{backend: :emu, native: nil} = Enum.find(all, &(&1.id == "hortator"))
 
       # downloaded: on the phone
-      File.write!(Path.join(carts, "libcart_skiff-2.6-#{@platform}.so"), "x")
+      File.write!(Path.join(carts, file("skiff", "2.6")), "x")
       skiff = Enum.find(merge.(none), &(&1.id == "skiff"))
-      assert skiff.cart == Path.join(carts, "libcart_skiff-2.6-#{@platform}.so")
+      assert skiff.cart == Path.join(carts, file("skiff", "2.6"))
       assert Catalog.status(skiff, ctx) == :on_phone
       refute Catalog.update?(skiff)
 
@@ -151,16 +153,28 @@ defmodule FMutate.CartridgesTest do
 
     test "a newer build than the downloaded one is offered while the old one keeps running",
          %{dir: dir, body: body, hub: hub} do
-      old = Path.join(dir, "libcart_skiff-2.5-#{@platform}.so")
+      old = Path.join(dir, file("skiff", "2.5"))
       File.write!(old, "x")
-      # another id that starts like this one isn't this one's
-      File.write!(Path.join(dir, "libcart_skiff-lite-1.0-#{@platform}.so"), "x")
+      # this version built for another engine ABI (left from an app update) never runs here
+      File.write!(Path.join(dir, file("skiff", "2.6", @platform, 0)), "x")
 
       natives = body |> entries_of() |> Cartridges.resolve(dir, fn _ -> nil end)
       skiff = Enum.find(Catalog.merge([], hub, dir, natives), &(&1.id == "skiff"))
       assert skiff.cart == old and skiff.native.cart_version == "2.5"
       assert Catalog.status(skiff, %{current: nil, quarantined: [], emu?: true}) == :on_phone
       assert Catalog.update?(skiff)
+    end
+
+    test "only an id's own cartridge of this engine ABI is its cartridge", %{dir: dir, body: body, hub: hub} do
+      # another id that starts like this one (one the index no longer lists), and another engine ABI's
+      File.write!(Path.join(dir, file("skiff-2", "1.0")), "x")
+      File.write!(Path.join(dir, file("skiff", "2.6", @platform, 0)), "x")
+      File.write!(Path.join(dir, file("skiff", "2.6", "android-x86_64")), "x")
+
+      natives = body |> entries_of() |> Cartridges.resolve(dir, fn _ -> nil end)
+      skiff = Enum.find(Catalog.merge([], hub, dir, natives), &(&1.id == "skiff"))
+      assert skiff.cart == nil
+      assert Catalog.status(skiff, %{current: nil, quarantined: [], emu?: true}) == :available
     end
 
     test "on iOS only a cartridge linked into the app runs natively; the others play emulated", %{dir: dir, priv: priv, hub: hub} do
@@ -182,8 +196,13 @@ defmodule FMutate.CartridgesTest do
       {bytes, entry} = cart("skiff", "2.6", priv)
       [native] = index([entry]) |> entries_of() |> Map.values()
       part = Path.join(dir, "skiff.part")
-      old = Path.join(dir, "libcart_skiff-2.5-#{@platform}.so")
+      old = Path.join(dir, file("skiff", "2.5"))
       File.write!(old, "old")
+      old_abi = file("skiff", "2.6", @platform, 0)
+      File.write!(Path.join(dir, old_abi), "old abi")
+      others = [file("skiff", "2.6", "android-x86_64"), file("skiff-2", "1.0")]
+      for f <- others, do: File.write!(Path.join(dir, f), "other")
+      before = File.ls!(dir) |> Enum.sort()
 
       for {data, n, error} <- [
             {bytes <> "x", native, :size},
@@ -193,7 +212,7 @@ defmodule FMutate.CartridgesTest do
         File.write!(part, data)
         assert {:error, ^error} = Cartridges.install(part, n, dir, pub)
         refute File.exists?(part)
-        assert File.ls!(dir) == [Path.basename(old)]
+        assert Enum.sort(File.ls!(dir)) == before
       end
 
       {other_pub, _} = :crypto.generate_key(:eddsa, :ed25519)
@@ -203,7 +222,10 @@ defmodule FMutate.CartridgesTest do
       File.write!(part, bytes)
       assert {:ok, dest} = Cartridges.install(part, native, dir, pub)
       assert File.read!(dest) == bytes
-      assert File.ls!(dir) == ["libcart_skiff-2.6-#{@platform}.so"]
+      # this id's other versions and engine ABIs for this platform go; other platforms' and ids' stay
+      assert Enum.sort(File.ls!(dir)) == Enum.sort([file("skiff", "2.6") | others])
+      assert :ok = Cartridges.remove(dir, "skiff", @platform)
+      assert Enum.sort(File.ls!(dir)) == Enum.sort(others)
     end
   end
 

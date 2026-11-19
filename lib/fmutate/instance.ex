@@ -400,16 +400,29 @@ defmodule FMutate.Instance do
 
   defp fetched(state, %{fw: fw, role: role, carry: carry}, :ok), do: start_engine(state, role(state, role), fw, carry)
 
-  # the download failed: the firmware's Hub package in the emulator, when it's on the phone
+  # the download failed: the firmware's Hub package in the emulator, when it's on the phone and not
+  # quarantined (then the live role shows its safe mode, Run anyway; a switch keeps the old firmware)
   defp fetched(state, %{fw: fw, role: role}, {:error, reason}) do
     hub = Catalog.hub_id(fw)
+    role = role(state, role)
+    why = "#{fw}'s cartridge didn't download (#{inspect(reason)})"
 
-    if Firmware.runnable(hub) do
-      Logger.warning("instance #{state.id}: #{fw}'s cartridge didn't download (#{inspect(reason)}); running #{hub} in the emulator")
-      start_engine(%{state | firmware: hub, wanted: fw}, role(state, role), hub)
-    else
-      Logger.error("instance #{state.id}: #{fw}'s cartridge didn't download (#{inspect(reason)}) and its Hub package isn't on the phone")
-      not_installed(state, role)
+    cond do
+      Firmware.runnable(hub) == nil ->
+        Logger.error("instance #{state.id}: #{why} and its Hub package isn't on the phone")
+        not_installed(state, role)
+
+      MapSet.member?(state.quarantined, hub) and role == :live ->
+        Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
+        %{state | firmware: hub, wanted: fw, phase: :safe_mode}
+
+      MapSet.member?(state.quarantined, hub) ->
+        Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
+        not_installed(state, role)
+
+      true ->
+        Logger.warning("instance #{state.id}: #{why}; running #{hub} in the emulator")
+        start_engine(%{state | firmware: hub, wanted: fw}, role, hub)
     end
   end
 

@@ -10,7 +10,9 @@ defmodule FMutate.Cartridges do
   is used only when it verifies and is of schema 1 and engine ABI 1. Each firmware lists an asset per platform
   (`android-arm64-v8a`, `android-x86_64`, `android-armeabi-v7a`, `ios-device`, `ios-sim`) with its url, size,
   SHA-256 and own signature (same key, over the file's bytes); a download is kept only when all three check.
-  A downloaded cartridge is `libcart_<id>-<version>-<platform>.so` in `FMutate.Paths.cartridges_dir/0`.
+  A downloaded cartridge is `libcart_<id>@<version>@<platform>@abi<engine ABI>.so` in
+  `FMutate.Paths.cartridges_dir/0` (`@` is in no id, version or platform, so a name reads back to one id; a
+  cartridge of another engine ABI, left from an app update, is never found as one to run).
 
   iOS runs no downloaded native code: there only the cartridges linked into the app run natively
   (`FMutate.Paths.bundled_cart/1`), and an entry with an iOS asset that isn't linked plays emulated until an
@@ -22,6 +24,7 @@ defmodule FMutate.Cartridges do
 
   @schema 1
   @engine_abi 1
+  @abi_tag "abi#{@engine_abi}"
 
   @typedoc """
   One firmware's native build for this platform: the index's fields (`id`, `name`, `version`, `commit`,
@@ -176,55 +179,60 @@ defmodule FMutate.Cartridges do
 
   ## Files
 
-  @doc "A downloaded cartridge's file name."
+  @doc "A downloaded cartridge's file name (this engine ABI's)."
   @spec file_name(entry) :: String.t()
-  def file_name(%{id: id, version: version, platform: platform}), do: "libcart_#{id}-#{version}-#{platform}.so"
+  def file_name(%{id: id, version: version, platform: platform}),
+    do: "libcart_#{id}@#{version}@#{platform}@#{@abi_tag}.so"
 
   @doc """
   Entries with where they are on the phone: `bundled` (`bundled_cart.(id)`, a cartridge of the build) and,
-  where cartridges download, `cart` and `cart_version` (the file of the id in `dir`: this version's, else an
-  older one, which keeps working until the update is downloaded).
+  where cartridges download, `cart` and `cart_version` (the file of the id in `dir` for this engine ABI: this
+  version's, else an older one, which keeps working until the update is downloaded).
   """
   @spec resolve(%{String.t() => entry}, Path.t(), (String.t() -> String.t() | nil)) :: %{String.t() => entry}
   def resolve(entries, dir, bundled_cart \\ &Paths.bundled_cart/1) do
     files = list(dir)
-    ids = Map.keys(entries)
 
     Map.new(entries, fn {id, e} ->
       {cart, version} =
-        if downloadable?(e.platform), do: downloaded(files, dir, e, ids), else: {nil, nil}
+        if downloadable?(e.platform), do: downloaded(files, dir, e), else: {nil, nil}
 
       {id, Map.merge(e, %{bundled: bundled_cart.(id), cart: cart, cart_version: version})}
     end)
   end
 
-  defp downloaded(files, dir, e, ids) do
+  defp downloaded(files, dir, e) do
     current = file_name(e)
 
     if current in files do
       {Path.join(dir, current), e.version}
     else
-      case files |> carts_of(e.id, e.platform, ids) |> List.last() do
+      case files |> carts_of(e.id, e.platform, @abi_tag) |> List.last() do
         nil -> {nil, nil}
         {file, version} -> {Path.join(dir, file), version}
       end
     end
   end
 
-  # `{file, version}` of an id's cartridges among `files`: not those of a longer id (`<id>-<more>`, known
-  # from the index, or any whose "version" doesn't start with a digit, as the index's versions do)
-  defp carts_of(files, id, platform, ids) do
-    prefix = "libcart_#{id}-"
-    suffix = "-#{platform}.so"
-    longer = for o <- ids, String.starts_with?(o, id <> "-"), do: "libcart_#{o}-"
-
+  # `{file, version}` of an id's cartridges for a platform among `files`: of the engine ABI `abi`, or `:any`
+  defp carts_of(files, id, platform, abi) do
     for file <- Enum.sort(files),
-        String.starts_with?(file, prefix) and String.ends_with?(file, suffix),
-        not String.starts_with?(file, longer),
-        version = binary_part(file, byte_size(prefix), byte_size(file) - byte_size(prefix) - byte_size(suffix)),
-        version =~ ~r/^\d/,
+        {^id, version, ^platform, a} <- [parse(file)],
+        abi == :any or a == abi,
         do: {file, version}
   end
+
+  # `file_name/1` read back: `{id, version, platform, abi}`, or nil for any other file (`.part` downloads too)
+  defp parse("libcart_" <> rest) when byte_size(rest) > 3 do
+    name = binary_part(rest, 0, byte_size(rest) - 3)
+
+    case {binary_part(rest, byte_size(rest), -3), String.split(name, "@")} do
+      {".so", [id, version, platform, "abi" <> _ = abi]} -> {id, version, platform, abi}
+      _ -> nil
+    end
+  end
+
+  defp parse(_file), do: nil
 
   defp list(dir) do
     case File.ls(dir) do
@@ -235,7 +243,8 @@ defmodule FMutate.Cartridges do
 
   @doc """
   Keep a downloaded cartridge (`part`) as the entry's file in `dir` when its size, SHA-256 and signature check
-  out, and delete the id's other versions; otherwise delete it.
+  out, and delete the id's other cartridges for the platform (older versions, other engine ABIs); otherwise
+  delete it.
   """
   @spec install(Path.t(), entry, Path.t(), binary | nil) ::
           {:ok, Path.t()} | {:error, :size | :sha256 | :signature | File.posix()}
@@ -244,7 +253,7 @@ defmodule FMutate.Cartridges do
 
     with :ok <- verify_asset(part, entry, key),
          :ok <- File.rename(part, dest) do
-      for {file, _} <- carts_of(list(dir), entry.id, entry.platform, []),
+      for {file, _} <- carts_of(list(dir), entry.id, entry.platform, :any),
           Path.join(dir, file) != dest,
           do: File.rm(Path.join(dir, file))
 
@@ -269,10 +278,10 @@ defmodule FMutate.Cartridges do
     end
   end
 
-  @doc "Delete every downloaded cartridge of an id for a platform."
+  @doc "Delete every downloaded cartridge of an id for a platform (of any engine ABI)."
   @spec remove(Path.t(), String.t(), String.t()) :: :ok
   def remove(dir, id, platform) do
-    for {file, _} <- carts_of(list(dir), id, platform, []), do: File.rm(Path.join(dir, file))
+    for {file, _} <- carts_of(list(dir), id, platform, :any), do: File.rm(Path.join(dir, file))
     :ok
   end
 

@@ -27,7 +27,7 @@ defmodule FMutate.Paths do
   def packages_dir, do: ensure(Path.join(data_dir(), "packages"))
 
   @doc """
-  Downloaded native cartridges (`libcart_<id>-<version>-<platform>.so`) and the cartridge index's cache
+  Downloaded native cartridges (`libcart_<id>@<version>@<platform>@abi<N>.so`) and the cartridge index's cache
   (`FMutate.Cartridges`).
   """
   def cartridges_dir, do: ensure(Path.join(data_dir(), "cartridges"))

@@ -327,6 +327,7 @@ defmodule FMutate.Library do
   defp describe(:cart, :sha256), do: "the cartridge doesn't match its index's checksum"
   defp describe(:cart, :signature), do: "the cartridge's signature doesn't check out"
   defp describe(_kind, {:http, status}), do: "the server answered #{status}"
+  defp describe(_kind, :enospc), do: "the phone's storage is full"
   defp describe(_kind, _), do: "couldn't reach the server"
 
   defp load_cache(state) do

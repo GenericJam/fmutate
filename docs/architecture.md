@@ -52,13 +52,15 @@ flowchart LR
   refused and the last good one stays. A Hub firmware with an asset
   for this phone (`android-arm64-v8a`, `android-x86_64`, `android-armeabi-v7a` from the BEAM's architecture)
   becomes `backend: :native` ("Native" on its card, with the build's version and short commit); its Hub package
-  stays listed as `hub:<id>`. Download fetches the cartridge (`<data>/cartridges/libcart_<id>-<version>-<platform>.so`,
-  cut off past its listed size, kept only when size, SHA-256 and its own signature check out, so the engine
-  never loads a file that didn't verify; the id's older version is deleted then); until
+  stays listed as `hub:<id>`. Download fetches the cartridge (`<data>/cartridges/libcart_<id>@<version>@<platform>@abi1.so`:
+  `@` is in no id or version, so a file reads back to one id, and a cartridge of another engine ABI is never
+  run), cut off past its listed size, kept only when size, SHA-256 and its own signature check out, so the engine
+  never loads a file that didn't verify; the id's other versions and ABIs are deleted then; until
   then it is "Available". A newer build than the downloaded one shows Update while the old one keeps running.
   An instance starting such a firmware without its cartridge (at boot, e.g. the player's emulated Hub firmware
   that has since gone native; after a crash; a switch to it) downloads it first ("Downloading…"); if
-  that fails, the Hub package runs in the emulator when it is on the phone, else "Doesn't run here yet", and the
+  that fails, the Hub package runs in the emulator when it is on the phone (when it is quarantined: its safe
+  mode, "Run anyway"), else "Doesn't run here yet", and the
   native id stays the saved choice for the next start (`FMutate.Instance` "Native builds not on the phone yet").
   A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
   downloaded native code: an entry with an iOS asset runs natively only when linked into the app, otherwise

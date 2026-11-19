@@ -62,10 +62,7 @@ defmodule FMutate.Library.HTTP do
         receive_body(ref, io, got, total, ctx)
 
       {:http, {^ref, :stream, chunk}} ->
-        :ok = IO.binwrite(io, chunk)
-        got = got + byte_size(chunk)
-        progress.(got, total)
-        receive_body(ref, io, got, total, ctx)
+        write_chunk(ref, io, got, total, ctx, chunk)
 
       {:http, {^ref, :stream_end, _headers}} ->
         :ok
@@ -79,6 +76,20 @@ defmodule FMutate.Library.HTTP do
       @timeout ->
         :httpc.cancel_request(ref)
         {:error, :timeout}
+    end
+  end
+
+  # (a full phone fails the download, it doesn't crash the caller)
+  defp write_chunk(ref, io, got, total, {progress, _max} = ctx, chunk) do
+    case :file.write(io, chunk) do
+      :ok ->
+        got = got + byte_size(chunk)
+        progress.(got, total)
+        receive_body(ref, io, got, total, ctx)
+
+      {:error, reason} ->
+        :httpc.cancel_request(ref)
+        {:error, reason}
     end
   end
 

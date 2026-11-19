@@ -140,4 +140,20 @@ defmodule FMutate.NativeDownloadTest do
     assert Enum.any?(views, &(&1.phase == :downloading))
     assert live() == nil
   end
+
+  test "a failed download doesn't start a quarantined Hub package: its safe mode, and Run anyway starts it",
+       %{www: www} do
+    File.rm!(Path.join(www, "dinghy.so"))
+    File.cp!(@package, Catalog.hub_package_path(Firmware.get("hub:dinghy"), Paths.packages_dir()))
+    File.write!(Paths.instance_state("a"), :erlang.term_to_binary(%{firmware: "dinghy", quarantined: ["hub:dinghy"]}))
+    start_instance()
+
+    views = await(&(&1.phase == :safe_mode))
+    assert %{firmware: "hub:dinghy", quarantined: true} = List.last(views)
+    assert live() == nil
+
+    :ok = Instance.run_anyway("a")
+    await(&(&1.phase == :running))
+    assert %{firmware: "hub:dinghy", backend: :emu} = live()
+  end
 end
