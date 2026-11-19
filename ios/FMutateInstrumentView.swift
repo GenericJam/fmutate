@@ -6,7 +6,7 @@
 //
 //   send("in", {t: "key", k, d}) | {t: "button", id, d} | {t: "encoder", id, clicks} | {t: "pot", v}
 //            | {t: "midi", bytes: [..]}
-//   send("menu"), send("pages"), send("edit"), send("page", {id}), send("use_classic")
+//   send("menu"), send("pages"), send("edit"), send("page", {id}), send("use_classic"), send("toggle", {k, on})
 //
 // The firmware's screen and LEDs come from the engine's shared memory (FMFirmwareShm), not from props.
 //
@@ -721,6 +721,8 @@ final class FMInstrumentSurface: UIView {
         // fingers still down when the surface goes (a sheet over it, another screen): let go of what they hold
         for id in Array(grabs.keys) { letGo(id) }
         for t in toggled() { fire(t, false) }
+        // learned MIDI presses (FMutate.MIDI) share the toggles: those just let go are off now
+        for c in controls where state.toggles[c.id] == true { emit("toggle", ["k": c.id, "on": false]) }
         motion.close()
         // a swell leaves the firmware's volume where the last finger was: full again
         if hasVelocityStrip { input(["t": "midi", "bytes": [0xB0, 7, 127]]) }
@@ -953,16 +955,21 @@ final class FMInstrumentSurface: UIView {
     /// Keyboard strips bend instead of glissando: their own glide setting, or the surface's BEND toggle.
     private func bends(_ c: FMControl) -> Bool { (c.wobble || state.bendOn) && bendOk }
 
-    /// Press bindings of a button-like thing (a button, a single key, a pad).
+    /// Press bindings of a button-like thing (a button, a single key, a pad). A down flips its toggle once, for
+    /// all its toggle bindings; the toggle is reported, since learned MIDI presses (FMutate.MIDI) share it.
     private func pressBindings(_ key: String, _ bindings: [FMBinding], _ down: Bool) {
-        for b in bindings where b.on == "press" {
+        let press = bindings.filter { $0.on == "press" }
+        var on: Bool?
+        if down && press.contains(where: { $0.mode == "toggle" }) {
+            let flipped = !(state.toggles[key] ?? false)
+            state.toggles[key] = flipped
+            dirtyControl(key)
+            emit("toggle", ["k": key, "on": flipped])
+            on = flipped
+        }
+        for b in press {
             if b.mode == "toggle" {
-                if down {
-                    let on = !(state.toggles[key] ?? false)
-                    state.toggles[key] = on
-                    dirtyControl(key)
-                    fire(b.to, on)
-                }
+                if let on { fire(b.to, on) }
             } else {
                 fire(b.to, down)
             }
