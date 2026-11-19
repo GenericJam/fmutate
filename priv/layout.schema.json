@@ -101,6 +101,20 @@
         "mode": { "enum": ["momentary", "toggle"], "default": "momentary" }
       }
     },
+    "midi_in": {
+      "type": "object",
+      "description": "A hardware MIDI control learned onto this control's gesture (MIDI learn): matching messages drive the control as touching it would, and no longer take their default path (notes to keys, the rest to the firmware's MIDI in).",
+      "required": ["on", "type", "channel"],
+      "additionalProperties": false,
+      "properties": {
+        "on": { "enum": ["press", "value", "x", "y"], "description": "value: knob, slider. x, y: XY pad axes. press: button, key, label, a pad." },
+        "type": { "enum": ["cc", "note", "pitch_bend", "channel_pressure", "poly_pressure", "program"] },
+        "channel": { "type": "integer", "minimum": 1, "maximum": 16 },
+        "number": { "type": "integer", "minimum": 0, "maximum": 127, "description": "The CC, the note (note, poly_pressure) or the program; absent for pitch_bend and channel_pressure." },
+        "device": { "type": "string", "maxLength": 80, "description": "The MIDI source's name as FMutate lists it (a device's name, plus ' · port N' past its first port; 'FMutate A' for apps playing into the virtual port). Absent: any device." },
+        "mode": { "enum": ["absolute", "relative_offset", "relative_twos", "relative_sign"], "default": "absolute", "description": "CC on a value gesture: absolute (0..127 is the value; encoders get clicks from its change) or an endless encoder's coding: 64 ± n, two's complement (1 up, 127 down), sign bit (1 up, 65 down)." }
+      }
+    },
     "control": {
       "type": "object",
       "required": ["id", "type", "at"],
@@ -111,6 +125,7 @@
         "label": { "type": "string", "maxLength": 16 },
         "color": { "enum": ["default", "coral", "amber", "sky", "violet"] },
         "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "midi_in": { "type": "array", "items": { "$ref": "#/$defs/midi_in" }, "description": "Learned MIDI inputs, at most one per gesture. A pad grid's are on its pads." },
 
         "keyboard": {
           "type": "object",
@@ -147,7 +162,8 @@
             "pads": { "type": "array", "items": { "type": "object", "properties": {
               "label": { "type": "string", "maxLength": 8 },
               "color": { "enum": ["default", "coral", "amber", "sky", "violet"] },
-              "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } } } } }
+              "bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+              "midi_in": { "type": "array", "items": { "$ref": "#/$defs/midi_in" } } } } }
           }
         },
         "slider": {

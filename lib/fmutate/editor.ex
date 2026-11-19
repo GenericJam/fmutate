@@ -8,7 +8,12 @@ defmodule FMutate.Editor do
 
   It works on the screen's socket. Assigns it owns: `layout` (decoded), `layout_json`, `firmware`,
   `page` (page id shown), `editing`, `sheet`, `toast` (`{seq, text}`), `bend` (firmware takes pitch bend),
-  `add_menu` (the open "Add here" menu, see `add_menu_json/1`), `draft` (half-typed MIDI numbers etc.).
+  `add_menu` (the open "Add here" menu, see `add_menu_json/1`), `draft` (half-typed MIDI numbers etc.),
+  `learning` (`{control, sub, gesture}` while "Learn from MIDI" waits for a hardware control, else nil).
+
+  MIDI learn: the binding sheet's "Learn from MIDI" arms `FMutate.MIDI.learn/2`; the screen hands the result
+  to `learned/2`, which stores the input on the control (`FMutate.LayoutEdit.set_midi_in/4`, taking it from
+  any other control). Closing the sheet or leaving edit mode stops learning.
 
   Events from the surface (`{:instrument, event, payload}`, coordinates in cells of the layout's grid):
 
@@ -29,7 +34,8 @@ defmodule FMutate.Editor do
 
   import Mob.Sigil, only: [sigil_MOB: 2]
 
-  alias FMutate.{Firmware, Inputs, LayoutEdit, Layouts, Motion, Style}
+  alias FMutate.{Firmware, Inputs, LayoutEdit, Layouts, MIDI, Motion, Style}
+  alias FMutate.MIDI.Learn
 
   @events ~w(edit edit_done page pages edit_move edit_resize edit_to_page edit_cell edit_add_close edit_add
              edit_add_page edit_open use_classic)
@@ -48,6 +54,7 @@ defmodule FMutate.Editor do
       layout_json: Layouts.encode(layout),
       page: hd(layout["pages"])["id"],
       sheet: nil,
+      learning: nil,
       bend: cap?(firmware, :pitch_bend),
       toast: Map.get(socket.assigns, :toast, {0, ""}),
       add_menu: nil,
@@ -64,11 +71,50 @@ defmodule FMutate.Editor do
       else: socket |> load(socket.assigns.instance, firmware) |> Mob.Socket.assign(:editing, false)
   end
 
+  @doc """
+  The current layout was saved by another process (I/O cleared learned MIDI controls): take it, unless it
+  is for another firmware or the same as the one shown.
+  """
+  def saved_elsewhere(socket, firmware, layout) do
+    if firmware != socket.assigns.firmware or layout == socket.assigns.layout,
+      do: socket,
+      else: Mob.Socket.assign(socket, layout: layout, layout_json: Layouts.encode(layout))
+  end
+
+  @doc "What `FMutate.MIDI.learn/2` heard: `{:ok, midi_in}` (stored on the control being learned) or `:timeout`."
+  def learned(socket, result) do
+    case {socket.assigns[:learning], result} do
+      {nil, _} ->
+        socket
+
+      {{id, sub, _on}, {:ok, midi_in}} ->
+        holders = LayoutEdit.midi_holders(socket.assigns.layout, id, sub, midi_in)
+        socket = socket |> Mob.Socket.assign(:learning, nil) |> commit(LayoutEdit.set_midi_in(socket.assigns.layout, id, sub, midi_in))
+
+        case holders do
+          [] -> socket
+          list -> toast(socket, "Taken from " <> Enum.map_join(list, ", ", fn {c, s, _} -> holder_name(c, s) end))
+        end
+
+      {_, :timeout} ->
+        socket |> Mob.Socket.assign(:learning, nil) |> toast("No MIDI heard · learning stopped")
+    end
+  end
+
+  defp holder_name(%{"type" => "pad_grid"} = c, sub), do: control_title(c, sub)
+  defp holder_name(c, _sub), do: control_title(c, nil)
+
+  # closing a sheet, leaving edit mode, another control's sheet: learning stops
+  defp stop_learning(socket) do
+    if socket.assigns[:learning], do: MIDI.cancel_learn(socket.assigns.instance)
+    Mob.Socket.assign(socket, :learning, nil)
+  end
+
   ## Surface events
 
   @doc "Handle a surface event (see the module doc)."
   def event("edit", _p, socket), do: Mob.Socket.assign(socket, editing: true)
-  def event("edit_done", _p, socket), do: Mob.Socket.assign(socket, editing: false, sheet: nil, add_menu: nil)
+  def event("edit_done", _p, socket), do: socket |> stop_learning() |> Mob.Socket.assign(editing: false, sheet: nil, add_menu: nil)
 
   def event("edit_cell", %{"page" => page, "col" => col, "row" => row}, socket) do
     layout = socket.assigns.layout
@@ -125,7 +171,7 @@ defmodule FMutate.Editor do
         len = p["len"] || 0
         draft = %{socket.assigns.draft | tab: :firmware, on: LayoutEdit.default_on(c)}
         socket = if c["type"] == "motion", do: with_sensors(socket), else: socket
-        Mob.Socket.assign(socket, sheet: {:control, id, sub, len}, draft: draft)
+        Mob.Socket.assign(stop_learning(socket), sheet: {:control, id, sub, len}, draft: draft)
 
       nil ->
         socket
@@ -167,8 +213,8 @@ defmodule FMutate.Editor do
   ## Sheet events: {:tap | :dismiss, {:editor, action}} and {:change | :submit, {:editor, action}, value}
 
   @doc "Handle a sheet event."
-  def ui(:dismiss, _tag, _value, socket), do: Mob.Socket.assign(socket, :sheet, nil)
-  def ui(_kind, {:editor, :close}, _value, socket), do: Mob.Socket.assign(socket, :sheet, nil)
+  def ui(:dismiss, _tag, _value, socket), do: socket |> stop_learning() |> Mob.Socket.assign(:sheet, nil)
+  def ui(_kind, {:editor, :close}, _value, socket), do: socket |> stop_learning() |> Mob.Socket.assign(:sheet, nil)
 
   def ui(:tap, {:editor, {:go, page}}, _v, socket), do: Mob.Socket.assign(socket, page: page, sheet: nil)
   def ui(:tap, {:editor, :sheet_pages}, _v, socket), do: Mob.Socket.assign(socket, :sheet, :pages)
@@ -237,6 +283,27 @@ defmodule FMutate.Editor do
   def ui(:tap, {:editor, {:remove_binding, i}}, _v, socket), do: with_control(socket, &remove_binding(&1, &2, &3, i))
   def ui(:tap, {:editor, :bind_midi}, _v, socket), do: with_control(socket, &bind_midi/3)
   def ui(:tap, {:editor, {:mode, mode}}, _v, socket), do: with_control(socket, &set_mode(&1, &2, &3, mode))
+
+  # MIDI learn: the gesture the sheet shows (press, value, x or y)
+  def ui(:tap, {:editor, {:learn, on}}, _v, socket) do
+    {:control, id, sub, _} = socket.assigns.sheet
+
+    case MIDI.learn(socket.assigns.instance, on) do
+      :ok -> Mob.Socket.assign(socket, :learning, {id, sub, on})
+      _ -> toast(socket, "MIDI isn't ready")
+    end
+  end
+
+  def ui(:tap, {:editor, :learn_cancel}, _v, socket), do: stop_learning(socket)
+
+  def ui(:tap, {:editor, {:learn_clear, on}}, _v, socket),
+    do: with_control(socket, fn l, c, sub -> LayoutEdit.clear_midi_in(l, c["id"], sub, on) end)
+
+  def ui(:tap, {:editor, {:learn_any, on}}, _v, socket),
+    do: with_midi_in(socket, on, &Map.delete(&1, "device"))
+
+  def ui(:tap, {:editor, {:learn_mode, on, mode}}, _v, socket),
+    do: with_midi_in(socket, on, &if(mode == "absolute", do: Map.delete(&1, "mode"), else: Map.put(&1, "mode", mode)))
 
   def ui(kind, {:editor, :label}, text, socket) when kind in [:change, :submit] and is_binary(text) do
     with_control(socket, fn layout, c, sub ->
@@ -341,6 +408,16 @@ defmodule FMutate.Editor do
     else
       _ -> socket
     end
+  end
+
+  # change the learned input of gesture `on` of the sheet's control
+  defp with_midi_in(socket, on, fun) do
+    with_control(socket, fn l, c, sub ->
+      case Enum.find(LayoutEdit.midi_in(l, c["id"], sub), &(&1["on"] == on)) do
+        nil -> {:error, "Nothing learned"}
+        m -> LayoutEdit.set_midi_in(l, c["id"], sub, fun.(m))
+      end
+    end)
   end
 
   defp current_on(socket, c), do: socket.assigns.draft.on || LayoutEdit.default_on(c)
@@ -753,7 +830,7 @@ defmodule FMutate.Editor do
       case kind do
         :none -> other_settings(c)
         :strum -> strum_settings(c)
-        _ -> binding_editor(assigns, c, kind, on, bindings, d) ++ motion_settings(assigns, c)
+        _ -> binding_editor(assigns, c, kind, on, bindings, d) ++ midi_in_section(assigns, c, sub, kind, on) ++ motion_settings(assigns, c)
       end
 
     children =
@@ -775,6 +852,72 @@ defmodule FMutate.Editor do
         if(c["type"] == "menu", do: [caption("The creature can be moved, never deleted.")], else: [])
 
     sheet("control-#{c["id"]}-#{sub}", children)
+  end
+
+  ## MIDI in (MIDI learn): a hardware control drives this control's gesture
+
+  defp midi_in_section(assigns, c, sub, kind, on) do
+    gesture =
+      case kind do
+        :press -> "press"
+        :value -> "value"
+        :xy -> on
+        _ -> nil
+      end
+
+    if gesture in LayoutEdit.gestures(c, sub) do
+      current = Enum.find(LayoutEdit.midi_in(assigns.layout, c["id"], sub), &(&1["on"] == gesture))
+      heading = if kind == :xy, do: "MIDI in · #{String.upcase(gesture)} axis", else: "MIDI in"
+      [section(heading) | midi_in_body(assigns[:learning] == {c["id"], sub, gesture}, current, gesture)]
+    else
+      []
+    end
+  end
+
+  defp midi_in_body(true, _current, _gesture) do
+    [
+      caption("Move a knob, fader, pad or key on your MIDI controller…", :fm),
+      button("Cancel", :learn_cancel, bg: c(:raised_hi), weight: :none)
+    ]
+  end
+
+  defp midi_in_body(false, nil, gesture) do
+    [
+      caption("A knob, fader, pad or key of a MIDI controller can drive this control: Learn, then move it."),
+      button("Learn from MIDI", {:learn, gesture}, bg: c(:raised_hi), weight: :none)
+    ]
+  end
+
+  defp midi_in_body(false, m, gesture) do
+    any =
+      if m["device"],
+        do: [button("From any device", {:learn_any, gesture}, bg: c(:raised_hi), weight: :none)],
+        else: [caption("From any device: Learn again to take it from one only.", :faint)]
+
+    modes =
+      if m["type"] == "cc" and gesture != "press" do
+        current = m["mode"] || "absolute"
+
+        [
+          segmented(for({mode, name} <- Learn.modes(), do: {name, {:learn_mode, gesture, mode}, mode}), current),
+          caption(
+            "Absolute: a knob or fader (encoders get #{round(FMutate.MIDI.Controls.clicks_per_sweep(%{}))} clicks per sweep). " <>
+              "The others are endless encoders' codings: 64 ± n, two's complement (1 up, 127 down), sign bit (1 up, 65 down).",
+            :faint
+          )
+        ]
+      else
+        []
+      end
+
+    [
+      ~MOB"""
+      <Row gap={8}>
+        {text("MIDI in: " <> Learn.describe(m), 13, :text, false)}
+        {button("Clear", {:learn_clear, gesture}, bg: c(:raised_hi), weight: :none)}
+      </Row>
+      """
+    ] ++ modes ++ any ++ [button("Learn again", {:learn, gesture}, bg: c(:raised_hi), weight: :none)]
   end
 
   # what a control's bindings drive: discrete presses, a value, two axes, or nothing

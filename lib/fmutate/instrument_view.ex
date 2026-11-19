@@ -10,21 +10,21 @@ defmodule FMutate.InstrumentView do
   page id to show), `:toast` (`{seq, text}` or nil: a short message drawn over the surface), `:add_menu`
   (JSON text of the open "Add here" menu, or "").
 
-  Inputs go through `FMutate.Bindings` (HANDOFF §6 rule 7): absolute moves carry the control that made
-  them (`"c"`), and a control that hasn't picked up the current value is ignored. `run_anyway` (a tap on
-  the screen area in safe mode) is `FMutate.Instance.run_anyway/1`.
+  Inputs go to `FMutate.Instance` straight, except absolute moves (they carry the control that made them,
+  `"c"`), which go through the instance's rule 7 arbiter (HANDOFF §6) in `FMutate.MIDI`, shared with learned
+  hardware MIDI controls: a control that hasn't picked up the current value is ignored there (`arbitrate/2`).
+  `toggle` (`{k, on}`: the surface toggled a control or pad) tells it the toggles, which learned MIDI presses
+  share. `run_anyway` (a tap on the screen area in safe mode) is `FMutate.Instance.run_anyway/1`.
   """
 
   use Mob.Component
 
-  alias FMutate.{Bindings, Inputs, Instance}
+  alias FMutate.{Inputs, Instance, MIDI}
 
   @impl true
   def mount(props, socket) do
     keys = [:instance, :layout, :view, :owner, :editing, :page, :toast, :add_menu]
-    socket = Mob.Socket.assign(socket, Map.take(props, keys))
-    socket = if Map.has_key?(socket.assigns, :bindings), do: socket, else: Mob.Socket.assign(socket, :bindings, Bindings.new())
-    {:ok, socket}
+    {:ok, Mob.Socket.assign(socket, Map.take(props, keys))}
   end
 
   @impl true
@@ -62,10 +62,19 @@ defmodule FMutate.InstrumentView do
   defp hint(_advice, _mhz), do: ""
 
   @impl true
+  def handle_event("in", %{"c" => _, "v" => _} = payload, socket) do
+    MIDI.surface_in(socket.assigns.instance, payload)
+    {:noreply, socket}
+  end
+
   def handle_event("in", payload, socket) do
-    {event, bindings} = arbitrate(socket.assigns.bindings, payload)
-    if event, do: Instance.input(socket.assigns.instance, event)
-    {:noreply, Mob.Socket.assign(socket, :bindings, bindings)}
+    if event = decode(payload), do: Instance.input(socket.assigns.instance, event)
+    {:noreply, socket}
+  end
+
+  def handle_event("toggle", %{"k" => key, "on" => on}, socket) when is_binary(key) and is_boolean(on) do
+    MIDI.surface_toggle(socket.assigns.instance, key, on)
+    {:noreply, socket}
   end
 
   # safe mode: a tap on the screen area is "Run anyway"
@@ -90,25 +99,22 @@ defmodule FMutate.InstrumentView do
   MIDI CC sent with `"abs"`/`"v"`) from a control (`"c"`) that hasn't picked up the value are dropped.
   """
   def arbitrate(bindings, %{"t" => "pot", "v" => v, "c" => c} = payload) when is_number(v) do
-    case Bindings.absolute(bindings, "pot:master", c, v) do
+    case FMutate.Bindings.absolute(bindings, "pot:master", c, v) do
       {:send, v, b} -> {decode(%{payload | "v" => v}), b}
       {:ignore, b} -> {nil, b}
     end
   end
 
   def arbitrate(bindings, %{"t" => "midi", "abs" => key, "v" => v, "c" => c} = payload) when is_number(v) do
-    case Bindings.absolute(bindings, key, c, v) do
+    case FMutate.Bindings.absolute(bindings, key, c, v) do
       {:send, _v, b} -> {decode(payload), b}
       {:ignore, b} -> {nil, b}
     end
   end
 
-  def arbitrate(bindings, %{"t" => "encoder", "id" => id, "clicks" => n, "c" => c} = payload) when is_integer(n) do
-    {:send, _n, b} = Bindings.encoder(bindings, id, c, n)
-    {decode(payload), b}
-  end
-
   def arbitrate(bindings, payload), do: {decode(payload), bindings}
+
+
 
   @doc false
   # native payload → FMutate.Instance input (see FMutate.Instance's module doc)
