@@ -87,7 +87,7 @@ defmodule FMutate.Library.Readme do
 
     text
     |> then(
-      &Regex.replace(~r/<h([1-6])\b[^>]*>(.*?)<\/h\1\s*>/is, &1, fn _, n, inner ->
+      &Regex.replace(~r/<h([1-6])\b[^>]*>(.{0,500}?)<\/h\1\s*>/is, &1, fn _, n, inner ->
         "\n\n" <>
           String.duplicate("#", String.to_integer(n)) <>
           " " <> String.replace(inner, "\n", " ") <> "\n\n"
@@ -246,10 +246,11 @@ defmodule FMutate.Library.Readme do
       |> then(&Regex.replace(~r/\[([^\]]*)\]\([^)]*\)/, &1, "\\1"))
       |> then(&Regex.replace(~r/\[([^\]]+)\]\[[^\]]*\]/, &1, "\\1"))
       |> then(&Regex.replace(~r/`+([^`]+)`+/, &1, "\\1"))
-      |> then(&Regex.replace(~r/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/, &1, "\\2"))
-      |> then(&Regex.replace(~r/(?<![\w*])\*(?=\S)(.+?)(?<=\S)\*(?![\w*])/, &1, "\\1"))
-      |> then(&Regex.replace(~r/(?<!\w)_(?=\S)(.+?)(?<=\S)_(?!\w)/, &1, "\\1"))
-      |> then(&Regex.replace(~r/~~(.+?)~~/, &1, "\\1"))
+      # (spans bounded: an opener without a closer must not rescan the rest of a hostile paragraph)
+      |> then(&Regex.replace(~r/(\*\*|__)(?=\S)(.{1,300}?)(?<=\S)\1/, &1, "\\2"))
+      |> then(&Regex.replace(~r/(?<![\w*])\*(?=\S)(.{1,300}?)(?<=\S)\*(?![\w*])/, &1, "\\1"))
+      |> then(&Regex.replace(~r/(?<!\w)_(?=\S)(.{1,300}?)(?<=\S)_(?!\w)/, &1, "\\1"))
+      |> then(&Regex.replace(~r/~~(.{1,300}?)~~/, &1, "\\1"))
       |> entities()
       |> then(&Regex.replace(~r/[ \t\n]+/, &1, " "))
       |> then(&Regex.replace(~r/[ \t\n]*#{@br}[ \t\n]*/u, &1, "\n"))
@@ -365,9 +366,9 @@ defmodule FMutate.Library.Readme do
 
   defp take_items(items, budget) do
     Enum.reduce_while(items, {[], 0}, fn item, {acc, used} ->
-      if used + String.length(item) > budget and acc != [],
+      if used + item_size(item) > budget and acc != [],
         do: {:halt, {acc, used}},
-        else: {:cont, {acc ++ [cut_text(item, budget)], used + String.length(item)}}
+        else: {:cont, {acc ++ [cut_text(item, budget)], used + item_size(item)}}
     end)
   end
 
@@ -384,7 +385,11 @@ defmodule FMutate.Library.Readme do
     end
   end
 
-  defp size({:heading, _, text}), do: String.length(text)
-  defp size({:paragraph, text}), do: String.length(text)
-  defp size({:list, items}), do: Enum.sum_by(items, &String.length/1)
+  # (every block and list item costs at least 20 characters, so a README of tiny blocks still makes a
+  # bounded number of text components: 200 at most)
+  defp size({:heading, _, text}), do: max(String.length(text), 20)
+  defp size({:paragraph, text}), do: max(String.length(text), 20)
+  defp size({:list, items}), do: Enum.sum_by(items, &item_size/1)
+
+  defp item_size(item), do: max(String.length(item), 20)
 end

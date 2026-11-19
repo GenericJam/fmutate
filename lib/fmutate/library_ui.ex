@@ -118,10 +118,14 @@ defmodule FMutate.LibraryUI do
     end
   end
 
-  @doc "The action pills for a firmware: Delete, Update, then its one action (nils where none)."
+  @doc "The action pills for a firmware: Delete, Update, then its one action (those it has; a list child can't be nil)."
   def actions(fw, status, assigns) do
     downloads = assigns.info.downloads
-    [delete_button(fw, status), update_button(fw, downloads), action(fw, status, downloads)]
+
+    Enum.reject(
+      [delete_button(fw, status), update_button(fw, downloads), action(fw, status, downloads)],
+      &is_nil/1
+    )
   end
 
   defp action(fw, status, downloads) do

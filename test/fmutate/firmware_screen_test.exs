@@ -58,14 +58,33 @@ defmodule FMutate.FirmwareScreenTest do
     {:ok, server: server}
   end
 
-  defp open(id), do: FirmwareScreen |> mount_screen(%{id: id}) |> render_async()
+  defp open(id) do
+    view = FirmwareScreen |> mount_screen(%{id: id}) |> render_async()
+    assert_native(view)
+    view
+  end
 
   defp press(view, %{props: %{on_tap: {_pid, tag}}}), do: render_info(view, {:tap, tag})
+
+  defmodule Nif do
+    @moduledoc false
+    # the renderer's calls into the device, answered without one
+    def clear_taps, do: :ok
+    def clear_taps(_scene), do: :ok
+    def set_transition(_animation), do: :ok
+    def register_tap(_handler), do: 0
+    def set_root(_json), do: :ok
+  end
+
+  # the tree goes through the renderer the phone runs (it refuses what Compose can't take, e.g. a nil child)
+  defp assert_native(view),
+    do: assert({:ok, :json_tree} = Mob.Renderer.render(tree(view), :android, Nif))
 
   test "a tap on a card opens that firmware's synth page" do
     view = mount_screen(LibraryScreen)
     card = find(view, :box, on_tap: {self(), {:open, "felucca"}})
     assert card
+    assert_native(view)
 
     view = press(view, card)
     assert navigated_to(view) == FirmwareScreen
@@ -88,6 +107,7 @@ defmodule FMutate.FirmwareScreenTest do
     # all of it fits: no link to the rest
     refute find(view, :button, text: "Read the full README ↗")
     assert_renderable(view)
+    assert_native(view)
 
     press(view, find(view, :button, text: "github.com/hugelton/Felucca ↗"))
     assert_received {:opened, "https://github.com/hugelton/Felucca"}

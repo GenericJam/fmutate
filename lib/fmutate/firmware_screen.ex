@@ -128,6 +128,7 @@ defmodule FMutate.FirmwareScreen do
             font_weight="bold"
             fill_width={false}
             corner_radius={14}
+            padding={10}
           />
         </Row>
         <Scroll weight={1}>
@@ -203,7 +204,7 @@ defmodule FMutate.FirmwareScreen do
         label = short(url) <> " ↗"
 
         ~MOB"""
-        <Row gap={8} align={:center}>
+        <Column gap={6}>
           <Text text={by} text_size={14} text_color="#F3EFF8" />
           <Button
             text={label}
@@ -215,7 +216,7 @@ defmodule FMutate.FirmwareScreen do
             corner_radius={14}
             padding={8}
           />
-        </Row>
+        </Column>
         """
     end
   end
@@ -347,14 +348,15 @@ defmodule FMutate.FirmwareScreen do
 
   defp item(text) do
     ~MOB"""
-    <Row gap={8}>
+    <Row gap={8} align={:top}>
       <Text text="•" text_size={14} text_color="#A9A3B8" />
       <Text text={text} text_size={14} text_color="#D6D0E0" weight={1} />
     </Row>
     """
   end
 
-  defp licence(%{source: :hub} = fw) do
+  # (a built-in firmware shows the Hub's tags and picture too)
+  defp licence(%{source: s} = fw) when s in [:hub, :bundled] do
     repo = if https(fw.repo), do: " (#{short(fw.repo)})", else: ""
 
     text =

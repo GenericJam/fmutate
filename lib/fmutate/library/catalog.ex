@@ -77,7 +77,7 @@ defmodule FMutate.Library.Catalog do
   # the Hub's copy of the maker's card picture (`fw/cards/<id>-<hash>.w640.webp`): a path on the Hub only, so
   # the catalogue can't point the app anywhere else
   defp picture(card) when is_binary(card) do
-    if card =~ ~r{^[\w][\w./@+-]*$} and not String.contains?(card, ".."), do: URI.merge(@hub, card) |> to_string()
+    if card =~ ~r{\A[\w][\w./@+-]*\z} and not String.contains?(card, ".."), do: URI.merge(@hub, card) |> to_string()
   end
 
   defp picture(_card), do: nil

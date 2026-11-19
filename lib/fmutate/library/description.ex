@@ -48,7 +48,7 @@ defmodule FMutate.Library.Description do
   def source(%Firmware{repo: "https://github.com/" <> path, ref: ref}) do
     path = path |> String.trim_trailing("/") |> String.replace_suffix(".git", "")
 
-    if path =~ ~r"^[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}$" and
+    if path =~ ~r"\A[A-Za-z0-9][A-Za-z0-9-]{0,38}/[A-Za-z0-9._-]{1,100}\z" and
          not String.ends_with?(path, "/..") and
          not String.ends_with?(path, "/."),
        do: %{repo: path, ref: valid_ref(ref)}
@@ -57,7 +57,7 @@ defmodule FMutate.Library.Description do
   def source(_fw), do: nil
 
   defp valid_ref(ref) when is_binary(ref) do
-    if ref =~ ~r"^[A-Za-z0-9._+-][A-Za-z0-9._/+-]{0,199}$" and not String.contains?(ref, ".."),
+    if ref =~ ~r"\A[A-Za-z0-9._+-][A-Za-z0-9._/+-]{0,199}\z" and not String.contains?(ref, ".."),
       do: ref
   end
 
