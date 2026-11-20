@@ -29,10 +29,11 @@ pair gets full control of FMutate and can do more (Paired apps, below).
 - **Paired apps** get full control of FMutate: they can do anything FMutate can, including reading your layouts
   and patches and using its permissions and network, and they are told your phone's model and the firmware
   playing. What a paired app does with that is up to it and its own privacy policy. For each paired app, FMutate
-  keeps in its own storage on your phone the name, app id, node name and device name the app gave, when it
-  paired, a secret (cookie) made for it and its certificate's fingerprint; FMutate's own certificate and key are
-  kept there too. None of these go into device backups. To unpair, tap Disconnect next to the app in menu › I/O;
-  the app has to pair again to connect. Uninstalling FMutate deletes them all.
+  keeps in its own storage on your phone the names the app gave (its own, its app id, the name it connects under
+  and its device's), when it paired, a secret (cookie) made for it and its certificate's fingerprint; FMutate's
+  own certificate and key are kept there too. None of these go into device backups. To unpair, tap Disconnect next
+  to the app in menu › I/O: this deletes what is kept for it, and the app has to pair again to connect.
+  Uninstalling FMutate deletes them all.
 - **TestFlight**: if you test FMutate through Apple's TestFlight, Apple shares with the developer what TestFlight
   collects under its own terms, such as crash reports, the feedback and screenshots you choose to send, your
   device model and OS version, install and session counts, and, if you were invited by email, your name and email.
