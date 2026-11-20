@@ -422,14 +422,16 @@ struct FMInstrumentRepresentable: UIViewRepresentable {
 
     func makeUIView(context: Context) -> FMInstrumentSurface {
         let v = FMInstrumentSurface()
-        v.setShown(shown)
         v.update(props, send)
+        v.setShown(shown)
         return v
     }
 
+    // props first: a pop back after a firmware switch in the library then holds the new layout's frame, not the one
+    // the surface was parked with
     func updateUIView(_ v: FMInstrumentSurface, context: Context) {
-        v.setShown(shown)
         v.update(props, send)
+        v.setShown(shown)
     }
 
     static func dismantleUIView(_ v: FMInstrumentSurface, coordinator: ()) {
