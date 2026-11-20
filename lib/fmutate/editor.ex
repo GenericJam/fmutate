@@ -1251,7 +1251,7 @@ defmodule FMutate.Editor do
           do: button("±" <> name, {:kb_bend, r}, on: bend == r, disabled: not assigns.bend)
 
     vel = velocity(c)
-    vel_source = vel["source"] || "fixed"
+    vel_source = LayoutEdit.velocity_source(c)
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
     swell = vel["swell"] == true
@@ -1287,8 +1287,8 @@ defmodule FMutate.Editor do
       section("Velocity"),
       segmented([{"Fixed", {:kb_velocity, "fixed"}, "fixed"}, {"Strike position", {:kb_velocity, "position"}, "position"}], vel_source),
       caption(
-        "Fixed: the firmware’s own key presses, every note alike (as the FM-1). Strike position: the front edge of a key " <>
-          "plays loudest, the back softest; the strip sends MIDI notes, with its own octave (OCT− / OCT+ move it too). " <>
+        "Fixed: the firmware’s own key presses, every note alike (as the FM-1). Strike position (the default): the front " <>
+          "edge of a key plays loudest, the back softest; the strip sends MIDI notes, with its own octave (OCT− / OCT+ move it too). " <>
           "While a firmware button is held, keys are firmware key presses again."
       ),
       section("Softest (back edge) · loudest is 127"),
@@ -1297,7 +1297,7 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
-      toggle("Note level follows the finger", "Strike position only: while a key is held, its own note is full at the key's front edge and silent at its back edge, other notes untouched. On unless Swell is on." <>
+      toggle("Note level follows the finger", "Strike position only: a held key's own note plays as struck; slide back from where you struck to fade it (silent at the key's back edge), forward again to bring it back. Other notes untouched. On unless Swell is on." <>
         if(cap?(assigns.firmware, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
         :kb_pressure, pressure, disabled: not pressure_ok),
       toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together. Turn Note level off to use it.",

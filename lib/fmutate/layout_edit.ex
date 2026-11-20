@@ -696,7 +696,15 @@ defmodule FMutate.LayoutEdit do
     Enum.find(beside ++ anywhere, &free?(layout, :dock, nil, &1))
   end
 
-  ## Note level (a keyboard strip's `velocity.pressure`)
+  ## Velocity and note level (a keyboard strip's `velocity.source` and `velocity.pressure`)
+
+  @doc """
+  A keyboard strip's velocity source: `"position"` (MIDI notes, velocity from where the key is struck) unless the
+  layout says `"fixed"` (the firmware's own key presses). Absent is strike position, in bundled and saved layouts
+  alike; an edit writes it explicitly.
+  """
+  @spec velocity_source(map) :: String.t()
+  def velocity_source(c), do: get_in(c, ["keyboard", "velocity", "source"]) || "position"
 
   @doc """
   Whether a keyboard strip's held notes follow the finger (note level: MIDI polyphonic aftertouch), given
@@ -708,7 +716,7 @@ defmodule FMutate.LayoutEdit do
   @spec note_level?(map, boolean) :: boolean
   def note_level?(%{"type" => "keyboard"} = c, true = _note_pressure) do
     vel = get_in(c, ["keyboard", "velocity"]) || %{}
-    vel["source"] == "position" and Map.get(vel, "pressure", vel["swell"] != true) == true
+    velocity_source(c) == "position" and Map.get(vel, "pressure", vel["swell"] != true) == true
   end
 
   def note_level?(_c, _note_pressure), do: false
@@ -716,8 +724,7 @@ defmodule FMutate.LayoutEdit do
   @doc "Whether the layout has a strike-position keyboard strip (what note level applies to)."
   def position_strips?(layout), do: Enum.any?(all_controls(layout), &position_strip?/1)
 
-  defp position_strip?(c),
-    do: c["type"] == "keyboard" and get_in(c, ["keyboard", "velocity", "source"]) == "position"
+  defp position_strip?(c), do: c["type"] == "keyboard" and velocity_source(c) == "position"
 
   @doc "Note level is on for at least one strip of the layout: what a note-level toggle on the surface shows."
   def note_level_on?(layout, note_pressure),
@@ -725,8 +732,8 @@ defmodule FMutate.LayoutEdit do
 
   @doc """
   The surface's note-level toggle: every strike-position strip of the layout off when note level is on for
-  any of them, else every one on (explicit `velocity.pressure`, so the editor shows the same). Nothing to
-  switch without a strike-position strip, or on a firmware without per-note pressure.
+  any of them, else every one on (explicit `velocity.pressure`, so the editor shows the same). Velocity stays
+  as it is. Nothing to switch without a strike-position strip, or on a firmware without per-note pressure.
   """
   @spec toggle_note_level(layout, boolean) :: result
   def toggle_note_level(_layout, false = _note_pressure),
@@ -735,7 +742,8 @@ defmodule FMutate.LayoutEdit do
   def toggle_note_level(layout, true) do
     if position_strips?(layout) do
       on = not note_level_on?(layout, true)
-      {:ok, map_controls(layout, &if(position_strip?(&1), do: put_pressure(&1, on), else: &1))}
+      set = &put_velocity(&1, "pressure", on)
+      {:ok, map_controls(layout, &if(position_strip?(&1), do: set.(&1), else: &1))}
     else
       {:error, "No keyboard strip plays by strike position"}
     end
@@ -743,20 +751,26 @@ defmodule FMutate.LayoutEdit do
 
   @doc """
   The layout as the instrument surface plays it on a firmware with (or without) per-note pressure: every
-  keyboard strip's `velocity.pressure` is its effective note level (`note_level?/2`), so the native views
-  only read a boolean. Not for saving: an absent setting has to stay absent to keep its default.
+  keyboard strip has its effective `velocity.source` (`velocity_source/1`) and `velocity.pressure`
+  (`note_level?/2`), so the native views apply no defaults of their own. Not for saving: an absent setting has
+  to stay absent to keep its default.
   """
   @spec surface(layout, boolean) :: layout
   def surface(layout, note_pressure) do
     map_controls(layout, fn
-      %{"type" => "keyboard"} = c -> put_pressure(c, note_level?(c, note_pressure))
-      c -> c
+      %{"type" => "keyboard"} = c ->
+        c
+        |> put_velocity("source", velocity_source(c))
+        |> put_velocity("pressure", note_level?(c, note_pressure))
+
+      c ->
+        c
     end)
   end
 
-  defp put_pressure(c, on) do
+  defp put_velocity(c, key, value) do
     kb = c["keyboard"] || %{}
-    vel = Map.put(kb["velocity"] || %{}, "pressure", on)
+    vel = Map.put(kb["velocity"] || %{}, key, value)
     Map.put(c, "keyboard", Map.put(kb, "velocity", vel))
   end
 

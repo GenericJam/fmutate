@@ -13,8 +13,9 @@
 # links the archive to it through :extra_static_libs). Targets: sim (the arm64 simulator), device (an iPhone), and
 # host (this Mac: the same archive, plus c_src/fm1host.c linked with it as a loadable NIF,
 # native/build/host/fm1host.so, so the tests run engines in-process as iOS does). Needs Xcode and Rust with
-# `rustup target add aarch64-apple-ios aarch64-apple-ios-sim`; fetches the firmwares (native/build_android.sh) and
-# fm1-emu (native/build_emu.sh) when they aren't there yet.
+# `rustup target add aarch64-apple-ios aarch64-apple-ios-sim`; puts the firmware sources at their pinned commits
+# with native/patches applied, every run (native/build_android.sh, so a tree checked out before a patch was added
+# gets it too), and fetches fm1-emu (native/build_emu.sh) when it isn't there yet.
 #
 #   native/build_ios.sh                     sim and device
 #   TARGETS="sim host" native/build_ios.sh  those
@@ -28,7 +29,7 @@ CFLAGS="-O2 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-
 CARTRIDGES="obervave:3.3.2 shineon:3.0.1"
 export CARGO_TARGET_DIR=$HERE/build/emu-target
 
-[ -d build/fw/obervave/.git ] || ABIS="" sh build_android.sh
+ABIS="" sh build_android.sh
 [ -d build/fm1-emu/.git ] || ABIS="" sh build_emu.sh
 
 mkdir -p build/ios

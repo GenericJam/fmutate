@@ -64,8 +64,9 @@ data class Control(
     val wobble: Boolean = false,
     val bendRange: Float = 0.5f,          // semitones at half a key width of slide
     val pitchColors: Boolean = false,
-    // velocity "position": the strip plays MIDI notes, velocity from where the key is struck (velMin..velMax);
-    // "fixed" (default): firmware key presses, the firmware's own fixed velocity
+    // velocity "position" (a keyboard strip's default): the strip plays MIDI notes, velocity from where the key is
+    // struck (velMin..velMax); "fixed": firmware key presses, the firmware's own fixed velocity.
+    // FMutate.LayoutEdit.surface/2 resolves the source; the parse below falls back to the same default
     val strikeVelocity: Boolean = false,
     val velMin: Int = 40,
     val velMax: Int = 127,
@@ -160,7 +161,8 @@ data class Layout(
                 wobble = kb?.optString("glide", "glissando") == "wobble",
                 bendRange = kb?.optDouble("bend_range", 0.5)?.toFloat() ?: 0.5f,
                 pitchColors = kb?.optBoolean("pitch_colors", false) ?: false,
-                strikeVelocity = kb?.optJSONObject("velocity")?.optString("source", "fixed") == "position",
+                strikeVelocity = o.getString("type") == "keyboard" &&
+                    (kb?.optJSONObject("velocity")?.optString("source", "position") ?: "position") == "position",
                 velMin = kb?.optJSONObject("velocity")?.optInt("min", 40) ?: 40,
                 velMax = kb?.optJSONObject("velocity")?.optInt("max", 127) ?: 127,
                 velSwell = kb?.optJSONObject("velocity")?.optBoolean("swell", false) ?: false,
