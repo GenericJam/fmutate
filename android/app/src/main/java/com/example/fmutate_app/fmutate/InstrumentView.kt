@@ -1006,7 +1006,8 @@ private fun InstrumentSurface(
             if (c.type != "keyboard" || g.note < 0 || g.sub < 0) continue
             val l = live(c)
             if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
-            else if (g.at >= 0) pressureTo(g, if (l.strikeVelocity && !l.velSwell) StrikeMath.strikeLevel(g.vel) else 127)
+            else if (notePressureOk && l.strikeVelocity && !l.velSwell) pressureTo(g, StrikeMath.strikeLevel(g.vel))
+            else if (g.at >= 0) pressureTo(g, 127)
             if (g.cc7 >= 0 && !(l.velSwell && !l.velPressure)) { g.cc7 = -1; full = true }
         }
         if (full && state.cc7 in 0..126) {

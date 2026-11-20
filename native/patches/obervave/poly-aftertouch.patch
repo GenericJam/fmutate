@@ -19,7 +19,7 @@ index 8cc2008..0380c5c 100644
          else if (kind == 0xC0u && d1 < NPROG) { trk_load(set.midi_ch ? 0u : seq_trk, d1); dirty_hdr = dirty_page = dirty_tags = dirty_steps = 1; }
          else if (kind == 0xB0u) {
 diff --git a/firmware/src/obv_engine.h b/firmware/src/obv_engine.h
-index 35d9b17..183e1e0 100644
+index 35d9b17..7a40401 100644
 --- a/firmware/src/obv_engine.h
 +++ b/firmware/src/obv_engine.h
 @@ -36,6 +36,7 @@ typedef struct {
@@ -39,7 +39,7 @@ index 35d9b17..183e1e0 100644
  #define NQ 64u
  static nev_t nq[NQ];
  static volatile uint32_t nq_w, nq_r;
-@@ -134,6 +135,20 @@ static void voice_pan(voice_t *v, int32_t pan)   /* -64..64 */
+@@ -134,6 +135,22 @@ static void voice_pan(voice_t *v, int32_t pan)   /* -64..64 */
      v->gr = PAN_Q12[pos];
  }
  
@@ -49,26 +49,44 @@ index 35d9b17..183e1e0 100644
 +static uint8_t note_quiet[NPART][128];
 +static int32_t trig_key = -1;                   /* the held key an arp step plays (its octaves are other pitches) */
 +
-+static uint32_t key_level(uint32_t p, uint32_t note)
++/* the level a voice of `note` takes: its key's while held or latched (an arp step: the key it plays), else full */
++static uint8_t key_level(uint32_t p, uint32_t note)
 +{
-+    uint32_t i;
++    uint32_t i, k = trig_key >= 0 ? (uint32_t)trig_key : note;
++    p %= NPART;
 +    for (i = 0; i < nheld[p]; i++)
-+        if (held[p][i].note == note) return 127u - note_quiet[p][note & 127u];
++        if (held[p][i].note == k) return (uint8_t)(127u - note_quiet[p][k & 127u]);
 +    return 127u;
 +}
 +
  static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel, int32_t det8, int32_t pan)
  {
      const uint8_t *pv = pt[part].p->v;
-@@ -144,6 +159,7 @@ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel,
+@@ -144,6 +161,7 @@ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel,
      v->seq = ++vseq;
      v->det8 = det8;
      v->target16 = (int32_t)note << 16;
-+    v->at = (uint8_t)key_level(part % NPART, trig_key >= 0 ? (uint32_t)trig_key : note);
++    v->at = key_level(part, note);
      v->pitch16 = pv[P_GLIDE] ? pt[part].last_pitch16 : v->target16;
      v->fe.stage = E_ATT;
      v->ae.stage = E_ATT;
-@@ -388,7 +404,9 @@ static void arp_step(uint32_t p)
+@@ -250,6 +268,7 @@ static void voice_trigger(uint32_t part, uint32_t note, uint32_t vel)
+             int32_t pan = n > 1 ? ((int32_t)(128u * i) / (int32_t)(n - 1u) - 64) * spread >> 7 : 0;
+             if (legato) {                       /* a key still down: slide, no retrigger */
+                 v->note = (uint8_t)note;
++                v->at = key_level(part, note);
+                 v->target16 = (int32_t)note << 16;
+                 if (!pv[P_GLIDE]) v->pitch16 = v->target16;
+                 v->det8 = d;
+@@ -281,6 +300,7 @@ static void voice_release(uint32_t part, uint32_t note, uint32_t from_arp)
+                 voice_t *w = &vc[grp_v[part][i]];
+                 if (w->part != part || !w->grp) continue;   /* (a card another sound took meanwhile) */
+                 w->note = held[part][nheld[part] - 1u].note;
++                w->at = key_level(part, w->note);   /* the key taking over plays at its own level */
+                 w->target16 = (int32_t)w->note << 16;
+                 if (!pv[P_GLIDE]) w->pitch16 = w->target16;
+             }
+@@ -388,7 +408,9 @@ static void arp_step(uint32_t p)
      a->note = (uint32_t)clampi((int32_t)sorted[idx] + 12 * (int32_t)(k / n), 0, 127);
      for (i = 0; i < n; i++)                     /* the velocity of that key */
          if (held[p][i].note == sorted[idx]) break;
@@ -78,7 +96,7 @@ index 35d9b17..183e1e0 100644
      arp_post(p, 1, a->note, i < n ? held[p][i].vel : 100u);
      a->sounding = 1;
      ui_arp_step++;
-@@ -443,6 +461,7 @@ static inline uint32_t part_sus(uint32_t p) { return ctl_sustain || (ctl_hold >>
+@@ -443,6 +465,7 @@ static inline uint32_t part_sus(uint32_t p) { return ctl_sustain || (ctl_hold >>
  static void ev_note_on(uint32_t p, uint32_t note, uint32_t vel)
  {
      uint32_t i, arp_on = pt[p].p->v[P_ARP_MODE] != A_OFF, sus = part_sus(p);
@@ -86,7 +104,7 @@ index 35d9b17..183e1e0 100644
      if (arp_on && sus) {                        /* latch: a new chord after all keys were up starts over */
          for (i = 0; i < nheld[p]; i++)
              if (held[p][i].phys) break;
-@@ -486,6 +505,17 @@ static void ev_sustain_up(uint32_t p)           /* the pedal / its HOLD let go:
+@@ -486,6 +509,17 @@ static void ev_sustain_up(uint32_t p)           /* the pedal / its HOLD let go:
      }
  }
  
@@ -104,7 +122,7 @@ index 35d9b17..183e1e0 100644
  static void parts_off(uint32_t p)               /* a panic: its keys, its arp, its notes */
  {
      nheld[p] = 0;
-@@ -508,7 +538,8 @@ static void engine_events(void)
+@@ -508,7 +542,8 @@ static void engine_events(void)
          e = nq[nq_r % NQ];
          p = e.part % NPART;
          nq_r++;
@@ -114,7 +132,7 @@ index 35d9b17..183e1e0 100644
          else ev_note_off(p, e.note);
      }
  }
-@@ -683,6 +714,7 @@ static void voice_block(voice_t *v, uint32_t card)
+@@ -683,6 +718,7 @@ static void voice_block(voice_t *v, uint32_t card)
      trem = 32767 - (((32767 - lfo) * g->lfo_ad) >> 8);
      v->amp0 = v->amp1;
      a = (int32_t)(((int64_t)(v->ae.level >> 9) * velg >> 15) * trem >> 15);

@@ -736,8 +736,10 @@ final class FMInstrumentSurface: UIView {
             let l = live(c)
             if l.velPressure {
                 if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
+            } else if notePressureOk && l.strikeVelocity && !l.velSwell {
+                pressureTo(g, FMStrikeMath.strikeLevel(g.vel))
             } else if g.at >= 0 {
-                pressureTo(g, l.strikeVelocity && !l.velSwell ? FMStrikeMath.strikeLevel(g.vel) : 127)
+                pressureTo(g, 127)
             }
             if g.cc7 >= 0 && !(l.velSwell && !l.velPressure) { g.cc7 = -1; full = true }
         }

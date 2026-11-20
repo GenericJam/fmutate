@@ -218,7 +218,8 @@ flowchart LR
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
   amp every block on a square law, 127 = as played). The level belongs to the key while it is held or latched: the
   voices it starts later take it, its arp's steps in every octave too (an octave step is another pitch, so the arp
-  passes its key), and once no key holds the pitch its voices start as played again. (Before the strike level a
+  passes its key), a MONO / UNISON voice sliding to a key or handed back to one when another is let go takes that
+  key's (no note-on comes for it), and once no key holds the pitch its voices start as played again. (Before the strike level a
   level was rarely left on a key; with it every strike leaves one, and the sequencer's steps of that pitch, which
   start voices without a note-on, played up to 24 dB down until the key was pressed again; factory 08's octave
   steps played full under a quiet strike: level 49 held, host RMS 3 dB under level 127, now 16.6 dB.) Not in the Hub package of OberVave (it runs unpatched). The
@@ -227,7 +228,8 @@ flowchart LR
   executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
   16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, and a strike at the top / middle / bottom of a key as the
   surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01, and factory 08's arp octaves at
-  their key's level.
+  their key's level, and a MONO voice handed back to a quiet key quiet again (it stayed at the other key's level,
+  −0.6 dB, before).
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
   **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,

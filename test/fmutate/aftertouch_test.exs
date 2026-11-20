@@ -157,6 +157,25 @@ defmodule FMutate.AftertouchTest do
         assert full > 300
         assert 20 * :math.log10(quiet / full) <= -12
       end
+
+      # MONO (factory 03 SYNC LEAD): a second key slides the voice over and letting it go hands the voice back to the
+      # first key, each at its own level, with no new note-on (or pressure) for the key taking over
+      test "a mono voice plays the level of the key it sounds", %{pid: pid, prefix: prefix} do
+        program(pid, 2)
+        db = fn a, b -> 20 * :math.log10(a / b) end
+
+        Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, 49}])
+        first = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x90, 62, 127}, {:midi, 0xA0, 62, 127}])
+        second = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x80, 62, 0}])
+        back = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x80, 60, 0}])
+
+        assert second > 300
+        assert db.(first, second) <= -12
+        assert db.(back, second) <= -12
+      end
     end
   end
 end
