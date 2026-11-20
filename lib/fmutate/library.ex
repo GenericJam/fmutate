@@ -129,7 +129,7 @@ defmodule FMutate.Library do
   end
 
   @doc "Whether this build carries the emulator engine (otherwise packages \"don't run here yet\")."
-  def emu?, do: File.exists?(Paths.emu_bin())
+  def emu?, do: Paths.emu?()
 
   ## Server
 

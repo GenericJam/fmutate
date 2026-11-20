@@ -38,6 +38,8 @@ defmodule FMutate.InstrumentView do
       phase: to_string(view.phase),
       master: view.master,
       bend: cap?(view.firmware, :pitch_bend),
+      # per-note pressure: a note-level toggle on the layout is greyed out without it
+      note_pressure: cap?(view.firmware, :note_pressure),
       # pressing OCT− and OCT+ together sets the firmware's octave to 0 (strike-velocity strips start in step)
       oct0: cap?(view.firmware, :octave_reset_both),
       # the Opling's mood (docs/design/creature.md) and the message in the screen area
@@ -57,7 +59,7 @@ defmodule FMutate.InstrumentView do
   # what the screen area says under "Too slow" (or alone: dropouts), from FMutate.Instance.Health.advice/1
   defp hint(:lowering, mhz), do: "Slowing the emulated CPU · #{mhz} MHz…"
   defp hint(:lower_in_io, mhz), do: "Lower the emulated CPU in I/O (#{mhz} MHz)"
-  defp hint(:limit, _mhz), do: "This phone can't run it in real time"
+  defp hint(:limit, _mhz), do: "This phone can't run it at full speed"
   defp hint(:raise_buffer, _mhz), do: "Raise the buffer in I/O"
   defp hint(_advice, _mhz), do: ""
 
