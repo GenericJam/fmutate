@@ -78,10 +78,13 @@ JNI symbols in Mob's generated code follow it.)
   reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
   latency.
 
-## Publishing to TestFlight (iOS, internal testers)
+## Publishing to TestFlight (iOS)
 
-Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate", SKU `fmutate`. Internal
-testing only (group "Internal"): the GPL firmwares are compiled in, so no external groups or Beta App Review.
+Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate" (id 6837075931), SKU
+`fmutate`. TestFlight only, never the App Store (don't use the version page's "Add for Review"). Groups:
+"Internal" (internal, every build, Kevin) and "Public" (external, needs Beta App Review; its public link stays off
+until the firmware authors agree to wider distribution). Beta description, feedback email, privacy policy
+(`PRIVACY.md` on master) and the review contact are set on the app.
 
 1. **Build number**: bump `CFBundleVersion` in `ios/Info.plist` to an integer above every build App Store Connect
    has seen for the app (it refuses a number twice, even after a failed upload; gaps are fine).
@@ -93,7 +96,9 @@ testing only (group "Internal"): the GPL firmwares are compiled in, so no extern
 3. `xcrun altool --validate-app --type ios --file _build/mob_release/FmutateApp.ipa --apiKey <key_id> --apiIssuer
    <issuer_id>` (altool finds the key only in `~/.appstoreconnect/private_keys/`, where `mix mob.publish` copies
    it), then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload). Apple
-   processes the build for 5–30 min; then add it to the "Internal" group if it isn't already.
+   processes the build for 5–30 min; "Internal" gets it automatically. For "Public": add the build to the group,
+   set its "What to Test" (betaBuildLocalizations), and submit it (betaAppReviewSubmissions); Apple reviews the
+   first build of a version, later builds of the same version usually pass automatically.
 
 The App Store Connect API key is configured in `mob.local.exs` (git-ignored, imported by `mob.exs`):
 `config :mob_dev, app_store_connect: [key_id:, issuer_id:, key_path: "~/.appstoreconnect/AuthKey_<id>.p8"]`, the
