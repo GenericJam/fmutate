@@ -78,6 +78,40 @@ JNI symbols in Mob's generated code follow it.)
   reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
   latency.
 
+## Publishing to TestFlight (iOS)
+
+Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate" (id 6837075931), SKU
+`fmutate`. TestFlight only, never the App Store (don't use the version page's "Add for Review"). Groups:
+"Internal" (internal, every build, Kevin) and "Public" (external, needs Beta App Review; its public link stays off
+until the firmware authors agree to wider distribution). Beta description, feedback email, privacy policy
+(`PRIVACY.md` on master) and the review contact are set on the app.
+
+1. **Build number**: bump `CFBundleVersion` in `ios/Info.plist` to an integer above every build App Store Connect
+   has seen for the app (it refuses a number twice, even after a failed upload; gaps are fine).
+   `CFBundleShortVersionString` follows `version` in `mix.exs` (Android's `versionName`); mob_dev doesn't stamp it.
+2. `mise exec -- sh native/build_ios.sh` (at least `TARGETS=device`), then `mise exec -- mix mob.release --ios` →
+   `_build/mob_release/FmutateApp.ipa`, signed with the Apple Distribution certificate and the "FMutate App
+   Store" profile (both auto-detected; the profile expires with the certificate, 2027-05-02). It links
+   `priv/generated/driver_tab_ios.c` and regenerates both C tables; commit them if they change.
+3. `xcrun altool --validate-app --type ios --file _build/mob_release/FmutateApp.ipa --apiKey <key_id> --apiIssuer
+   <issuer_id>` (altool finds the key only in `~/.appstoreconnect/private_keys/`, where `mix mob.publish` copies
+   it), then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload). Apple
+   processes the build for 5–30 min; "Internal" gets it automatically. For "Public": add the build to the group,
+   set its "What to Test" (betaBuildLocalizations), and submit it (betaAppReviewSubmissions); Apple reviews the
+   first build of a version, later builds of the same version usually pass automatically.
+
+The App Store Connect API key is configured in `mob.local.exs` (git-ignored, imported by `mob.exs`):
+`config :mob_dev, app_store_connect: [key_id:, issuer_id:, key_path: "~/.appstoreconnect/AuthKey_<id>.p8"]`, the
+team key the other GenericJam apps use. Never commit the `.p8`.
+
+A release build keeps only the usage descriptions in `ios/Info.plist`: mob_dev 0.7.31 doesn't merge the plugins'
+`plist_keys` into the IPA (a dev build does). Keep every string there, including camera, microphone and photo
+library, which FMutate never asks for: Mob core's NIFs reference those APIs, and Apple's post-upload scanner
+(ITMS-90683) demands a string for each one referenced. A release build has no Erlang distribution and none of
+Mob's test harness NIFs (`:mob_nif.screen_info/0`, `ui_tree/0`, …): don't call them from app code. Prove a release
+on a dev build (`mix mob.deploy --native --slim --device <udid>`), since `tools/rpc.exs` can't reach a release
+build.
+
 ## Conventions
 
 - **Per instance, no singletons**: everything a firmware has (layout, saves, MIDI port, distribution name) is keyed

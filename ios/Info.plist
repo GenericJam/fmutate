@@ -15,11 +15,25 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
+	<string>0.1.0</string>
 	<key>CFBundleVersion</key>
-	<string>1.0</string>
+	<string>1</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>FMutate plays Bluetooth MIDI keyboards and controllers once they are paired with this device.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FMutate doesn't use the camera. iOS requires this text because the app's framework includes camera code.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>FMutate doesn't record audio. iOS requires this text because the app's framework includes recording code.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>FMutate's motion controls read the phone's motion sensors. The app's framework also includes step counter and barometer code.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>FMutate doesn't save to your photo library. iOS requires this text because the app's framework includes photo code.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FMutate doesn't use your photo library. iOS requires this text because the app's framework includes photo code.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
