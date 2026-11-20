@@ -4,6 +4,9 @@ FMutate runs M-VAVE FM-1 community firmwares on Android with a customisable inst
 `docs/design/HANDOFF.md` (+ boards, layouts, `protocol.md`, `creature.md`, `style.ex`). Tech spec: this file
 and `docs/engine_protocol.md`; where they disagree with the design on *how*, the tech spec wins.
 
+The iOS port (in progress, branch `ios`): engines in the app process, the emulator interpreted, RemoteIO audio,
+a Swift surface; design and measurements in `docs/decisions/2026-11-13-ios-port.md`.
+
 ## Processes
 
 ```mermaid
@@ -12,7 +15,7 @@ flowchart LR
     SUP[FMutate.Supervisor] --> REG[Registry]
     SUP --> AUD["FMutate.Audio (owns fm1audio NIF: AAudio mixer, master clock)"]
     SUP --> INST["FMutate.Instance &quot;a&quot; (firmware, engine lifecycle, inputs, quarantine)"]
-    SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + packages on the phone)"]
+    SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + native builds + packages on the phone)"]
     SUP --> BG["FMutate.Background (mob_background keep-alive while a firmware plays)"]
     SCR["FMutate.InstrumentScreen (Mob.Screen)"] --> VIEW["FMutate.InstrumentView (Mob.Component)"]
     VIEW <--> KT["Kotlin InstrumentView: layout, multitouch, drawing"]
@@ -42,6 +45,58 @@ flowchart LR
   be compared. Downloads are kept only when size, SHA-256 and the `.fwsc` header (`FMutate.Fwsc`) check out.
   A package "doesn't run here yet" while the build has no `libfm1emu.so`; with it, a package on the phone is
   "On phone" and runs (`FMutate.Firmware.runnable/1` → `%{engine, file, backend}`).
+- **Synth pages** (`FMutate.FirmwareScreen`, opened by a tap on a library card; the card's actions are shared
+  through `FMutate.LibraryUI`): a firmware's fuller description is its repository's README, read by
+  `FMutate.Library.Description` when the page opens (`Mob.Socket.start_async/3`) from
+  `https://raw.githubusercontent.com/<owner>/<name>/<ref>/README.md` (then `Readme.md`, `readme.md`, `README` after a 404), over
+  `FMutate.Library.HTTP` with a 512 KB cap. The ref is the one the build or package comes from: a Hub package's
+  verified build commit (`provenance.commit`), else `srcref`, else its release `tag`, else the default branch
+  (`HEAD`); a native build's index `commit`; a bundled cartridge's commit in `native/build_android.sh` (also in
+  `FMutate.Firmware`'s `@bundled`). Cached per repository and ref as `<data>/descriptions/<hash>.md` + `.term`
+  (ETag, Last-Modified, when, file name). The page parses nothing in mount: the copy comes from one task, the
+  conditional read (a 304 keeps the copy) from another, and the read wins. A failed read keeps the copy and says
+  why: "Offline: couldn't reach GitHub.", "No README at <ref>.", "GitHub answered <status>." or "too large",
+  then "Showing the copy read on <date>"; with no copy the Hub's card text (`what`, the maker's `fmhub.json`) is
+  what there is. `FMutate.Library.Readme` turns the untrusted Markdown/HTML into headings,
+  paragraphs and lists for Mob text components (Mob has no Markdown or HTML view): pictures, badges, HTML,
+  code blocks and link noise go; it reads at most 64 KB, its patterns look a bounded distance ahead, headings
+  are cut at 300 characters, and it stops at a section boundary past 4000 characters (each block or item counts
+  at least 20, so at most 200 are drawn),
+  with "Read the full README" opening GitHub's page at the same ref in the browser (`Mob.Device.open_url/1`).
+  The Hub's card picture (`card`, a path under thefirmwarehub.com only) is read once into the same directory
+  (2 MB cap) and shown from the file. The Hub's terms: card texts and pictures are their makers', so the page
+  names the maker and links the repository beside each, and says the README is "<maker>'s description, from
+  github.com/<repo> at <ref>"; the list's CC BY 4.0 line closes the page.
+- **Native builds of Hub firmwares** (`FMutate.Cartridges`): [fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges)
+  builds Hub firmwares as cartridges per platform in CI and publishes a signed index (`:cartridges` `index_url`
+  in `config/config.exs`; `index.json` + `index.json.sig`, Ed25519 by the key in `public_key`). FMutate keeps
+  only the engine and this loader, so new native firmwares appear without an app update. The index has no
+  daily limit: it is read at start and on every "Check for updates", with `If-None-Match`, and cached in
+  `<data>/cartridges/` (`index.json`, `index.json.sig`, `etag`); an index whose signature doesn't verify, or
+  of another schema or engine ABI than 1, or generated before the last good one (an old index served again), is
+  refused and the last good one stays. A Hub firmware with an asset
+  for this phone (`android-arm64-v8a`, `android-x86_64`, `android-armeabi-v7a` from the BEAM's architecture)
+  becomes `backend: :native` ("Native" on its card, with the build's version and short commit); its Hub package
+  stays listed as `hub:<id>`. Download fetches the cartridge (`<data>/cartridges/libcart_<id>@<version>@<platform>@abi1.so`:
+  `@` is in no id or version, so a file reads back to one id, and a cartridge of another engine ABI is never
+  run), cut off past its listed size, kept only when size, SHA-256 and its own signature check out, so the engine
+  never loads a file that didn't verify; the id's other versions and ABIs are deleted then; until
+  then it is "Available". A newer build than the downloaded one shows Update while the old one keeps running.
+  An instance starting such a firmware without its cartridge (at boot, e.g. the player's emulated Hub firmware
+  that has since gone native; after a crash; a switch to it) downloads it first ("Downloading…"); if
+  that fails, the Hub package runs in the emulator when it is on the phone (when it is quarantined: its safe
+  mode, "Run anyway"), else "Doesn't run here yet", and the
+  native id stays the saved choice for the next start (`FMutate.Instance` "Native builds not on the phone yet").
+  A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
+  downloaded native code: an entry with an iOS asset runs natively only when linked into the app, otherwise
+  emulated with "Plays emulated on iPhone until the next app update". When an id turns native, its emulator
+  flash `emu/<id>.bin` moves to `emu/hub:<id>.bin` (once, never over an existing file; at the next start for
+  an instance that was running it), so the emulated saves stay with the Hub package and the native one starts
+  fresh. Builds new or updated since the player last opened the library are "New" (`cartridges/seen.term`;
+  nothing is new on the first index ever loaded); a fetch that finds some sends `{:library, {:new_natives,
+  ids}}`, and with the persisted opt-in `Library.set_notify/1` calls `Library.notify_new_natives/1`, which
+  only logs: mob_notify isn't a dependency (its local notifications need a screen's socket; on Android it
+  brings Firebase, which needs host Gradle wiring).
 - **Flash per backend**: `flash/<instance>/<id>.bin` (native image) and `flash/<instance>/emu/<id>.bin`
   (fm1-emu's changed sectors), so no id shares a flash file across backends.
 - **Subscriptions survive restarts**: the screens subscribe through `FMutate.Subscription`, which monitors the
@@ -51,11 +106,12 @@ flowchart LR
 
 | Path | What |
 |---|---|
-| `native/engine/fm1engine.c`, `live.c` | the engine executable and the cartridge harness (from `../fmutate_spike`) |
-| `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
-| `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
-| `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
+| `native/engine/fm1engine.c`, `fm1engine.h`, `live.c` | the engine (`fm1engine_run`, wrapped as an executable by `main`) and the cartridge harness (from `../fmutate_spike`) |
+| `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests; Linux or macOS) |
+| `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
+| `native/build_ios.sh`, `c_src/fm1host.c`, `ios/` | iOS: the engines linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
+| `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -65,15 +121,28 @@ flowchart LR
 
 - **Package id** `com.genericjam.fmutate` (Kotlin namespace stays `com.example.fmutate_app`: the JNI symbols
   in `beam_jni.c` follow it).
+- **Synth page design** (HANDOFF has no board for a firmware detail page; this is the tech decision, in the
+  library's look: `bg`, `surface` cards at radius 18, the card's badges and pills, `info` for links): "‹ Library",
+  the Hub's picture (200 dp, fit) with whose it is, name (30 bold), status / New / Native-Emulated, the meta line,
+  "by <maker>" with the repository as a link pill, tags, the card's actions, FMutate's own note (the Hub package
+  of a native firmware), the maker's card text in a `surface` box, then README with its attribution line and
+  "Read the full README ↗"; the Hub's list licence last. FMutate's remarks on a card (`Firmware` `note`) are
+  kept apart from the maker's text (`about`) so the page never presents one as the other.
 - **Layout fitting** (`Layout.kt` `fit/4`): authoring grid as is when it matches; else keep the authoring grid
   with smaller cells if they stay ≥ 40 dp; else move cells onto the device grid and show "doesn't fit".
-- **Immersive** while the instrument shows; orientation locked to the layout's frame.
+- **Immersive** while the instrument shows; orientation locked to the layout's frame, and only while the
+  instrument's screen is the one shown: the other screens follow the phone, turning at once to the way it is held.
+  On iOS a pushed screen (Library, I/O) keeps the instrument's surface in the window, parked off-screen (Mob's
+  two-slot navigation), so the surface lets go when Mob's `mobScreenIsActive` turns false, not on leaving the
+  window; and as iOS rotates only when the phone turns, letting go asks for the phone's own orientation
+  (`ios/FMutateOrientation.swift`).
 - **Engine ring fill** = max(1024, 2 × device burst + 512) frames (`FMutate.Audio.engine_fill/0`) to start with; on
   the I/O buffer's Auto it rises while the slot underruns and settles back after a quiet minute, or it is a fixed
   2048 / 3072 / 3840 (`FMutate.Instance.set_buffer/2`), set on the running engine (`docs/engine_protocol.md`
   "Speed and fill").
 - **System states** (booting, crashed/restarting, safe mode, too slow) show as the Opling's mood plus a short
-  message in the firmware screen area ("Starting…", "Restarting…", "Crashed twice · Run anyway" — a tap on the
+  message in the firmware screen area ("Starting…", "Downloading… · The native build · N %" while a Hub
+  firmware's native cartridge downloads before it starts, "Restarting…", "Crashed twice · Run anyway" — a tap on the
   screen is Run anyway —, "Too slow · N % speed" over the bottom of a running screen with what is being done or
   can be: "Slowing the emulated CPU · N MHz…", "Lower the emulated CPU in I/O", "This phone can't run it in real
   time"; "Audio dropouts · Raise the buffer in I/O" only for an engine fast enough on a fixed buffer that
@@ -97,24 +166,71 @@ flowchart LR
   whole multiples instead (Edit → screen → Size). The classic layout gives the screen 4×3 cells: 310 px (1.29×)
   on the Moto G Power instead of 240.
 - **Velocity** (replaces "keys carry no velocity"): FM-1 firmwares play key presses at a fixed velocity (OberVave's
-  FM-1 build: `KEY_VEL(k)` = 100) but honour MIDI note velocity. A keyboard strip's `velocity.source` is `fixed`
-  (default: firmware key presses, as the hardware) or `position`: MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
+  FM-1 build: `KEY_VEL(k)` = 100) but honour MIDI note velocity. A keyboard strip's `velocity.source` is `position`
+  (**the default**, `FMutate.LayoutEdit.velocity_source/1`: an absent source, in a bundled or a saved layout, is
+  strike position) or `fixed` (firmware key presses, as the hardware; only when the layout says so). `position`:
+  MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
   velocity from where the key is struck (front edge = `max`, back = `min`, linear). Such a strip keeps its own
-  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware; the
+  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware (not
+  while a firmware function button is held: there OCT is the layer's, e.g. OberVave's SEQ + OCT pages the
+  sequencer and EDIT + OCT is undo/redo, and the firmware's octave stays); the
   firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
-  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
+  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. **Limits of strike
+  position** (said in the strip's editor sheet too): the notes go to the firmware's MIDI in on channel 1, so the
+  firmware's own MIDI channel setting (OberVave's and Shine On's GLOBAL page; OMNI by default) must be OMNI or 1:
+  any other channel drops them and the strip is silent (on OMNI or 1 they play the selected track, as key presses do). FMutate
+  doesn't read that setting (it lives in the firmware's flash, which FMutate doesn't parse). A firmware layer held
+  open with HOME (OberVave: SEQ, EDIT, GLO, SAVE) isn't seen by the surface, so the strip sends notes there, not
+  the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. Measured on the Moto G
   Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
-- **Note level** (`velocity.pressure`, opt-in, firmwares with `caps.note_pressure`): the held note's own level
-  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, level = 127 × where the finger is on the key
-  (front edge 127, back edge 0), sent at the strike and on every change; it takes precedence over swell. Only
+- **Note level** (`velocity.pressure`, firmwares with `caps.note_pressure`): the held note's own level
+  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, relative to where the key was struck: level =
+  127 × front ÷ struck while the finger is behind its strike point (front = where the finger is on the key, 1 at
+  the front edge, 0 at the back), 127 (as played) there and in front of it; sent at the strike and on every
+  change. A glissando keeps the strike point, as it keeps the velocity. So a tap plays at its strike velocity
+  alone, sliding back fades the note to silence at the back edge, and sliding forward again brings it back to as
+  struck. (#8 had level = 127 × front from the strike on, so the strike was quieted twice, by velocity and by
+  level: host engine, OberVave INIT, ring peaks: a firmware key press 6349, a tap mid-key (velocity 84, level 64)
+  1418 (−13 dB), a quarter in from the back (62, 32) 260 (−28 dB), at the back edge (40, 0) silent; factory 01:
+  4815, 1593, 281, silent. Velocity alone, as now: mid-key 4078, back edge 4203 on INIT; OberVave's amp is
+  `1 − ⌊(127 − vel) × VEL>AMP / 128⌋ × 258 / 32767`, at its default VEL>AMP 60 0.84 for 84 and 0.685 for 40, against
+  0.905 for a key press. Strike-position strips became the default with this; until then no bundled layout had
+  one, so note level never played.) Only
   FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
-  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched).
+  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched). The
+  iOS archive and the Android libraries compile the same patched tree (`native/build_ios.sh` and
+  `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` plays it on the engine
+  executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
+  16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, velocity 127 / 40 ≈ 1500 / 800 (factory 01).
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
+  **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
+  unless the strip has `swell: true` (swell and note level are exclusive: an explicit swell wins over the default,
+  an explicit `pressure: true` wins over swell); an explicit `false` is off. Edits write it explicitly, so a layout
+  that never touched it gets the default and one switched off stays off. On a firmware without the cap it is off
+  (swell applies if set). So every bundled layout with a keyboard strip (classic, portrait-groove, sound-designer)
+  plays with velocity and, on FMutate's OberVave, note level, unedited. The surface never resolves these:
+  `FMutate.Editor` hands it the layout with every strip's `source` and `pressure` resolved for the running firmware
+  (`LayoutEdit.surface/2`); saved files keep what the player set. (`Layout.kt` and `FMutateLayout.swift` fall back
+  to `position` too, for a layout that didn't come through it.)
+  **Toggle on the surface**: a button or key bound to `{"action": "note_level"}` (binding sheet → Go to page →
+  "note level on/off", next to BEND, the other surface action). Each press (touch, or a MIDI-learned press) asks
+  the editor to switch it (`note_level` event, `LayoutEdit.toggle_note_level/2`): every strike-position strip of the
+  layout off if any has it on, else all on, written as explicit `pressure` and **saved like any edit**, so the
+  editor's "Note level follows the finger" and the surface agree and it survives a restart. Its mode is ignored
+  (the state is the layout's, not a toggle's: never re-sent to a new engine, never released with the layout). It
+  lights while any strike-position strip has note level on and is greyed out (and does nothing) on a firmware
+  without `note_pressure` or a layout without a strike-position strip (only strips set to `fixed`). Switching it
+  off leaves velocity as it is (strike position): it is note level only, `fixed` is the strip's own setting in the
+  editor. Held notes go with the new layout at once:
+  a held note whose strip stops following gets level 127 back (it is never left quiet), one whose strip starts
+  takes the finger's level; the surface reads a held finger's strip from the current layout, not the one it
+  grabbed. A swell leaves CC7 where the last finger put it, so when a new layout stops a held finger's strip
+  swelling, or leaves no strip swelling (note level switched on over a swell), CC7 goes back to 127.
 - **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's
   factory patches sustain at 100), so the toggle is a long release instead: CC72 (the standard release time,
   OberVave's and ShineOn's amp RELEASE) to 108 (~2.3 s) while on, so let-go notes fall away on the firmware's own
@@ -156,34 +272,95 @@ flowchart LR
   device). A CC is listened to for a short window so an endless encoder's coding is recognised (absolute, 64 ± n,
   two's complement, sign bit; changeable in the sheet). At play time `FMutate.MIDI.Controls` (pure) drives the
   control's bindings as a touch would: presses momentary or toggle, absolute values through rule 7 with the
-  hardware control as its own participant (pickup), encoders get clicks from the change (a full sweep = a 200 pt
-  drag, 33 clicks at 6 pt per click). A learned message skips its default path, so a learned pad stops playing
+  hardware control as its own participant (pickup), encoders get clicks from the change (a full sweep = 64
+  clicks, below). A learned message skips its default path, so a learned pad stops playing
   its note; matches include the channel, so keys on another channel still play. I/O lists a device's learned
   controls on the current layout with Clear.
-- **Automap** (`FMutate.MIDI.Automap`, pure; device-wide, every layout, on by default per device and off for the
-  virtual port). Known controllers by name (MPK mini mk3: knobs CC 70–77 ch 1, pads ch 10 notes 36–51; MPK mini
-  mk2: knobs CC 1–8); any other controller by first touch (first CC moved = knob 1, …; first note on channel 10 =
-  pad 1, …), kept per device name until Reset in I/O. Knobs 1–4 → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO
-  (clicks), 8 → MASTER (rule 7 pickup); pads 1–14 → FX, SEL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY,
-  REC, OCT−, OCT+ (momentary); pads 15–16 play notes. Learned beats automap beats the default path. A source's
-  channel filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned.
+- **Automap** (`FMutate.MIDI.Automap`, pure; device-wide, every layout and firmware, on by default per device and
+  off for the virtual port). Known controllers by name, each with its factory programs: MPK mini mk3 knobs CC
+  70–77 ch 1, pads ch 10 notes 36–51; MPK mini mk2 PROG 1 knobs CC 1–8, PROG 2 CC 20, 21, 22, 23, 16, 17, 18, 19,
+  PROG 3 and 4 CC 20–27 (from the mk2's factory `.mk2` presets, decoded with the editor's 117-byte SysEx layout;
+  a captured mk2 sent PROG 2's CCs knob by knob). The device is on the first program every CC seen from it fits
+  (kept with its settings, so K1 alone tells PROG 2); the first CC that fits none switches it to first touch,
+  keeping the CCs seen so far in their order. Before, the mk2 profile said CC 1–8 only and swallowed nothing
+  else: a mk2 on PROG 2 drove no panel knob, its knobs reached OberVave's own CC map (CC 20–23 = OSC 1 WAVE,
+  PW, LEVEL, NOISE), and only the joystick (CC 1 in PROG 1–3, = PROG 1's K1) moved KNOB1. The joystick's CCs
+  never decide a program or take a knob (they stay the firmware's mod wheel). Any other controller by first touch
+  (first CC moved = knob 1, …; first note on channel 10 = pad 1, …). Or lined up: I/O's "Line up knobs" asks for
+  the knob for KNOB1, then KNOB2, … MASTER (Skip, Done), and keeps that order, closed to first touch; a row's
+  sheet puts one knob on a panel knob (a swap). The order is kept per device name until Reset in I/O. Knobs 1–4
+  → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO (clicks), 8 → MASTER (rule 7 pickup); pads 1–14 → FX, SEL, ENV, LFO,
+  EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC, OCT−, OCT+ (momentary); pads 15–16 play notes. A source's channel
+  filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned. A line-up is
+  kept as the device's automap order, not as learned inputs: those are per layout (so per firmware) and per
+  on-screen control, and a line-up is about the hardware, so it holds on every firmware and layout, and a
+  control's learned input still wins over it.
+- **Precedence of a hardware control**: a layout control's learned input > a pinned synth parameter > automap >
+  the default path (notes → keys, the rest → the firmware's MIDI in).
+- **Pins** (I/O, a knob's row → "Synth parameter of …"): a knob set to a parameter of the running firmware by name,
+  per device name and firmware id (kept as the parameter's label, resolved against the firmware's list at its
+  version). A pinned knob is an automap control whose target is the existing MIDI CC out target (`cc:<ch>:<n>`,
+  rule 7 pickup), on the knob's own channel: the firmware scales 0..127 to the parameter's range itself. The
+  parameter lists (`FMutate.MIDI.Params`, `priv/midi_params/<id>@<version>.json`) are generated from the bundled
+  firmwares' source at the pinned commits by `tools/midi_params.exs`: OberVave 3.3.2 (63 parameters) and Shine On
+  3.0.1 (41: its VOLUME, CC 7, is taken by the channel handler before the CC map). A firmware without a list
+  shows no pins.
+- **Unmapped knobs** (per device, I/O "Send unmapped knobs to the synth", on by default): a CC that drives nothing
+  in FMutate goes to the firmware's MIDI in, as before, where OberVave and Shine On give CC 20 and up to their
+  parameters in table order; the table says what each such knob sets there. Off drops CCs that could be knobs;
+  pedals, bank select, (N)RPN, channel mode and the joystick still go. On stays the default: the firmwares' CC
+  maps are a feature (a DAW or a sequencer drives them), and the table now says what they do.
+- **I/O's controller table** (`FMutate.MIDI.Mapping`, pure): per device that plays the instance, one row per knob
+  FMutate knows of (its slots, its program's knobs, pins, learned inputs, CCs that came this session) as "K1 CC 20
+  → KNOB1" and what drives it, lit while that hardware control moves (`FMutate.MIDI.watch/1`: at most one
+  message every 150 ms per control). On the surface, a knob driven from MIDI shows the hardware control in its
+  bubble ("K1 +3", "CC74 64"): a `g <control> <tag>` line before its value or clicks, once per batch.
+- **A full sweep of an absolute hardware knob on an encoder is 64 clicks.** OberVave and Shine On step a 0..127
+  parameter by 2 per click, and by 3× that when more than one click arrives in one of their polls (a fast turn).
+  Measured on the host engine (OberVave, KNOB2 = RESO on PERFORM, read back by matching the firmware's screen
+  against screens of RESO set by CC 71): 33 single clicks 80 ms apart 0 → 66 (the old 200 pt sweep: a hardware
+  knob at its end stop left the parameter half way), 64 → 127; 32 clicks 25 ms or 10 ms apart → 64, 4 ms apart →
+  104, 1 ms → 127; 11 batches of 3 → 127. A sweep turned at a normal pace covers the range once; a flick goes
+  further, as on the device.
 - **What MIDI-driven controls show** never goes through the instrument screen's process: `FMutate.MIDI` sends text
   lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
-  display frame. iOS has no such channel yet: there the inputs reach the firmware but the on-screen control
-  doesn't move; the Swift surface needs the same queue (`FMutate.MIDI`'s `:surface` option takes the function).
+  display frame. iOS has the same channel: `fm1surface`'s `surface/1` NIF (`FMutate.SurfaceNif`) into
+  `FMutateMidiSurface.swift`'s queue, drained on the main thread.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
-- **Background** (`FMutate.Background`, the `mob_background` plugin pinned by git ref): while any instance has an
+- **Background** (`FMutate.Background`, the `mob_background` plugin, Hex 0.3.1+): while any instance has an
   engine (phase `:booting`, `:running`, or `:crashed` until its restart) the app holds a `mediaPlayback` foreground
   service with the notification "FMutate is playing"; safe mode or a firmware that can't run here lets it go (the
   notification goes, Android may freeze the app). Tied to the engine, not to MIDI clients or sibling apps: they
-  only matter while a firmware plays, and the type has to match what the user hears. `mediaPlayback`, not the
-  plugin's default `dataSync` (Android 15 caps that at 6 h a day in the background): the `<service>` is declared
-  in our `AndroidManifest.xml` with that type and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it.
-  Android starts a foreground service only from the foreground; a refused start is retried when the app comes
-  back. The first start asks for `POST_NOTIFICATIONS` (Android 13+ hides the notification without it; the service
-  runs either way).
+  only matter while a firmware plays, and the type has to match what the user hears. `mediaPlayback`
+  (`MobBackground.start/2` mode `:media_playback`), not the plugin's `dataSync` (Android 15 caps that at 6 h a day
+  in the background): the `<service>` is declared in our `AndroidManifest.xml` with that type and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it; the plugin's `FOREGROUND_SERVICE_MICROPHONE` (its
+  microphone mode) is removed there (`tools:node="remove"`), since Google Play asks an app to justify each one. The
+  session ends when its owner process exits, so its owner is `FMutate.Background.Session`, a process that does
+  nothing that can fail, started right after the Registry: a restart of `FMutate.Background` (after a crash below
+  it in the `rest_for_one` supervisor) finds it still held, where Android would refuse to start it again from
+  the background. Android starts a foreground service only from the foreground; a refused start (at once, or
+  `{:mob_background, {:error, :foreground_refused}}` after) is retried when the app comes back. The first start
+  asks for `POST_NOTIFICATIONS` (Android 13+ hides the notification without it; the service runs either way).
+- **Quit** (the notification's button, `{:mob_background, {:action, :quit}}`): a backgrounded app has no other
+  way to stop short of the system settings, and a phone keeps playing until it is told. In order: each instance
+  stops its engines as a switch stops the old one (`FMutate.Instance.quit/1`, which returns once every engine,
+  even one booting, restarting after a crash or crossfading out, has saved its flash and ended; nothing starts
+  again), the keep-alive goes (the notification with it), the audio output closes, and `FMutateIO.kt` finishes the
+  activity with its task (gone from Recents) and kills the process once the activity is destroyed (the BEAM
+  can't start twice in one process, so the process has to end). Nothing restarts it: the service is
+  `START_NOT_STICKY` and stopped first; the next launch boots the saved firmware as usual (no crash is counted:
+  the engines exited cleanly). No separate Stop (silence, keep the app): it would need a way back to playing
+  from the notification, and Quit is what was asked for.
+- **Quit on iOS: none.** iOS has no foreground-service notification (mob_background's iOS side shows nothing and
+  never delivers actions), and the lock screen / Control Center Now Playing controls (`MPRemoteCommandCenter`) only
+  go to the Now Playing app, which a mixable audio session (`.mixWithOthers`, `FMutateAudioSession.swift`: FMutate
+  plays beside other apps, as on Android) can't become; making it non-mixable would stop the user's other audio
+  whenever FMutate starts. Apple also has no API for an app to quit itself (QA1561). The user swipes FMutate away
+  in the app switcher; with nothing playing (safe mode, a firmware that can't run) FMutate closes its output and
+  iOS suspends it.
 
 ## Inputs: what can lose a press, and how to see it
 
@@ -213,6 +390,20 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Released in mob 0.9.28; FMutate uses `~> 0.9.29` |
 | Classic rearranged, screen filled and sharp-scaled (310 px, ×2 prescale per frame) | 2.5 % / 0 % / 0 % janky, p90 10–11 ms, p99 13–19 ms |
 
+### Measured (iPhone SE 3rd generation, A15, iOS 27.0.1; engines in-process, `docs/decisions/2026-11-13-ios-port.md`)
+
+Over `tools/rpc.exs <udid>` (see its header), native OberVave, the built-in speaker, development build.
+
+| What | Value |
+|---|---|
+| Output (RemoteIO) | 48 kHz, 240-frame callbacks; IO buffer 5.0 ms + output latency 11.5 ms (`latency_ms` 16.5) |
+| Engine ring fill (Auto) | 550–1010 frames at 44.1 kHz (12–23 ms) while playing at the 1024 default; iOS's default is now ~700 (`Audio.engine_fill/0`): 330–700 |
+| Input → sound in the mixer (`tools/input_latency.exs`: `Instance.input` key down until the mixer's peak > 1000, the audio NIF polled in a loop; 12 notes + 2–3 after 2–10 s of silence) | fill 1024: 25–30 ms, median 27 ms; after silence 20–26 ms. Fill 704: 15.5–24.7 ms, median ~19 ms; after silence 16–26 ms (1 min of chords: 0 underruns). Tap to sound ≈ that + 16.5 ms output + the touch panel: ~35–45 ms |
+| (The first measurement, 59–75 ms and 97–120 ms after a pause, polled `Audio.stats/0`: a snapshot the Audio server takes every 100 ms, so it measured when the next snapshot came. Nothing was unexplained: no wake-up, scheduling or audio-session cost shows) | |
+| 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns; again at iOS's new default fill 697 (input → mixer 15.2–23.6 ms, median ~17 ms; the fill stayed at 697) |
+| App CPU (Instruments Activity Monitor, % of one core) | idle with OberVave loaded 10.6–11.2 %; playing those chords 24.6–28.0 %; footprint 76–82 MiB |
+| Emulator, interpreted, `EngineNif.bench` | per package in the decision doc: 0.38–0.76x real time at 240 MHz (FMini 1.42x), 0.66–1.40x at 120 |
+
 ### Emulated CPU clock (emulator engine)
 
 | Where | What |
@@ -224,6 +415,7 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | Same, the slow ones at lower clocks | Melodee 0.76x / 0.86x / 0.96x at 180 / 120 / 80 (never real time: its second core's work isn't helped much); Clipper 1.10x / 1.22x / 1.24x; Skiff 1.20x / 1.66x / 2.35x, but **silent at 80 with no stale halves** (starving that the stale-half check misses; Auto only reaches 80 when 120 is too slow) |
 | Same phone, in the app, chord held, Auto | Skiff: 87 % at 240 → 180 MHz, 100 % from then on, no new underruns. Melodee: 75 % at 180 → 80 MHz, 83–95 %: "Too slow · 94 % speed / This phone can't run it in real time". OberVave's package: 101 % at 240, no change. (Melodee's "Setup unfinished / Factory sounds missing" is its own first-boot screen: its web installer adds the factory sounds; OCT+ continues without them.) |
 | Same phone, gfxinfo with native OberVave (6 × 300 ms key holds, 3 runs; the display runs at 120 Hz, so the budget is 8.3 ms) | mob 0.9.27: 8.0 % / 3.7 % / 3.7 % janky, p90 15–18 ms, p99 20–23 ms. mob 0.9.29 (with #236, no repaint on unchanged renders): 0.7 % / 0 % / 1.3 % janky, p90 13–14 ms, p99 15–17 ms |
+| Apple M4 Pro, macOS host build, `--bench` 8 s, keys 7 11 14 held, 15 Hub packages | JIT 2.87–7.61x real time at 240 MHz; interpreted 0.68–1.04x (FMini 2.37x), 1.18–2.78x at 120 MHz; per package in `docs/decisions/2026-11-13-ios-port.md` (the iOS build interprets) |
 
 ### Background (emulator-5560, Android 17 x86_64, OberVave)
 
@@ -286,11 +478,11 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.IO` | MIDI devices (list, hot-plug, open/close, reopen by name), Bluetooth MIDI scan/connect, the virtual ports' clients, audio outputs (one per app) |
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
-| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, the rule 7 arbiter, clock follow/send/off |
-| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` | what learned and automapped controls show on the surface, queued and applied once per frame |
+| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`, `.Mapping`, `.Params`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, pins, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, a controller's line-up, the rule 7 arbiter, clock follow/send/off, which hardware control moved (for I/O) |
+| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface (and the hardware control's tag in a knob's bubble), queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
-| `FMutate.Dist`, `FMutate.Remote`, `fmutate_tcp_dist`, `fmutate/DistInitArgs.kt`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps; the custom transport (put in the init arguments by `DistInitArgs` before the first launch) keeps its acceptor parked until the allow list and cookies are installed, and pending provider names stay binaries until Allow (`docs/design/protocol.md` §7) |
-| `FMutate.Pairing`, `FMutate.PairScreen`, mob_pair (`MobPair.Host`, `MobPair.Pairings`, `MobPair.Front`) | pairing sibling apps by QR code or typed code, on this phone or another on the Wi-Fi; TLS distribution for the latter (`docs/design/protocol.md` §7 "Pairing") |
+| `FMutate.Dist`, `FMutate.Remote`, `fmutate_tcp_dist`, `fmutate/DistInitArgs.kt`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps; the custom transport (put in the init arguments by `DistInitArgs` before the first launch) keeps its acceptor parked until the allow list and cookies are installed, and pending provider names stay binaries until Allow (`docs/design/protocol.md` §7). On iOS nothing writes that transport, so a release build starts no distribution, and a development build's node is Mob's own (`FMutate.Dist` reports it as already alive) |
+| `FMutate.Pairing`, `FMutate.PairScreen`, mob_pair (`MobPair.Host`, `MobPair.Pairings`, `MobPair.Front`) | pairing sibling apps by QR code or typed code, on this phone or another on the Wi-Fi; TLS distribution for the latter (`docs/design/protocol.md` §7 "Pairing"). Android only for now: iOS starts none of it and its menu has no Pair an app (`FMutate.Pairing.available?/0`) |
 
 - **Audio route**: the AAudio stream's device id (`FMutate.Audio.stats/0` `device_id`) named through
   `AudioManager`. **Latency shown** = device output latency + the engine's ring fill (what a key press waits).

@@ -97,6 +97,18 @@ defmodule FMutate.Pairing do
   def front_port(server \\ __MODULE__), do: GenServer.call(server, :front_port)
 
   @doc """
+  Whether this platform pairs: Android, and hosts (tests). Not iOS yet (protocol.md §1, "Not yet"): there
+  the supervisor starts neither this service nor `MobPair.Pairings`, and the menu has no Pair an app.
+  """
+  def available?, do: platform() != :ios
+
+  defp platform do
+    :mob_nif.platform()
+  rescue
+    _ in [UndefinedFunctionError, ErlangError] -> :host
+  end
+
+  @doc """
   The address siblings on other phones reach: the first up IPv4 address of a Wi-Fi or Ethernet interface
   (`wlan*`, `en*`, `eth*`), never loopback, link-local or a mobile-data interface. nil when there is none.
   """

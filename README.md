@@ -26,16 +26,25 @@ early: Android only, installed from source.
   undo. A firmware that crashes twice in a minute is quarantined until you choose "Run anyway".
 - **A playable surface**: multitouch where every finger owns the control it touched, glissando, knobs that never
   jump, fine mode, a firmware screen drawn as large as it fits and kept sharp.
-  - **Velocity** from where you strike a key (front loud, back soft).
-  - **Note level**: with FMutate's OberVave, a held note's volume follows your finger on the key.
+  - **Velocity** from where you strike a key (front loud, back soft), on by default; it plays the synth over MIDI
+    channel 1, so keep the synth's MIDI channel on OMNI (its default) or 1. A strip can play the firmware's own
+    fixed-velocity key presses instead, on any channel.
+  - **Note level**: with FMutate's OberVave, a held note's volume follows your finger: slide back from where you
+    struck to fade it, forward to bring it back. On by default; switch it from a button on the surface (bind it to
+    "note level on/off") or in the keyboard strip's settings.
   - **Bend** a held note by sliding sideways, and a long-release **sustain**.
 - **Your own layouts**, edited in place: drag, resize, add controls, pages, bindings to firmware inputs, MIDI notes
   and CCs, portrait or landscape. Saved per firmware.
 - **I/O**: low-latency audio (AAudio), a virtual MIDI port `FMutate A`, USB and Bluetooth MIDI devices, MIDI clock
   in and out.
-- **MIDI controllers**: an MPK mini's knobs and pads drive the FM-1's knobs and buttons out of the box (automap;
-  other controllers by the order you touch them), and any hardware knob, fader, pad or key can be learned onto a
-  control in the layout editor.
+- **Plays in the background**: while a firmware plays, the notification "FMutate is playing" keeps it running
+  with the screen off or another app in front. Its **Quit** button stops the firmware (its settings saved) and
+  ends FMutate.
+- **MIDI controllers**: an MPK mini's knobs and pads drive the FM-1's knobs and buttons out of the box (automap,
+  any of the mk2's factory programs; other controllers by the order you touch them). I/O shows what each knob
+  drives as you turn it, lines up your knobs one by one ("turn the knob you want for KNOB1"), pins a knob to a
+  synth parameter by name (OberVave, Shine On), and says what an unmapped knob does to the synth. Any hardware
+  knob, fader, pad or key can also be learned onto a control in the layout editor.
 - **Sibling apps** (planned separately: a pattern sequencer, voice control, …) drive FMutate over Erlang
   distribution, after you allow them ([docs/design/protocol.md](docs/design/protocol.md)).
 
@@ -122,12 +131,23 @@ Working on the code (with or without an AI agent): [AGENTS.md](AGENTS.md).
 
 ## Licence and credits
 
-FMutate is licensed under the **GNU GPL v3** ([LICENSE](LICENSE)): it compiles in GPL-3 firmwares.
+FMutate's original app code is licensed under the **MIT License** ([LICENSE](LICENSE)). The GPL components
+listed below are exceptions, not relicensed by that file. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+for the source boundary, pinned upstream sources and redistribution requirements.
 
 - [OberVave](https://github.com/zvenson/obervave) and [Shine On](https://github.com/zvenson/shineon) by zvenson
-  (GPL-3.0); FMutate patches OberVave to take MIDI polyphonic aftertouch as a note's level.
+  and their upstream contributors remain **GPL-3.0-only**, as do the derivative cartridge harness
+  `native/engine/live.c` and the OberVave patches in `native/patches/obervave/`. FMutate patches OberVave to
+  take MIDI polyphonic aftertouch as a note's level.
 - [fm1-emu](https://github.com/joakimeriksson/fm1-emu) by Joakim Eriksson (MIT).
-- The firmware catalogue comes from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) (CC BY 4.0). Every
-  firmware belongs to its author and is downloaded from where they publish it.
+- The firmware list comes from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) (CC BY 4.0; card texts and
+  pictures belong to each firmware's maker). Every firmware belongs to its author and is downloaded from where
+  they publish it.
+
+The native build compiles GPL firmware into cartridges and dynamically loads them into the engine. Distributing
+those cartridges or a GPL-covered combined work requires GPL compliance, including corresponding source and
+notices; the shipped APK is **not MIT-only**. The app uses a separate engine process with Port/shared-memory
+communication, but that technical separation is not a blanket exemption from GPL obligations. The MIT grant for
+FMutate-owned code remains available independently.
 
 FMutate is not affiliated with or endorsed by M-VAVE. "FM-1" names the hardware the firmwares are written for.

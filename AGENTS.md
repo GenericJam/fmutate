@@ -33,6 +33,7 @@ The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`
 | Engine + cartridges for the phone (all ABIs into `jniLibs`) | `sh native/build_android.sh` |
 | The same for this computer (the tests run them) | `sh native/build_host.sh` |
 | The emulator engine (`libfm1emu.so`; host, arm64-v8a, x86_64; also fetches test packages) | `mise exec -- sh native/build_emu.sh` |
+| iOS (in progress, `docs/decisions/2026-11-13-ios-port.md`): engines, cartridges and emulator as one archive per target, linked into the app | `mise exec -- sh native/build_ios.sh` (`TARGETS="sim device host"`; `host` = macOS, for `test/fmutate/inproc_engine_test.exs`) |
 | Tests | `mise exec -- mix test` |
 | Compile check | `mise exec -- mix compile --warnings-as-errors` |
 | Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |
@@ -62,6 +63,9 @@ JNI symbols in Mob's generated code follow it.)
   `FMutate.Audio.stats()`, `FMutate.Instance.view("a")`, `FMutate.Instance.journal("a", 50)` (the last inputs),
   `FMutate.Instance.held("a")`. The app is the node `fmutate_a@127.0.0.1` on the device's port 9150 (no EPMD).
   Calls time out after 30 s: for longer sampling, spawn a sampler on the device and read it with a second call.
+  A physical iPhone: pass its UDID instead of a serial (through `iproxy`, to Mob's development node); launch the
+  app with `MOB_NODE_HOST=127.0.0.1` first (the command is in `tools/rpc.exs`'s header). Files into the app:
+  `xcrun devicectl device copy to --domain-type appDataContainer --domain-identifier com.genericjam.fmutate`.
 - **Performance**: `adb shell dumpsys gfxinfo com.genericjam.fmutate reset`, play, then `dumpsys gfxinfo …`; the
   procedure and past numbers are in docs/architecture.md "Measured".
 - **A package on a device** (emulator backend): push it to `/data/local/tmp/`, `run-as com.genericjam.fmutate cp`
@@ -83,6 +87,40 @@ JNI symbols in Mob's generated code follow it.)
   (`FMutate.Dist` follows `MobPair.Pairings`). Over rpc: `FMutate.Pairing.info()` (shows the live secret),
   `MobPair.Pairings.list()` (shows every paired app's cookie): keep their output out of logs and issues.
 
+## Publishing to TestFlight (iOS)
+
+Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate" (id 6837075931), SKU
+`fmutate`. TestFlight only, never the App Store (don't use the version page's "Add for Review"). Groups:
+"Internal" (internal, every build, Kevin) and "Public" (external, needs Beta App Review; its public link stays off
+until the firmware authors agree to wider distribution). Beta description, feedback email, privacy policy
+(`PRIVACY.md` on master) and the review contact are set on the app.
+
+1. **Build number**: bump `CFBundleVersion` in `ios/Info.plist` to an integer above every build App Store Connect
+   has seen for the app (it refuses a number twice, even after a failed upload; gaps are fine).
+   `CFBundleShortVersionString` follows `version` in `mix.exs` (Android's `versionName`); mob_dev doesn't stamp it.
+2. `mise exec -- sh native/build_ios.sh` (at least `TARGETS=device`), then `mise exec -- mix mob.release --ios` →
+   `_build/mob_release/FmutateApp.ipa`, signed with the Apple Distribution certificate and the "FMutate App
+   Store" profile (both auto-detected; the profile expires with the certificate, 2027-05-02). It links
+   `priv/generated/driver_tab_ios.c` and regenerates both C tables; commit them if they change.
+3. `xcrun altool --validate-app --type ios --file _build/mob_release/FmutateApp.ipa --apiKey <key_id> --apiIssuer
+   <issuer_id>` (altool finds the key only in `~/.appstoreconnect/private_keys/`, where `mix mob.publish` copies
+   it), then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload). Apple
+   processes the build for 5–30 min; "Internal" gets it automatically. For "Public": add the build to the group,
+   set its "What to Test" (betaBuildLocalizations), and submit it (betaAppReviewSubmissions); Apple reviews the
+   first build of a version, later builds of the same version usually pass automatically.
+
+The App Store Connect API key is configured in `mob.local.exs` (git-ignored, imported by `mob.exs`):
+`config :mob_dev, app_store_connect: [key_id:, issuer_id:, key_path: "~/.appstoreconnect/AuthKey_<id>.p8"]`, the
+team key the other GenericJam apps use. Never commit the `.p8`.
+
+A release build keeps only the usage descriptions in `ios/Info.plist`: mob_dev 0.7.31 doesn't merge the plugins'
+`plist_keys` into the IPA (a dev build does). Keep every string there, including camera, microphone and photo
+library, which FMutate never asks for: Mob core's NIFs reference those APIs, and Apple's post-upload scanner
+(ITMS-90683) demands a string for each one referenced. A release build has no Erlang distribution and none of
+Mob's test harness NIFs (`:mob_nif.screen_info/0`, `ui_tree/0`, …): don't call them from app code. Prove a release
+on a dev build (`mix mob.deploy --native --slim --device <udid>`), since `tools/rpc.exs` can't reach a release
+build.
+
 ## Conventions
 
 - **Per instance, no singletons**: everything a firmware has (layout, saves, MIDI port, distribution name) is keyed
@@ -90,8 +128,9 @@ JNI symbols in Mob's generated code follow it.)
 - **Pixels and audio never pass through the BEAM**: they go through shared memory between the engine, the mixer
   NIF and the Kotlin view. Keep it that way.
 - **Firmware changes are patches**: FMutate's changes to firmwares or fm1-emu are files in `native/patches/<name>/`,
-  applied by the build scripts to sources pinned by commit. Regenerate a patch from a clean checkout of the pinned
-  commit with the earlier patches applied.
+  applied by the build scripts to sources pinned by commit (every run of `build_android.sh`, `build_host.sh` and
+  `build_ios.sh` checks the sources out again and applies them, so no build compiles a tree from before a patch).
+  Regenerate a patch from a clean checkout of the pinned commit with the earlier patches applied.
 - **Firmware capabilities** (pitch bend, octave reset, per-note pressure) are `caps` in `FMutate.Firmware`; the UI
   greys out what a firmware doesn't support.
 - **The instrument surface is performance-critical** (`InstrumentView.kt`): controls are drawn on layers that

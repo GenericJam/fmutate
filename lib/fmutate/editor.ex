@@ -30,6 +30,9 @@ defmodule FMutate.Editor do
       edit_add_page
       edit_open {id, sub, len}     tap on a selected control: its sheet (len: keyboard length in dp)
       use_classic                  the layout doesn't fit this phone: show the classic one
+      note_level                   a note-level toggle on the surface was pressed (`LayoutEdit.toggle_note_level/2`)
+
+  The surface gets the layout as it plays it on the running firmware (`LayoutEdit.surface/2`, `layout_json`).
   """
 
   import Mob.Sigil, only: [sigil_MOB: 2]
@@ -38,7 +41,7 @@ defmodule FMutate.Editor do
   alias FMutate.MIDI.Learn
 
   @events ~w(edit edit_done page pages edit_move edit_resize edit_to_page edit_cell edit_add_close edit_add
-             edit_add_page edit_open use_classic)
+             edit_add_page edit_open use_classic note_level)
 
   @doc "The surface events this module handles."
   def events, do: @events
@@ -51,7 +54,7 @@ defmodule FMutate.Editor do
       instance: instance,
       firmware: firmware,
       layout: layout,
-      layout_json: Layouts.encode(layout),
+      layout_json: surface_json(layout, firmware),
       page: hd(layout["pages"])["id"],
       sheet: nil,
       learning: nil,
@@ -78,7 +81,7 @@ defmodule FMutate.Editor do
   def saved_elsewhere(socket, firmware, layout) do
     if firmware != socket.assigns.firmware or layout == socket.assigns.layout,
       do: socket,
-      else: Mob.Socket.assign(socket, layout: layout, layout_json: Layouts.encode(layout))
+      else: assign_layout(socket, layout, [])
   end
 
   @doc "What `FMutate.MIDI.learn/2` heard: `{:ok, midi_in}` (stored on the control being learned) or `:timeout`."
@@ -136,7 +139,14 @@ defmodule FMutate.Editor do
 
   def event("use_classic", _p, socket) do
     layout = Layouts.classic() |> Map.put("firmware", %{"id" => socket.assigns.firmware})
-    Mob.Socket.assign(socket, layout: layout, layout_json: Layouts.encode(layout), page: hd(layout["pages"])["id"])
+    assign_layout(socket, layout, page: hd(layout["pages"])["id"])
+  end
+
+  # a press on a note-level toggle (binding target `{"action": "note_level"}`): every strike-position strip
+  # switches, saved like any edit, so the surface, the editor and the next start agree
+  def event("note_level", _p, socket) do
+    note_pressure = cap?(socket.assigns.firmware, :note_pressure)
+    commit(socket, LayoutEdit.toggle_note_level(socket.assigns.layout, note_pressure))
   end
 
   def event("edit_move", %{"id" => id, "col" => col, "row" => row}, socket),
@@ -196,7 +206,7 @@ defmodule FMutate.Editor do
     case Layouts.save(socket.assigns.instance, socket.assigns.firmware, layout) do
       :ok ->
         page = if Enum.any?(layout["pages"], &(&1["id"] == socket.assigns.page)), do: socket.assigns.page, else: hd(layout["pages"])["id"]
-        Mob.Socket.assign(socket, layout: layout, layout_json: Layouts.encode(layout), page: page)
+        assign_layout(socket, layout, page: page)
 
       {:error, [msg | _]} ->
         toast(socket, "Not saved: " <> msg)
@@ -204,6 +214,15 @@ defmodule FMutate.Editor do
   end
 
   defp commit(socket, {:error, msg}), do: toast(socket, msg)
+
+  # the layout and what the surface plays: each strip's note level resolved for this firmware
+  defp assign_layout(socket, layout, assigns) do
+    json = surface_json(layout, socket.assigns.firmware)
+    Mob.Socket.assign(socket, [layout: layout, layout_json: json] ++ assigns)
+  end
+
+  defp surface_json(layout, firmware),
+    do: layout |> LayoutEdit.surface(cap?(firmware, :note_pressure)) |> Layouts.encode()
 
   defp toast(socket, text) do
     {seq, _} = socket.assigns.toast
@@ -249,7 +268,7 @@ defmodule FMutate.Editor do
     layout = Layouts.reset(socket.assigns.instance, socket.assigns.firmware)
 
     socket
-    |> Mob.Socket.assign(layout: layout, layout_json: Layouts.encode(layout), page: hd(layout["pages"])["id"], sheet: nil)
+    |> assign_layout(layout, page: hd(layout["pages"])["id"], sheet: nil)
     |> toast("Back to the classic layout")
   end
 
@@ -901,7 +920,7 @@ defmodule FMutate.Editor do
         [
           segmented(for({mode, name} <- Learn.modes(), do: {name, {:learn_mode, gesture, mode}, mode}), current),
           caption(
-            "Absolute: a knob or fader (encoders get #{round(FMutate.MIDI.Controls.clicks_per_sweep(%{}))} clicks per sweep). " <>
+            "Absolute: a knob or fader (encoders get #{FMutate.MIDI.Controls.sweep_clicks()} clicks per sweep). " <>
               "The others are endless encoders' codings: 64 ± n, two's complement (1 up, 127 down), sign bit (1 up, 65 down).",
             :faint
           )
@@ -998,7 +1017,7 @@ defmodule FMutate.Editor do
       case d.tab do
         :firmware -> firmware_inputs(kind, bound)
         :midi -> midi_inputs(assigns, kind, c, d)
-        :page -> page_targets(assigns.layout, bound)
+        :page -> page_targets(assigns, c, bound)
       end
 
     chips =
@@ -1127,7 +1146,8 @@ defmodule FMutate.Editor do
     ] ++ jump ++ [button(if(type == "note", do: "Bind note", else: "Bind CC"), :bind_midi, bg: c(:raised_hi), weight: :none)]
   end
 
-  defp page_targets(layout, bound) do
+  defp page_targets(assigns, c, bound) do
+    layout = assigns.layout
     targets = [{"Previous page", "prev"}, {"Next page", "next"}] ++ for(p <- layout["pages"], do: {p["name"], p["id"]})
     chips = for {name, ref} <- targets, to = %{"page" => ref}, do: chip("go to: " <> name, {:toggle_target, to}, on: to in bound)
     bend = %{"action" => "bend"}
@@ -1137,8 +1157,35 @@ defmodule FMutate.Editor do
       caption("Any button, pad or key can switch pages. Held notes keep sounding."),
       wrap([chip("bend keys", {:toggle_target, bend}, on: bend in bound)], 6),
       caption("Keyboard strips bend instead of glissando while this is held (or on, as a toggle).")
+    ] ++ note_level_target(assigns, c, bound)
+  end
+
+  # the note-level toggle: a button or key that lights while note level is on and switches it on each press
+  defp note_level_target(assigns, %{"type" => t}, bound) when t in ["button", "key"] do
+    to = %{"action" => "note_level"}
+
+    why =
+      cond do
+        not cap?(assigns.firmware, :note_pressure) ->
+          " Greyed out on the instrument: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."
+
+        not LayoutEdit.position_strips?(assigns.layout) ->
+          " Greyed out on the instrument until a keyboard strip plays by strike position."
+
+        true ->
+          ""
+      end
+
+    [
+      wrap([chip("note level on/off", {:toggle_target, to}, on: to in bound)], 6),
+      caption(
+        "Each press switches \"Note level follows the finger\" for every strike-position keyboard " <>
+          "strip of this layout, saved with it; lit while it is on." <> why
+      )
     ]
   end
+
+  defp note_level_target(_assigns, _c, _bound), do: []
 
   defp strum_settings(c) do
     keys = get_in(c, ["strum", "keys"]) || []
@@ -1204,12 +1251,13 @@ defmodule FMutate.Editor do
           do: button("±" <> name, {:kb_bend, r}, on: bend == r, disabled: not assigns.bend)
 
     vel = velocity(c)
-    vel_source = vel["source"] || "fixed"
+    vel_source = LayoutEdit.velocity_source(c)
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
     swell = vel["swell"] == true
-    pressure = vel["pressure"] == true
     pressure_ok = vel_source == "position" and cap?(assigns.firmware, :note_pressure)
+    # effective: on by default unless the strip swells (LayoutEdit.note_level?/2)
+    pressure = LayoutEdit.note_level?(c, pressure_ok)
 
     children = [
       title("Keyboard strip"),
@@ -1239,9 +1287,11 @@ defmodule FMutate.Editor do
       section("Velocity"),
       segmented([{"Fixed", {:kb_velocity, "fixed"}, "fixed"}, {"Strike position", {:kb_velocity, "position"}, "position"}], vel_source),
       caption(
-        "Fixed: the firmware’s own key presses, every note alike (as the FM-1). Strike position: the front edge of a key " <>
-          "plays loudest, the back softest; the strip sends MIDI notes, with its own octave (OCT− / OCT+ move it too). " <>
-          "While a firmware button is held, keys are firmware key presses again."
+        "Fixed: the firmware’s own key presses, every note alike (as the FM-1); works whatever the synth’s MIDI channel. " <>
+          "Strike position (the default): the front edge of a key plays loudest, the back softest; the strip plays the " <>
+          "synth over MIDI channel 1, with its own octave (OCT− / OCT+ move it too), so the synth’s MIDI channel must be " <>
+          "OMNI (its default) or 1, else the keys are silent. While a firmware button is held, keys are firmware key " <>
+          "presses again; a layer held open with HOME gets notes, not key presses (use Fixed for that)."
       ),
       section("Softest (back edge) · loudest is 127"),
       ~MOB"""
@@ -1249,10 +1299,10 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
-      toggle("Note level follows the finger", "Strike position only: while a key is held, its own note is full at the key's front edge and silent at its back edge, other notes untouched." <>
+      toggle("Note level follows the finger", "Strike position only: a held key's own note plays as struck; slide back from where you struck to fade it (silent at the key's back edge), forward again to bring it back. Other notes untouched. On unless Swell is on." <>
         if(cap?(assigns.firmware, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
-        :kb_pressure, pressure and pressure_ok, disabled: not pressure_ok),
-      toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together.",
+        :kb_pressure, pressure, disabled: not pressure_ok),
+      toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together. Turn Note level off to use it.",
         :kb_swell, swell and vel_source == "position" and not pressure, disabled: vel_source != "position" or pressure),
       toggle("Vertical", "A side keyboard: low notes at the bottom.", :kb_vertical, vertical),
       toggle("Pitch colours", "Key caps carry the 88-key colour; a vertical strip gets the colour rail to scroll it.", :kb_colors, colors),
@@ -1298,6 +1348,7 @@ defmodule FMutate.Editor do
   defp describe(%{"page" => "prev"}), do: "go to: previous"
   defp describe(%{"page" => p}), do: "go to: #{p}"
   defp describe(%{"action" => "bend"}), do: "bend keys"
+  defp describe(%{"action" => "note_level"}), do: "note level on/off"
   defp describe(other), do: inspect(other)
 
   defp encoder_name(e) when e in [:algorithm, "algorithm"], do: "ALGO"

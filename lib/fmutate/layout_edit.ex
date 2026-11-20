@@ -696,6 +696,84 @@ defmodule FMutate.LayoutEdit do
     Enum.find(beside ++ anywhere, &free?(layout, :dock, nil, &1))
   end
 
+  ## Velocity and note level (a keyboard strip's `velocity.source` and `velocity.pressure`)
+
+  @doc """
+  A keyboard strip's velocity source: `"position"` (MIDI notes, velocity from where the key is struck) unless the
+  layout says `"fixed"` (the firmware's own key presses). Absent is strike position, in bundled and saved layouts
+  alike; an edit writes it explicitly.
+  """
+  @spec velocity_source(map) :: String.t()
+  def velocity_source(c), do: get_in(c, ["keyboard", "velocity", "source"]) || "position"
+
+  @doc """
+  Whether a keyboard strip's held notes follow the finger (note level: MIDI polyphonic aftertouch), given
+  whether the firmware takes it (`caps.note_pressure`, `FMutate.Firmware`). Strike-position strips only.
+  An explicit `velocity.pressure` is the player's choice; absent, note level is on unless the strip swells
+  (`velocity.swell: true`): the two are exclusive, an explicit swell wins over the default and an explicit
+  pressure wins over swell.
+  """
+  @spec note_level?(map, boolean) :: boolean
+  def note_level?(%{"type" => "keyboard"} = c, true = _note_pressure) do
+    vel = get_in(c, ["keyboard", "velocity"]) || %{}
+    velocity_source(c) == "position" and Map.get(vel, "pressure", vel["swell"] != true) == true
+  end
+
+  def note_level?(_c, _note_pressure), do: false
+
+  @doc "Whether the layout has a strike-position keyboard strip (what note level applies to)."
+  def position_strips?(layout), do: Enum.any?(all_controls(layout), &position_strip?/1)
+
+  defp position_strip?(c), do: c["type"] == "keyboard" and velocity_source(c) == "position"
+
+  @doc "Note level is on for at least one strip of the layout: what a note-level toggle on the surface shows."
+  def note_level_on?(layout, note_pressure),
+    do: Enum.any?(all_controls(layout), &note_level?(&1, note_pressure))
+
+  @doc """
+  The surface's note-level toggle: every strike-position strip of the layout off when note level is on for
+  any of them, else every one on (explicit `velocity.pressure`, so the editor shows the same). Velocity stays
+  as it is. Nothing to switch without a strike-position strip, or on a firmware without per-note pressure.
+  """
+  @spec toggle_note_level(layout, boolean) :: result
+  def toggle_note_level(_layout, false = _note_pressure),
+    do: {:error, "This firmware doesn't take per-note pressure"}
+
+  def toggle_note_level(layout, true) do
+    if position_strips?(layout) do
+      on = not note_level_on?(layout, true)
+      set = &put_velocity(&1, "pressure", on)
+      {:ok, map_controls(layout, &if(position_strip?(&1), do: set.(&1), else: &1))}
+    else
+      {:error, "No keyboard strip plays by strike position"}
+    end
+  end
+
+  @doc """
+  The layout as the instrument surface plays it on a firmware with (or without) per-note pressure: every
+  keyboard strip has its effective `velocity.source` (`velocity_source/1`) and `velocity.pressure`
+  (`note_level?/2`), so the native views apply no defaults of their own. Not for saving: an absent setting has
+  to stay absent to keep its default.
+  """
+  @spec surface(layout, boolean) :: layout
+  def surface(layout, note_pressure) do
+    map_controls(layout, fn
+      %{"type" => "keyboard"} = c ->
+        c
+        |> put_velocity("source", velocity_source(c))
+        |> put_velocity("pressure", note_level?(c, note_pressure))
+
+      c ->
+        c
+    end)
+  end
+
+  defp put_velocity(c, key, value) do
+    kb = c["keyboard"] || %{}
+    vel = Map.put(kb["velocity"] || %{}, key, value)
+    Map.put(c, "keyboard", Map.put(kb, "velocity", vel))
+  end
+
   ## Checking a whole layout
 
   @doc """
@@ -746,12 +824,16 @@ defmodule FMutate.LayoutEdit do
     end
   end
 
-  defp update(layout, id, fun) do
-    upd = fn list -> Enum.map(list, fn c -> if c["id"] == id, do: fun.(c), else: c end) end
+  defp update(layout, id, fun),
+    do: map_controls(layout, fn c -> if c["id"] == id, do: fun.(c), else: c end)
 
+  # fun.(control) → control, for every control of the dock and of every page
+  defp map_controls(layout, fun) do
     layout
-    |> Map.put("dock", upd.(dock(layout)))
-    |> Map.update!("pages", fn pages -> Enum.map(pages, &Map.update(&1, "controls", [], upd)) end)
+    |> Map.put("dock", Enum.map(dock(layout), fun))
+    |> Map.update!("pages", fn pages ->
+      Enum.map(pages, &Map.update(&1, "controls", [], fn cs -> Enum.map(cs, fun) end))
+    end)
   end
 
   defp update_page(layout, page_id, fun),

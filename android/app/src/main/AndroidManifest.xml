@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.example.fmutate_app">
 
     <!-- Network -->
@@ -42,6 +43,10 @@
     <!-- Keep-alive while a firmware plays (the mob_background plugin, FMutate.Background): a mediaPlayback
          foreground service; the <service> declaration is below. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- mob_background (0.3) adds this for its microphone mode, which FMutate doesn't use (Google Play asks an app to
+         justify each foreground-service permission): naming it here keeps the build from adding it, and the
+         marker removes it from the merged manifest. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" tools:node="remove" />
 
     <!-- AlarmManager for scheduled local notifications -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
@@ -167,8 +172,9 @@
             android:exported="true"
             android:readPermission="${applicationId}.permission.SIBLING" />
 
-        <!-- mob_background's keep-alive service as mediaPlayback (the plugin declares it as dataSync, which
-             Android 15 limits to 6 h a day in the background); the build leaves this declaration as is. -->
+        <!-- mob_background's foreground service as mediaPlayback (MobBackground.start mode :media_playback; the plugin
+             declares it as dataSync|microphone, and Android 15 limits dataSync to 6 h a day in the background); the
+             build leaves this declaration as is. -->
         <service android:name="io.mob.background.BeamForegroundService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />

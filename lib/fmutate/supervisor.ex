@@ -11,10 +11,14 @@ defmodule FMutate.Supervisor do
   @impl true
   def init(opts) do
     instances = Keyword.get(opts, :instances, ["a"])
+    # (before any engine starts: the firmwares that ended the last launch, for the instances to count)
+    :ok = FMutate.CrashMarker.arm()
 
     children =
       [
         {Registry, keys: :unique, name: FMutate.Registry},
+        # owns the Android keep-alive session (FMutate.Background), so restarts of anything below don't end it
+        FMutate.Background.Session,
         # I/O (device-level): Android's MIDI/audio devices, and distribution for sibling apps (node named
         # after the first instance)
         FMutate.IO,
@@ -49,7 +53,16 @@ defmodule FMutate.Supervisor do
           {FMutate.Pairing, instance: hd(instances)}
         ]
 
+    # no pairing on iOS yet (FMutate.Pairing.available?/0)
+    children =
+      if FMutate.Pairing.available?(),
+        do: children,
+        else: Enum.reject(children, &pairing_child?/1)
+
     # an audio restart invalidates every slot, so the instances restart with it
     Supervisor.init(children, strategy: :rest_for_one)
   end
+
+  defp pairing_child?({module, _opts}), do: module in [MobPair.Pairings, FMutate.Pairing]
+  defp pairing_child?(_child), do: false
 end

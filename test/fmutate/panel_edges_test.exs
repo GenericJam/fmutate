@@ -16,9 +16,13 @@ defmodule FMutate.PanelEdgesTest.Rig do
   end
 
   # started, attached to the mixer, and past the firmware's boot screen (OberVave's stands 2.4 s): input from here
-  # on goes to the instrument
-  def start_engine(bin, file, prefix, flash, boot_ms) do
-    {:ok, pid} = Engine.start_link(owner: self(), tag: :edges, bin: bin, cart: file, prefix: prefix, flash: flash)
+  # on goes to the instrument. `opts`: more `FMutate.Engine` options (in-process: `bin: :inproc, backend: :native`)
+  def start_engine(bin, file, prefix, flash, boot_ms, opts \\ []) do
+    {:ok, pid} =
+      Engine.start_link(
+        [owner: self(), tag: :edges, bin: bin, cart: file, prefix: prefix, flash: flash] ++ opts
+      )
+
     assert_receive {:engine, ^pid, {:ready, _ms}}, 5_000
     {:ok, slot} = Audio.claim()
     :ok = Audio.attach(slot, Paths.ring(prefix))
@@ -38,27 +42,53 @@ defmodule FMutate.PanelEdgesTest.Rig do
     Stream.repeatedly(fn -> next_status(pid) end) |> Enum.find(fn _ -> System.monotonic_time(:millisecond) >= deadline end)
   end
 
-  # the loudest sample the engine writes into its ring over the next `ms` of wall time (the ring holds ~93 ms:
-  # read every 10 ms, each time what was written since)
-  def peak_during(prefix, ms) do
-    deadline = System.monotonic_time(:millisecond) + ms
-    {w0, _} = ring(prefix)
-    peak_from(prefix, w0, 0, deadline)
+  # the next status the engine sends, after any already waiting (one comes per 100 ms of wall time)
+  def fresh_status(pid) do
+    receive do
+      {:engine, ^pid, {:status, _}} -> fresh_status(pid)
+    after
+      0 -> next_status(pid)
+    end
   end
 
-  defp peak_from(prefix, from, peak, deadline) do
+  # wait until the firmware's own clock (STATUS `ms`) is at least `ms` past where it is now. A firmware runs only as
+  # fast as the mixer drains its ring, so on a loaded host its time falls behind the wall clock's.
+  def firmware_wait(pid, ms) do
+    target = fresh_status(pid).ms + ms
+    Stream.repeatedly(fn -> next_status(pid) end) |> Enum.find(&(&1.ms >= target))
+  end
+
+  # the loudest sample the engine writes into its ring over the next `ms` of wall time (the ring holds ~93 ms:
+  # read every 10 ms, each time what was written since)
+  def peak_during(prefix, ms), do: during(prefix, ms) |> Enum.reduce(0, &max(abs(&1), &2))
+
+  # the RMS of what the engine writes into its ring over the next `ms` of wall time (both channels)
+  def rms_during(prefix, ms) do
+    samples = during(prefix, ms)
+    :math.sqrt(Enum.reduce(samples, 0, &(&1 * &1 + &2)) / max(length(samples), 1))
+  end
+
+  defp during(prefix, ms) do
+    deadline = System.monotonic_time(:millisecond) + ms
+    {w0, _} = ring(prefix)
+    samples_from(prefix, w0, [], deadline)
+  end
+
+  defp samples_from(prefix, from, acc, deadline) do
     Process.sleep(10)
     {w, data} = ring(prefix)
     cap = div(byte_size(data), 4)
 
-    peak =
-      for i <- max(from, w - cap)..(w - 1)//1, reduce: peak do
+    acc =
+      for i <- max(from, w - cap)..(w - 1)//1, reduce: acc do
         acc ->
           <<l::little-signed-16, r::little-signed-16>> = binary_part(data, 4 * rem(i, cap), 4)
-          acc |> max(abs(l)) |> max(abs(r))
+          [l, r | acc]
       end
 
-    if System.monotonic_time(:millisecond) >= deadline, do: peak, else: peak_from(prefix, w, peak, deadline)
+    if System.monotonic_time(:millisecond) >= deadline,
+      do: acc,
+      else: samples_from(prefix, w, acc, deadline)
   end
 
   defp ring(prefix) do

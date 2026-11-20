@@ -112,7 +112,7 @@ defmodule FMutate.MIDI.LearnTest do
       assert knobs == Enum.zip(70..77, ~w(KNOB1 KNOB2 KNOB3 KNOB4 SELECT PRESETS ALGO MASTER))
       pads = for {{:note, 10, n}, _, :pad, t} <- a, do: {n, Automap.target_name(t)}
       assert pads == Enum.zip(36..49, ~w(FX SEL ENV LFO EDIT GLO HOME SAVE ARP SEQ PLAY REC OCT− OCT+))
-      assert Automap.open("MPK mini 3", Automap.empty()) == %{knobs: false, pads: false}
+      assert %{knobs: true, pads: false} = Automap.open("MPK mini 3", Automap.empty())
     end
 
     test "first touch: knobs in the order turned, pads (channel 10) in the order hit; not pedals, not keys" do
@@ -123,16 +123,121 @@ defmodule FMutate.MIDI.LearnTest do
       assert Automap.touch("Box", o, {:cc, 2, 20, 6}) == :same
       {:new, o} = Automap.touch("Box", o, {:cc, 2, 18, 5})
       {:new, o} = Automap.touch("Box", o, {:note, 10, 40, 90})
-      assert o == %{knobs: [{2, 20}, {2, 18}], pads: [{10, 40}]}
+      assert o == %{knobs: [{2, 20}, {2, 18}], pads: [{10, 40}], seen: [{2, 20}, {2, 18}], by: :auto}
 
       assert [{{:cc, 2, 20}, 1, :knob, %{"encoder" => "knob1"}}, {{:cc, 2, 18}, 2, :knob, %{"encoder" => "knob2"}},
               {{:note, 10, 40}, 1, :pad, %{"button" => "fx"}}] = Automap.assignments("Box", o)
     end
 
     test "first touch stops at 8 knobs and 14 pads" do
-      o = %{knobs: for(c <- 20..27, do: {1, c}), pads: for(n <- 36..49, do: {10, n})}
-      assert Automap.open("Box", o) == %{knobs: false, pads: false}
+      o = Automap.normalize(%{knobs: for(c <- 20..27, do: {1, c}), pads: for(n <- 36..49, do: {10, n})})
+      assert %{knobs: false, pads: false} = Automap.open("Box", o)
       assert Automap.touch("Box", o, {:cc, 1, 30, 1}) == :same
+    end
+
+    # Kevin's MPK mini mk2 (test/fixtures/mpk-mini-mk2-knobs.txt, a CoreMIDI capture): K1..K8 turned in order
+    defp kevin do
+      for line <- File.stream!("test/fixtures/mpk-mini-mk2-knobs.txt"),
+          [_, cc, v] <- [Regex.run(~r/ch1 cc (\d+) val (\d+)/, line)],
+          do: {String.to_integer(cc), [String.to_integer(v)]}
+    end
+
+    defp turn(name, order, cc_values) do
+      Enum.reduce(cc_values, order, fn {cc, values}, o ->
+        Enum.reduce(values, o, fn v, o ->
+          case Automap.touch(name, o, {:cc, 1, cc, v}) do
+            {:new, o} -> o
+            :same -> o
+          end
+        end)
+      end)
+    end
+
+    defp knob_targets(name, order) do
+      for {{:cc, 1, cc}, _, :knob, t} <- Automap.assignments(name, order),
+          do: {Automap.hardware_name(name, order, {1, cc}) || "CC #{cc}", Automap.target_name(t)}
+    end
+
+    test "MPK mini mk2, Kevin's knobs (factory PROG 2): K1..K8 → KNOB1..4, SELECT, PRESETS, ALGO, MASTER" do
+      name = "MPK Mini Mk II"
+      o = turn(name, Automap.empty(), kevin())
+
+      assert Automap.program(name, o).name == "PROG 2"
+      assert o.by == :auto
+
+      assert knob_targets(name, o) ==
+               Enum.zip(~w(K1 K2 K3 K4 K5 K6 K7 K8), ~w(KNOB1 KNOB2 KNOB3 KNOB4 SELECT PRESETS ALGO MASTER))
+
+      # only the knobs: the order is complete after K1 already (the program tells all eight)
+      o1 = turn(name, Automap.empty(), Enum.take(kevin(), 1))
+      assert knob_targets(name, o1) == knob_targets(name, o)
+    end
+
+    test "MPK mini mk2: its programs from the knobs seen; the joystick (CC 1) decides nothing" do
+      name = "MPK Mini Mk II"
+      # nothing seen: PROG 1, K1 = CC 1 (the joystick sends CC 1 too, and drives KNOB1 there)
+      assert Automap.program(name, Automap.empty()).name == "PROG 1"
+      assert Automap.touch(name, Automap.empty(), {:cc, 1, 1, 64}) == :same
+      # K1, K5 of PROG 3/4 (CC 20, 24): PROG 3; the joystick still CC 1, not a knob there
+      o = turn(name, Automap.empty(), [{20, [1]}, {24, [1]}])
+      assert Automap.program(name, o).name == "PROG 3"
+      assert MapSet.member?(Automap.open(name, o).pass, {1, 1})
+      refute Automap.candidate?({:cc, 1, 1, 5}, Automap.open(name, o))
+      # PROG 4's joystick (CC 30) tells it apart
+      assert Automap.program(name, turn(name, o, [{30, [3]}])).name == "PROG 4"
+      # off its programs (PROG 4 seen, then a stranger CC): no joystick CC of any program becomes a knob
+      t = turn(name, o, [{30, [3]}, {40, [1]}, {31, [2]}])
+      assert t.by == :touch and {1, 30} not in t.knobs and {1, 31} not in t.knobs
+      assert MapSet.member?(Automap.open(name, t).pass, {1, 31})
+    end
+
+    test "a known controller off its factory programs: the first CC that fits none switches it to first touch" do
+      name = "MPK Mini Mk II"
+      # K1, K2 of PROG 2, then a CC no program has: first touch, in the order the knobs came
+      o = turn(name, Automap.empty(), [{20, [1]}, {21, [1]}, {40, [1]}, {41, [1]}, {1, [9]}])
+      assert o.by == :touch
+      assert o.knobs == [{1, 20}, {1, 21}, {1, 40}, {1, 41}]
+      assert knob_targets(name, o) == [{"CC 20", "KNOB1"}, {"CC 21", "KNOB2"}, {"CC 40", "KNOB3"}, {"CC 41", "KNOB4"}]
+      # PROG 2's K5 (CC 16) is just the next knob now
+      assert {:new, %{knobs: [_, _, _, _, {1, 16}]}} = Automap.touch(name, o, {:cc, 1, 16, 3})
+
+      # the same for the mk3 (one program: CC 70–77)
+      assert %{by: :touch, knobs: [{1, 20}]} = turn("MPK mini 3", Automap.empty(), [{20, [5]}])
+      # Reset: the profile again
+      assert Automap.program(name, Automap.empty()).name == "PROG 1"
+    end
+
+    test "a lined-up order holds: skipped targets drive nothing, no knob joins by first touch" do
+      name = "MPK Mini Mk II"
+      o = Automap.line_up(Automap.empty(), [{1, 16}, nil, {1, 20}, nil, nil, nil, nil, nil])
+      assert o.knobs == [{1, 16}, nil, {1, 20}]
+      refute Automap.open(name, o).knobs
+      assert Automap.touch(name, o, {:cc, 1, 21, 9}) == :same
+      assert knob_targets(name, o) == [{"K5", "KNOB1"}, {"K1", "KNOB3"}]
+
+      # one knob placed on a slot: a swap with the knob that had it
+      o2 = Automap.place(name, o, {1, 20}, 1)
+      assert Enum.take(o2.knobs, 3) == [{1, 20}, nil, {1, 16}]
+      # from a profile's program: its slots are the starting point
+      p2 = turn(name, Automap.empty(), [{20, [1]}])
+      assert Automap.place(name, p2, {1, 16}, 1).knobs |> Enum.take(5) == [{1, 16}, {1, 21}, {1, 22}, {1, 23}, {1, 20}]
+    end
+
+    test "orders saved before programs and line-ups load as first touch" do
+      o = Automap.normalize(%{knobs: [{1, 20}], pads: [{10, 36}]})
+      assert o == %{knobs: [{1, 20}], pads: [{10, 36}], seen: [], by: :auto}
+      assert knob_targets("Box", o) == [{"CC 20", "KNOB1"}]
+    end
+
+    test "unmapped knobs: to the firmware by default; dropped when off, but not pedals or a joystick" do
+      bytes = [0xB0, 20, 9, 0xB0, 64, 127, 0xB0, 1, 50, 0xB0, 7, 100]
+      assert length(inputs(M.new(), bytes)) == 4
+      map = M.new(unmapped: :drop, auto_open: %{knobs: false, pads: false, pass: MapSet.new([{1, 1}])})
+      # a dropped CC is still told (the I/O table lists it), but plays nothing
+      assert inputs(map, bytes) ==
+               [{:dropped, {:cc, 1, 20, 9}}, {:midi, <<0xB0, 64, 127>>}, {:midi, <<0xB0, 1, 50>>}, {:dropped, {:cc, 1, 7, 100}}]
+      # automapped and learned CCs aren't unmapped
+      assert inputs(M.configure(map, auto: MapSet.new([{:cc, 1, 20}])), [0xB0, 20, 9]) == [{:auto, {:cc, 1, 20, 9}}]
     end
 
     test "the parser hands automapped and first-touch messages over, inside the channel filter" do

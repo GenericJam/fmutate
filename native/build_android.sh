@@ -11,19 +11,22 @@
 #
 #   native/build_android.sh               all ABIs
 #   ABIS="arm64-v8a" native/build_android.sh
+#   ABIS="" native/build_android.sh       only fetch the firmwares (native/build_host.sh, native/build_ios.sh)
 set -e
 cd "$(dirname "$0")"
 HERE=$(pwd)
 ROOT=$(cd .. && pwd)
 NDK=${ANDROID_NDK_HOME:-$HOME/Android/Sdk/ndk/27.2.12479018}
-TC=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+[ -d "$NDK" ] || NDK=$HOME/Library/Android/sdk/ndk/27.2.12479018    # (macOS's default SDK location)
+TC=$NDK/toolchains/llvm/prebuilt/$(uname -s | tr 'A-Z' 'a-z')-x86_64/bin   # (darwin-x86_64 on Apple silicon too)
 API=28                                          # minSdk (android/app/build.gradle)
-ABIS=${ABIS:-"arm64-v8a armeabi-v7a x86_64"}
+ABIS=${ABIS-"arm64-v8a armeabi-v7a x86_64"}
 CFLAGS="-O2 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"
 # 16 KB pages (Android 15+ devices and the current emulator images) need 16 KB-aligned LOAD segments
 LDFLAGS="-Wl,-z,max-page-size=16384"
 
-# name repo commit version
+# name repo commit version (FMutate.Firmware's @bundled names the same repo, commit and version: its synth page
+# reads the README at that commit)
 CARTRIDGES="
 obervave https://github.com/zvenson/obervave.git 792535d23ef4265475b1c2f9895ca30e857fe596 3.3.2
 shineon https://github.com/zvenson/shineon.git 2f37738d690a628e0ae1d23d07ea5ee3eeda2de7 3.0.1
@@ -32,7 +35,7 @@ shineon https://github.com/zvenson/shineon.git 2f37738d690a628e0ae1d23d07ea5ee3e
 fetch() {  # name repo commit
     src=build/fw/$1
     [ -d "$src/.git" ] || git clone -q "$2" "$src"
-    git -C "$src" fetch -q origin "$3" 2>/dev/null || true
+    git -C "$src" cat-file -e "$3^{commit}" 2>/dev/null || git -C "$src" fetch -q origin "$3" 2>/dev/null || true
     git -C "$src" checkout -q -f "$3"
     for p in patches/$1/*.patch; do
         [ -e "$p" ] && git -C "$src" apply "$HERE/$p"

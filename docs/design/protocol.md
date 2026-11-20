@@ -44,7 +44,8 @@ Events sent to subscribers:
                                   # send only changed frames; coalesce to ≤ 30 fps per subscriber
 {:leds, keys_bitmap, buttons_map} # keys: 27-bit integer; buttons: %{id => :off | :on | :blink}
 {:midi_out, bytes}
-{:status, status}                 # :booting | :running | :crashed | :safe_mode | {:slow, clock_pct}
+{:status, status}                 # :booting | :running | :crashed | :safe_mode | :stopped | {:slow, clock_pct}
+                                  # :stopped: the app is quitting (the notification's Quit); the node goes next
 {:layout_changed, layout_id}
 ```
 
@@ -214,8 +215,10 @@ byte for byte; the link adds `app=fmutate`.
 - **Not yet:** mDNS on Android through `NsdManager` (the Erlang responder shares 5353 with the system responder
   where the kernel allows it and the phone delivers multicast without a `MulticastLock`; otherwise only the QR
   code / link pairs from another phone, and a typed code needs the sibling to know FMutate's address); iOS
-  (the Elixir side is platform-neutral, but needs `NSLocalNetworkUsageDescription` and `NSBonjourServices`
-  `_fmutate._tcp` in Info.plist, and the same-phone loopback path doesn't exist between iOS apps); keeping
+  (off there: no Pair an app and no pairing processes, `FMutate.Pairing.available?/0`; the Elixir side is
+  platform-neutral, but needs `NSLocalNetworkUsageDescription` and `NSBonjourServices` `_fmutate._tcp` in
+  Info.plist, the certificate key and pairings kept out of the backed-up Documents directory, and the same-phone
+  loopback path doesn't exist between iOS apps); keeping
   pairings and the certificate key in Android Keystore (`mob_secure_store`) instead of a 0600 file; keeping
   the secret off the clipboard altogether (handing the link to the sibling with an explicit intent) or at
   least marking it sensitive (`ClipDescription.EXTRA_IS_SENSITIVE`, which `Mob.Clipboard` can't set yet).

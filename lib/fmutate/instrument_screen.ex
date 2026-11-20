@@ -52,6 +52,16 @@ defmodule FMutate.InstrumentScreen do
     edit = {self(), :edit}
     io = {self(), :io}
     pair = {self(), :pair}
+    # (no pairing on iOS yet: FMutate.Pairing.available?/0)
+    pair_button =
+      if FMutate.Pairing.available?(),
+        do: [
+          ~MOB"""
+          <Button text="Pair an app" on_tap={pair} background="#221F2B" text_color="#F3EFF8" />
+          """
+        ],
+        else: []
+
     editor_sheets = Editor.sheets(assigns)
 
     ~MOB"""
@@ -62,7 +72,7 @@ defmodule FMutate.InstrumentScreen do
           <Button text="Library" on_tap={library} background="#221F2B" text_color="#F3EFF8" />
           <Button text="Edit layout" on_tap={edit} background="#221F2B" text_color="#F3EFF8" />
           <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
-          <Button text="Pair an app" on_tap={pair} background="#221F2B" text_color="#F3EFF8" />
+          {pair_button}
         </Column>
       </Sheet>
       {editor_sheets}

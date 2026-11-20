@@ -19,7 +19,9 @@ defmodule FMutate.MIDI.Controls do
       targets (MASTER, MIDI CC / pitch bend out) take the value through rule 7: the hardware control is its
       own participant (`"midi:<control>:<gesture>"`), so after another control moved the target it is
       ignored until it reaches the current value (pickup). Encoders get clicks from the change in value: a
-      full sweep is #{200} pt of an on-screen drag, `200 / pt_per_click` clicks (33 at the default 6 pt).
+      full sweep is #{64} clicks, so it takes a 0..127 parameter end to end on OberVave and Shine On (they step
+      such a parameter by 2 per single click; clicks that reach the firmware together count 3×, as a fast
+      turn; docs/architecture.md "MIDI controllers" has the measurement).
     * **Value, relative** (a CC whose `mode` is relative): each step is one encoder click, or 1/100 of an
       absolute target's range (rule 7 lets relative moves through: they start from the current value).
   """
@@ -28,8 +30,7 @@ defmodule FMutate.MIDI.Controls do
   alias FMutate.MIDI.Learn
   alias FMutate.MIDI.Map, as: MidiMap
 
-  @pot_range_pt 200
-  @default_pt_per_click 6
+  @sweep_clicks 64
   @relative_step 0.01
 
   defstruct mappings: %{}, auto: %{}, targets: %{}, runtime: %{}, toggles: %{}, bindings: %Bindings{}
@@ -39,6 +40,7 @@ defmodule FMutate.MIDI.Controls do
           | {:toggle, String.t(), boolean}
           | {:value, String.t(), String.t(), float}
           | {:clicks, String.t(), integer}
+          | {:tag, String.t(), String.t()}
           | {:shine, String.t(), boolean}
           | {:octave, -1 | 1}
 
@@ -67,6 +69,7 @@ defmodule FMutate.MIDI.Controls do
           device: m["device"],
           mode: m["mode"] || "absolute",
           detect: false,
+          tag: tag_of(match_of(m)),
           bindings: bindings
         }
       end
@@ -109,13 +112,18 @@ defmodule FMutate.MIDI.Controls do
   end
 
   @doc """
-  A source's automap (`FMutate.MIDI.Automap.assignments/2`; `[]` when it is off): its knobs and pads drive
-  those FM-1 inputs. A knob that repeats its value as an endless encoder does is taken as one.
+  A source's automap (`FMutate.MIDI.Automap.assignments/2`; `[]` when it is off) and pins: its knobs and pads
+  drive those FM-1 inputs, a pinned knob (`{match, nil, :pin, target}`, target a MIDI CC out) its synth
+  parameter. A pin wins over automap for the same control. A knob that repeats its value as an endless
+  encoder does is taken as one. `tags`: the hardware controls' short names by match (`"K1"`; else
+  `tag_of/1`).
   """
-  def put_auto(%__MODULE__{} = c, source, assignments) do
+  def put_auto(%__MODULE__{} = c, source, assignments, tags \\ %{}) do
+    {pins, auto} = Enum.split_with(assignments, &(elem(&1, 2) == :pin))
+
     maps =
-      Map.new(assignments, fn {match, _n, kind, target} ->
-        on = if kind == :knob, do: "value", else: "press"
+      Map.new(auto ++ pins, fn {match, _n, kind, target} ->
+        on = if kind == :pad, do: "press", else: "value"
 
         {match,
          %{
@@ -126,7 +134,8 @@ defmodule FMutate.MIDI.Controls do
            match: match,
            device: source,
            mode: "absolute",
-           detect: kind == :knob,
+           detect: kind != :pad,
+           tag: Map.get_lazy(tags, match, fn -> tag_of(match) end),
            bindings: [%{"on" => on, "to" => target}]
          }}
       end)
@@ -139,18 +148,19 @@ defmodule FMutate.MIDI.Controls do
   def auto_keys(%__MODULE__{auto: auto}, source), do: auto |> Map.get(source, %{}) |> Map.keys() |> MapSet.new()
 
   @doc """
-  An automapped message from `source`: `{instance_inputs, surface, state}`. The surface is shown the layout's
-  controls bound to the same FM-1 input (lit while a pad holds a button, an encoder's knob turning, MASTER's
-  value; rule 7 makes the on-screen MASTER stale until it picks up).
+  An automapped (or pinned) message from `source`: `{instance_inputs, surface, state}`, or `:unmapped` when
+  nothing of it is (it takes the default path). The surface is shown the layout's controls bound to the same
+  FM-1 input (lit while a pad holds a button, an encoder's knob turning, MASTER's value; rule 7 makes the
+  on-screen MASTER stale until it picks up).
   """
   def handle_auto(%__MODULE__{} = c, source, ev) do
     case get_in(c.auto, [source, MidiMap.key(ev)]) do
       nil ->
-        {[], [], c}
+        :unmapped
 
       m ->
         {ins, sur, c} = apply_input(c, m, source, ev)
-        {ins, Enum.flat_map(sur, &shown(c, m, &1)), c}
+        {ins, sur |> Enum.flat_map(&shown(c, m, &1)) |> tagged(m.tag), c}
     end
   end
 
@@ -173,8 +183,20 @@ defmodule FMutate.MIDI.Controls do
   defp shown(_c, _m, {:value, _control, key, v}), do: [{:value, "midi", key, v}]
   defp shown(_c, _m, _other), do: []
 
+  @doc ~S|The short tag of a learned message's hardware control ("CC74", "CC74/2" off channel 1, "N36").|
+  def tag_of({:cc, 1, n}), do: "CC#{n}"
+  def tag_of({:cc, ch, n}), do: "CC#{n}/#{ch}"
+  def tag_of({:note, _ch, n}), do: "N#{n}"
+  def tag_of({:pitch_bend, _ch, _}), do: "BEND"
+  def tag_of({:channel_pressure, _ch, _}), do: "AT"
+  def tag_of({:poly_pressure, _ch, n}), do: "AT#{n}"
+  def tag_of({:program, _ch, n}), do: "PC#{n + 1}"
+
   @doc "The master pot's value as the instance has it (rule 7 starts from it; see `FMutate.Bindings.seed/3`)."
   def seed_master(%__MODULE__{} = c, value), do: %{c | bindings: Bindings.seed(c.bindings, "pot:master", value)}
+
+  @doc "The `FMutate.MIDI.Map.key/1` a learned input (`midi_in`) takes."
+  def match_of(m), do: {type(m["type"]), m["channel"], m["number"]}
 
   # FMutate.MIDI.Map's event types (no String.to_existing_atom/1: modules load lazily on a device)
   defp type("cc"), do: :cc
@@ -202,9 +224,22 @@ defmodule FMutate.MIDI.Controls do
     list = Map.get(c.mappings, MidiMap.key(ev), [])
 
     case Enum.find(list, &(&1.device == source)) || Enum.find(list, &is_nil(&1.device)) do
-      nil -> {[], [], c}
-      m -> apply_input(c, m, source, ev)
+      nil ->
+        {[], [], c}
+
+      m ->
+        {ins, sur, c} = apply_input(c, m, source, ev)
+        {ins, tagged(sur, m.tag), c}
     end
+  end
+
+  # the hardware control's tag goes before what a knob shows (its bubble names it: "K1 +3")
+  defp tagged(sur, tag) do
+    Enum.flat_map(sur, fn
+      {:clicks, control, _n} = s when is_binary(control) -> [{:tag, control, tag}, s]
+      {:value, control, _key, _v} = s when is_binary(control) and control != "midi" -> [{:tag, control, tag}, s]
+      s -> [s]
+    end)
   end
 
   @doc "A source went away: let go of what its learned and automapped controls hold."
@@ -384,7 +419,7 @@ defmodule FMutate.MIDI.Controls do
       {ins, sur, c, accs}
     else
       sign = if to["invert"], do: -1, else: 1
-      acc = Map.get(accs, i, 0.0) + (v - last) * clicks_per_sweep(to) * sign
+      acc = Map.get(accs, i, 0.0) + (v - last) * @sweep_clicks * sign
       n = trunc(acc)
       accs = Map.put(accs, i, acc - n)
 
@@ -430,7 +465,7 @@ defmodule FMutate.MIDI.Controls do
   end
 
   @doc "Clicks an encoder binding gets for a whole sweep of an absolute hardware control."
-  def clicks_per_sweep(to), do: @pot_range_pt / (to["pt_per_click"] || @default_pt_per_click)
+  def sweep_clicks, do: @sweep_clicks
 
   @doc "The surface's key of an absolute target (`Layout.kt` `absoluteKey`), or nil."
   def target_key(%{"pot" => _}), do: "pot:master"
@@ -461,6 +496,7 @@ defmodule FMutate.MIDI.Controls do
       t <key> <0|1>                  its toggle is now off / on
       v <control> <target> <value>   an absolute target (as Layout.kt keys it) moved to value (0..1)
       e <control> <clicks>           encoder clicks sent for a knob / slider / XY pad
+      g <control> <tag>              the hardware control that drives it ("K1", "CC20"), before its v or e line
       h <key> <0|1>                  automap: a pad holds the FM-1 button this control is bound to (lit only)
       o <-1|1>                       automap: a pad pressed OCT− / OCT+
 
@@ -469,12 +505,25 @@ defmodule FMutate.MIDI.Controls do
   strip's octave on OCT presses. It sends nothing to the firmware for them.
   """
   @spec surface_text([surface]) :: iodata
-  def surface_text(list), do: Enum.map_intersperse(list, "\n", &line/1)
+  def surface_text(list) do
+    # a control's tag once per batch, unless another hardware control drove it in between
+    {list, _} =
+      Enum.flat_map_reduce(list, %{}, fn
+        {:tag, control, tag} = s, tags ->
+          if Map.get(tags, control) == tag, do: {[], tags}, else: {[s], Map.put(tags, control, tag)}
+
+        s, tags ->
+          {[s], tags}
+      end)
+
+    Enum.map_intersperse(list, "\n", &line/1)
+  end
 
   defp line({:press, key, down}), do: ["p\t", key, "\t", bit(down)]
   defp line({:toggle, key, on}), do: ["t\t", key, "\t", bit(on)]
   defp line({:value, control, key, v}), do: ["v\t", control, "\t", key, "\t", :erlang.float_to_binary(v * 1.0, decimals: 4)]
   defp line({:clicks, control, n}), do: ["e\t", control, "\t", Integer.to_string(n)]
+  defp line({:tag, control, tag}), do: ["g\t", control, "\t", tag]
   defp line({:shine, key, down}), do: ["h\t", key, "\t", bit(down)]
   defp line({:octave, dir}), do: ["o\t", Integer.to_string(dir)]
 

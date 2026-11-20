@@ -1,3 +1,5 @@
+// Parts adapted from fm1-emu (crates/fm1-plugin/src/engine.rs, crates/fm1-live/src/main.rs),
+// Copyright (c) 2026 Joakim Eriksson, MIT (LICENSES/fm1-emu-MIT.txt).
 //! The emulated FM-1 running a package: booted as fm1-live boots one (`fm1-live --fwsc`), stepped as it
 //! steps it, the engine wire's panel numbers translated to fm1-emu's matrix ids, and its flash saved as the
 //! sectors the firmware changed.
