@@ -35,13 +35,10 @@ defmodule FMutate.AftertouchTest do
           )
 
         :inproc ->
+          # (when the test process ends, the engine goes with it and the NIF closes its pipe; the next test's
+          # start waits for the cartridge if its thread is still ending)
           :ok = EngineNif.load_host(@nif)
-          pid = Rig.start_engine(:inproc, "obervave", prefix, flash, 2_500, backend: :native)
-
-          # a clean stop before Rig's kill (on_exit runs last-registered first): an abandoned thread would keep
-          # the cartridge busy for the next test
-          on_exit(fn -> stop(pid) end)
-          pid
+          Rig.start_engine(:inproc, "obervave", prefix, flash, 2_500, backend: :native)
       end
 
     {:ok, pid: pid, prefix: prefix}
@@ -50,17 +47,6 @@ defmodule FMutate.AftertouchTest do
   defp program(pid, n) do
     Engine.commands(pid, [{:midi, 0xC0, n, 0}])
     Rig.firmware_wait(pid, 300)
-  end
-
-  defp stop(pid) do
-    ref = Process.monitor(pid)
-    Engine.stop(pid)
-
-    receive do
-      {:DOWN, ^ref, _, _, _} -> :ok
-    after
-      3_000 -> :ok
-    end
   end
 
   # the level `ms` long, once the firmware has played on for `wait` ms

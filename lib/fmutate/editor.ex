@@ -1287,9 +1287,11 @@ defmodule FMutate.Editor do
       section("Velocity"),
       segmented([{"Fixed", {:kb_velocity, "fixed"}, "fixed"}, {"Strike position", {:kb_velocity, "position"}, "position"}], vel_source),
       caption(
-        "Fixed: the firmware’s own key presses, every note alike (as the FM-1). Strike position (the default): the front " <>
-          "edge of a key plays loudest, the back softest; the strip sends MIDI notes, with its own octave (OCT− / OCT+ move it too). " <>
-          "While a firmware button is held, keys are firmware key presses again."
+        "Fixed: the firmware’s own key presses, every note alike (as the FM-1); works whatever the synth’s MIDI channel. " <>
+          "Strike position (the default): the front edge of a key plays loudest, the back softest; the strip plays the " <>
+          "synth over MIDI channel 1, with its own octave (OCT− / OCT+ move it too), so the synth’s MIDI channel must be " <>
+          "OMNI (its default) or 1, else the keys are silent. While a firmware button is held, keys are firmware key " <>
+          "presses again; a layer held open with HOME gets notes, not key presses (use Fixed for that)."
       ),
       section("Softest (back edge) · loudest is 127"),
       ~MOB"""

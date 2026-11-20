@@ -166,9 +166,17 @@ flowchart LR
   strike position) or `fixed` (firmware key presses, as the hardware; only when the layout says so). `position`:
   MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
   velocity from where the key is struck (front edge = `max`, back = `min`, linear). Such a strip keeps its own
-  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware; the
+  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware (not
+  while a firmware function button is held: there OCT is the layer's, e.g. OberVave's SEQ + OCT pages the
+  sequencer and EDIT + OCT is undo/redo, and the firmware's octave stays); the
   firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
-  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
+  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. **Limits of strike
+  position** (said in the strip's editor sheet too): the notes go to the firmware's MIDI in on channel 1, so the
+  firmware's own MIDI channel setting (OberVave's and Shine On's GLOBAL page; OMNI by default) must be OMNI or 1:
+  any other channel drops them and the strip is silent (on 1 they play track A, not the selected track). FMutate
+  doesn't read that setting (it lives in the firmware's flash, which FMutate doesn't parse). A firmware layer held
+  open with HOME (OberVave: SEQ, EDIT, GLO, SAVE) isn't seen by the surface, so the strip sends notes there, not
+  the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. Measured on the Moto G
   Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one

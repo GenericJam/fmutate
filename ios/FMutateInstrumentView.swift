@@ -951,9 +951,14 @@ final class FMInstrumentSurface: UIView {
         }
     }
 
-    /// A velocity strip's own octave follows OCT presses (the firmware's OCT doesn't reach its MIDI notes).
+    /// A firmware button other than OCT is held: keys are a layer of the firmware's (SAVE + key, …).
+    private var layerHeld: Bool { fnButtons.contains { state.pressed[$0] == true } }
+
+    /// A velocity strip's own octave follows OCT presses (the firmware's OCT doesn't reach its MIDI notes), except
+    /// under a held firmware button: there OCT is the layer's (OberVave: SEQ + OCT pages the sequencer, EDIT + OCT is
+    /// undo/redo) and the firmware's octave stays.
     private func octaveFollows(_ id: String, _ down: Bool) {
-        if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") {
+        if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") && !layerHeld {
             state.noteOct = fmClamp(state.noteOct + (id == "oct_down" ? -1 : 1), -2, 2)
             keysView.setNeedsDisplay()
         }
@@ -1008,7 +1013,6 @@ final class FMInstrumentSurface: UIView {
     /// A keyboard strip's key down: a velocity strip plays a MIDI note (FM-1 key 0 = F3 = MIDI 53, plus its own
     /// octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
     private func keyOn(_ c: FMControl, _ g: FMGrab, _ k: Int) {
-        let layerHeld = fnButtons.contains { state.pressed[$0] == true }
         if c.strikeVelocity && !layerHeld {
             g.note = fmClamp(53 + k + 12 * state.noteOct, 0, 127)
             g.at = -1

@@ -382,6 +382,7 @@ private fun InstrumentSurface(
     val fnButtons = remember(controls) {
         controls.filter { c -> c.type != "motion" && c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
     }
+    fun layerHeld() = fnButtons.any { state.pressed[it] == true }
     // the note-level toggle (binding target NOTE_LEVEL): lit while any strike-position strip has note level on (as
     // FMutate.LayoutEdit.surface/2 resolved it), greyed out on a firmware without per-note pressure or a layout
     // without such a strip; a press asks FMutate.Editor to switch it, which saves it and sends the new layout
@@ -389,9 +390,13 @@ private fun InstrumentSurface(
     val noteLevelOn = remember(layout) { allControls.values.any { it.type == "keyboard" && it.strikeVelocity && it.velPressure } }
     val noteLevelUsable = notePressureOk && hasVelocityStrip
 
-    /** OCT presses move velocity strips' own octave too (they play MIDI notes, which skip the firmware's octave). */
+    /**
+     * OCT presses move velocity strips' own octave too (they play MIDI notes, which skip the firmware's octave),
+     * except under a held firmware button: there OCT is the layer's (OberVave: SEQ + OCT pages the sequencer, EDIT +
+     * OCT is undo/redo) and the firmware's octave stays.
+     */
     fun octaveFollows(t: Target.Button, down: Boolean) {
-        if (down && hasVelocityStrip && (t.id == "oct_down" || t.id == "oct_up")) {
+        if (down && hasVelocityStrip && (t.id == "oct_down" || t.id == "oct_up") && !layerHeld()) {
             state.noteOct = (state.noteOct + if (t.id == "oct_down") -1 else 1).coerceIn(-2, 2)
         }
     }
@@ -449,8 +454,7 @@ private fun InstrumentSurface(
      * octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
      */
     fun keyOn(c: Control, g: Grab, k: Int) {
-        val layerHeld = fnButtons.any { state.pressed[it] == true }
-        if (c.strikeVelocity && !layerHeld) {
+        if (c.strikeVelocity && !layerHeld()) {
             g.note = (53 + k + 12 * state.noteOct).coerceIn(0, 127)
             g.at = -1
             input(mapOf("t" to "midi", "bytes" to listOf(0x90, g.note, g.vel.coerceIn(1, 127))))
