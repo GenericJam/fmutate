@@ -36,20 +36,22 @@ defmodule FMutate.MIDI.ControlsTest do
 
   defp clicks(inputs, enc), do: inputs |> Enum.map(fn {:encoder, ^enc, n} -> n end) |> Enum.sum()
 
-  test "an absolute knob turns an endless encoder: a whole sweep is 200 pt of drag, 33 clicks" do
+  test "an absolute knob turns an endless encoder: a whole sweep is 64 clicks (a 0..127 parameter end to end)" do
     c = controls([{"knob1", %{"on" => "value", "type" => "cc", "channel" => 1, "number" => 74}}])
     {ins, sur, _} = run(c, for(v <- 0..127, do: cc(74, v)))
-    assert clicks(ins, :knob1) == 33
-    assert {:clicks, "knob1", 1} in sur
+    assert clicks(ins, :knob1) == 64
+    # single clicks as the knob turns (the firmware counts clicks that come together 3×)
+    assert Enum.all?(ins, &match?({:encoder, :knob1, 1}, &1))
+    assert {:clicks, "knob1", 1} in sur and {:tag, "knob1", "CC74"} in sur
     {back, _, _} = run(c, for(v <- 127..0//-1, do: cc(74, v)))
-    assert clicks(back, :knob1) == -33
+    assert clicks(back, :knob1) == -64
   end
 
   test "relative codings: each step a click" do
     c = controls([{"select", %{"on" => "value", "type" => "cc", "channel" => 1, "number" => 10, "mode" => "relative_twos"}}])
     {ins, sur, _} = run(c, [cc(10, 3), cc(10, 127), cc(10, 0)])
     assert ins == [{:encoder, :select, 3}, {:encoder, :select, -1}]
-    assert sur == [{:clicks, "select", 3}, {:clicks, "select", -1}]
+    assert sur == [{:tag, "select", "CC10"}, {:clicks, "select", 3}, {:tag, "select", "CC10"}, {:clicks, "select", -1}]
   end
 
   test "MASTER: the hardware picks up the value, and the on-screen knob picks up from the hardware (rule 7)" do
@@ -59,7 +61,7 @@ defmodule FMutate.MIDI.ControlsTest do
     {ins, sur, c} = run(c, [cc(7, 40), cc(7, 64)])
     assert [{:pot, :master, v}] = ins
     assert_in_delta v, 64 / 127, 0.001
-    assert [{:value, "master", "pot:master", _}] = sur
+    assert [{:tag, "master", "CC7"}, {:value, "master", "pot:master", _}] = sur
 
     # the finger takes it from there (relative, from the current value) up to 0.8
     c = Enum.reduce(Enum.map(51..80, &(&1 / 100)), c, fn v, c -> elem(Controls.touch(c, %{"t" => "pot", "v" => v, "c" => "master"}), 1) end)
@@ -124,10 +126,10 @@ defmodule FMutate.MIDI.ControlsTest do
   test "automap: MPK mini mk3 knobs and pads drive the panel; the on-screen controls show it" do
     c = controls([])
     {ins, sur, c} = auto(c, [cc(70, 0), cc(70, 127), {:note, 10, 44, 100}, {:note, 10, 44, 0}, {:note, 10, 49, 80}])
-    assert clicks(Enum.filter(ins, &match?({:encoder, _, _}, &1)), :knob1) == 33
+    assert clicks(Enum.filter(ins, &match?({:encoder, _, _}, &1)), :knob1) == 64
     assert {:button, :arp, :down} in ins and {:button, :arp, :up} in ins
     assert {:button, :oct_up, :down} in ins
-    assert {:clicks, "knob1", 33} in sur
+    assert {:clicks, "knob1", 64} in sur and {:tag, "knob1", "CC70"} in sur
     assert {:shine, "arp", true} in sur and {:shine, "arp", false} in sur
     assert {:octave, 1} in sur
     # pad 15 isn't automapped: it keeps playing
@@ -151,10 +153,29 @@ defmodule FMutate.MIDI.ControlsTest do
     assert Enum.take(ins, -2) == [{:encoder, :knob2, 1}, {:encoder, :knob2, -1}]
   end
 
+  test "a pinned knob sends its synth parameter's CC on its own channel, and wins over automap" do
+    c = controls([])
+    cutoff = %{"midi" => %{"type" => "cc", "channel" => 2, "number" => 74}}
+    # the mk3's knob 1 (CC 70) on channel 2 automapped to KNOB1, and pinned to CC 74
+    c = Controls.put_auto(c, "X", [{{:cc, 2, 70}, 1, :knob, %{"encoder" => "knob1"}}, {{:cc, 2, 70}, nil, :pin, cutoff}], %{{:cc, 2, 70} => "K1"})
+    {ins, sur, c} = Controls.handle_auto(c, "X", cc(70, 0, 2))
+    assert ins == [{:midi, <<0xB1, 74, 0>>}]
+    assert sur == [{:value, "midi", "cc:2:74", 0.0}]
+    {ins, _, _} = Controls.handle_auto(c, "X", cc(70, 127, 2))
+    assert ins == [{:midi, <<0xB1, 74, 127>>}]
+    assert Controls.handle_auto(c, "X", cc(71, 5, 2)) == :unmapped
+  end
+
   test "what the surface is told, as text" do
     text =
-      Controls.surface_text([{:press, "pads#3", true}, {:value, "master", "pot:master", 0.5}, {:clicks, "knob1", -2}, {:octave, -1}])
+      Controls.surface_text([
+        {:press, "pads#3", true},
+        {:value, "master", "pot:master", 0.5},
+        {:tag, "knob1", "K1"},
+        {:clicks, "knob1", -2},
+        {:octave, -1}
+      ])
 
-    assert IO.iodata_to_binary(text) == "p\tpads#3\t1\nv\tmaster\tpot:master\t0.5000\ne\tknob1\t-2\no\t-1"
+    assert IO.iodata_to_binary(text) == "p\tpads#3\t1\nv\tmaster\tpot:master\t0.5000\ng\tknob1\tK1\ne\tknob1\t-2\no\t-1"
   end
 end

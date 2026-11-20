@@ -50,7 +50,7 @@ defmodule FMutate.MIDI do
   require Logger
 
   alias FMutate.{Firmware, Instance, LayoutEdit, Layouts, Paths}
-  alias FMutate.MIDI.{Automap, Controls, Learn}
+  alias FMutate.MIDI.{Automap, Controls, Learn, Mapping, Params}
   alias FMutate.MIDI.Map, as: MidiMap
 
   @latency_samples 256
@@ -75,19 +75,71 @@ defmodule FMutate.MIDI do
 
   @doc """
   `%{clock, bpm, bend, sources, learned, automap}`: `sources` maps a source name to its settings
-  (`channel`, `notes`, `automap`, `auto_order`; only the ones the player changed: others are
-  `%{channel: :all, notes: :keys}`); `learned` lists the current layout's learned controls as
-  `%{control, sub, on, device, message, name}` (`device` nil: any device); `automap` maps every source
-  that is plugged in (and the virtual port) to `%{on, profile, assigned, open}` (`assigned`: `[{"CC 70 ch 1",
-  "KNOB1"}]`, `open`: whether first touch still takes knobs / pads).
+  (`channel`, `notes`, `automap`, `auto_order`, `unmapped`, `pins`; only the ones the player changed: others
+  are `%{channel: :all, notes: :keys}`); `learned` lists the current layout's learned controls as
+  `%{control, sub, on, device, message, name, match}` (`device` nil: any device); `automap` maps every source
+  that is plugged in (and the virtual port) to `%{on, profile, program, by, open, unmapped, rows, free}`:
+  `rows` what each of its hardware controls drives (`FMutate.MIDI.Mapping`), `free` the panel targets no
+  knob drives, `program` the known controller's program its CCs fit, `by` where its knobs come from
+  (`FMutate.MIDI.Automap`), `open` whether first touch still takes knobs / pads.
   """
   def settings(id), do: GenServer.call(via(id), :settings)
 
   @doc "Automap for a source (by name) on or off."
   def set_automap(id, name, on) when is_boolean(on), do: configure_source(id, name, automap: on)
 
-  @doc "Forget a source's first-touch order: its knobs and pads are learned again from the next touch."
+  @doc """
+  Forget a source's knob and pad order (first touch, its program, a line-up): they are taken again from the
+  next touch. Its pins stay.
+  """
   def reset_automap(id, name), do: configure_source(id, name, auto_order: Automap.empty())
+
+  @doc """
+  What a source's CCs that drive nothing in FMutate do: `:synth` (to the firmware's MIDI in, where its own
+  MIDI map may change the sound) or `:drop`.
+  """
+  def set_unmapped(id, name, mode) when mode in [:synth, :drop], do: configure_source(id, name, unmapped: mode)
+
+  @doc """
+  Pin a source's knob (`{channel, cc}`) to a synth parameter of the running firmware by its label
+  (`FMutate.MIDI.Params.label/1`, e.g. `"PERFORM · CUTOFF"`), or unpin it (nil). Kept per device name and
+  firmware: the knob then sends that parameter's CC to the firmware's MIDI in (on the knob's channel), and
+  drives no panel knob. `{:error, :unknown}` when the firmware has no such parameter.
+  """
+  def pin(id, name, {ch, cc} = knob, label) when ch in 1..16 and cc in 0..127 and (is_binary(label) or label == nil),
+    do: GenServer.call(via(id), {:pin, name, knob, label})
+
+  @doc """
+  Put a source's knob (`{channel, cc}`) on panel slot `slot` (1 KNOB1 … 8 MASTER), as one step of a line-up:
+  the knob it had moves to where this one was. Unpins the knob on the running firmware.
+  """
+  def place(id, name, {ch, cc} = knob, slot) when ch in 1..16 and cc in 0..127 and slot in 1..8,
+    do: GenServer.call(via(id), {:place, name, knob, slot})
+
+  @doc """
+  Start lining up a source's knobs (the I/O screen's guided flow): its messages drive nothing while it runs;
+  each new knob CC takes the next panel target (KNOB1, KNOB2, … MASTER). The caller gets `{:midi, id,
+  {:line_up, %{source, step, slots}}}` at the start and after each step, and `{:midi, id, {:line_up, nil}}`
+  when it ends. `line_up_skip/1` leaves the current target out, `line_up_done/1` keeps the result as the
+  source's order, `line_up_cancel/1` forgets it.
+  """
+  def line_up(id, name) when is_binary(name), do: GenServer.call(via(id), {:line_up, self(), name})
+
+  @doc "Skip the target the line-up is at."
+  def line_up_skip(id), do: GenServer.call(via(id), :line_up_skip)
+
+  @doc "End the line-up, keeping its order (the targets not reached or skipped drive nothing)."
+  def line_up_done(id), do: GenServer.call(via(id), :line_up_done)
+
+  @doc "End the line-up, keeping the order the source had."
+  def line_up_cancel(id), do: GenServer.call(via(id), :line_up_cancel)
+
+  @doc """
+  Hear which hardware control moved: `{:midi, id, {:touched, source, key}}` (`FMutate.MIDI.Map.key/1`, at most
+  every #{150} ms for the same control) and `{:midi, id, {:changed, source}}` when what its table shows
+  changed (a new knob, a program).
+  """
+  def watch(id), do: GenServer.call(via(id), {:watch, self()})
 
   @doc "Clock mode: `:follow`, `:send` or `:off`."
   def set_clock(id, mode) when mode in [:follow, :send, :off],
@@ -96,7 +148,10 @@ defmodule FMutate.MIDI do
   @doc "Tempo of the clock FMutate sends (`:send`), in BPM."
   def set_bpm(id, bpm) when bpm in @bpm_range, do: GenServer.call(via(id), {:bpm, bpm})
 
-  @doc "A source's settings: `channel: :all | 1..16`, `notes: :keys | :firmware`."
+  @doc """
+  A source's settings: `channel: :all | 1..16`, `notes: :keys | :firmware`, `automap: boolean`,
+  `unmapped: :synth | :drop`, `auto_order` (`FMutate.MIDI.Automap`).
+  """
   def configure_source(id, name, opts) when is_binary(name),
     do: GenServer.call(via(id), {:source, name, opts})
 
@@ -180,7 +235,12 @@ defmodule FMutate.MIDI do
       layout: layout,
       controls: Controls.new() |> Controls.load(layout) |> Controls.seed_master(view.master),
       learn: nil,
+      lineup: nil,
       subscribers: %{},
+      watchers: %{},
+      touched: %{},
+      seen: %{},
+      params: Params.of(view.firmware),
       surface: Keyword.get_lazy(opts, :surface, &native_surface/0),
       shown: []
     }
@@ -241,6 +301,58 @@ defmodule FMutate.MIDI do
     {:reply, :ok, %{state | subscribers: Map.put(state.subscribers, pid, true)}}
   end
 
+  def handle_call({:watch, pid}, _from, state) do
+    Process.monitor(pid)
+    {:reply, :ok, %{state | watchers: Map.put(state.watchers, pid, true)}}
+  end
+
+  def handle_call({:pin, name, knob, label}, _from, state) do
+    pins = source_pref(state, name, :pins, %{})
+    mine = Map.get(pins, state.firmware, %{})
+
+    cond do
+      label == nil ->
+        {:reply, :ok, configured(state, name, :pins, Map.put(pins, state.firmware, Map.delete(mine, knob)))}
+
+      Params.by_label(state.params, label) ->
+        {:reply, :ok, configured(state, name, :pins, Map.put(pins, state.firmware, Map.put(mine, knob, label)))}
+
+      true ->
+        {:reply, {:error, :unknown}, state}
+    end
+  end
+
+  def handle_call({:place, name, knob, slot}, _from, state) do
+    order = Automap.place(name, auto_order(state, name), knob, slot)
+    pins = source_pref(state, name, :pins, %{})
+    pins = Map.update(pins, state.firmware, %{}, &Map.delete(&1, knob))
+    state = put_pref(state, name, :pins, pins)
+    {:reply, :ok, configured(state, name, :auto_order, order)}
+  end
+
+  def handle_call({:line_up, pid, name}, _from, state) do
+    state = line_up_end(state)
+    lu = %{pid: pid, ref: Process.monitor(pid), source: name, step: 0, knobs: List.duplicate(nil, length(Automap.knob_targets()))}
+    state = reconfigure(%{state | lineup: lu})
+    {:reply, :ok, line_up_tell(state, name)}
+  end
+
+  def handle_call(:line_up_skip, _from, %{lineup: %{} = lu} = state) do
+    step = min(lu.step + 1, length(lu.knobs))
+    {:reply, :ok, line_up_tell(%{state | lineup: %{lu | step: step}}, lu.source)}
+  end
+
+  def handle_call(:line_up_done, _from, %{lineup: %{} = lu} = state) do
+    order = Automap.line_up(auto_order(state, lu.source), lu.knobs)
+    state = put_pref(state, lu.source, :auto_order, order)
+    state = line_up_end(state)
+    save(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:line_up_cancel, _from, state), do: {:reply, :ok, line_up_end(state)}
+  def handle_call(msg, _from, state) when msg in [:line_up_skip, :line_up_done], do: {:reply, :ok, state}
+
   # Layouts.save/3 tells this process (a cast, so it is handled before any later call) to take the new layout
   def handle_call({:clear, what}, _from, state) do
     edited =
@@ -300,7 +412,8 @@ defmodule FMutate.MIDI do
     state = ensure_source(state, source)
     {events, parser} = MidiMap.feed(state.parsers[source], bytes)
     state = %{state | parsers: Map.put(state.parsers, source, parser)}
-    state = Enum.reduce(events, state, &event(&2, source, &1))
+    name = source_name(state, source)
+    state = Enum.reduce(events, state, &(&2 |> event(source, &1) |> moved(name, moved_key(&1))))
     sample = {(recv_ns - sent_ns) / 1.0e6, (now - recv_ns) / 1.0e6}
     {:noreply, %{state | samples: Enum.take([sample | state.samples], @latency_samples)}}
   end
@@ -331,8 +444,9 @@ defmodule FMutate.MIDI do
   def handle_info({:learn_window, _stale}, state), do: {:noreply, state}
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, state) do
-    state = %{state | subscribers: Map.delete(state.subscribers, pid)}
+    state = %{state | subscribers: Map.delete(state.subscribers, pid), watchers: Map.delete(state.watchers, pid)}
     state = if match?(%{pid: ^pid}, state.learn), do: disarm(state), else: state
+    state = if match?(%{pid: ^pid}, state.lineup), do: line_up_end(state), else: state
     {:noreply, state}
   end
 
@@ -377,7 +491,7 @@ defmodule FMutate.MIDI do
     state =
       if view.firmware == state.firmware,
         do: state,
-        else: use_layout(%{state | firmware: view.firmware}, Layouts.current(id, view.firmware))
+        else: use_layout(%{state | firmware: view.firmware, params: Params.of(view.firmware)}, Layouts.current(id, view.firmware))
 
     if bend == state.bend,
       do: {:noreply, state},
@@ -419,7 +533,6 @@ defmodule FMutate.MIDI do
 
   defp options(state, name) do
     pref = Map.get(state.prefs, name, %{})
-    auto = automap?(state, name)
 
     [
       channel: pref[:channel] || :all,
@@ -427,10 +540,19 @@ defmodule FMutate.MIDI do
       bend: state.bend,
       clock: state.clock,
       learned: Controls.keys(state.controls, name),
-      learning: state.learn != nil,
+      learning: state.learn != nil or match?(%{source: ^name}, state.lineup),
       auto: Controls.auto_keys(state.controls, name),
-      auto_open: if(auto, do: Automap.open(name, auto_order(state, name)), else: %{knobs: false, pads: false})
+      auto_open: auto_open(state, name),
+      unmapped: pref[:unmapped] || :synth
     ]
+  end
+
+  # what first touch takes from a source, and the CCs that always go to the firmware (a joystick; with automap
+  # off every joystick CC of its profile, the mk2's CC 1 included, which its PROG 1 shares with K1)
+  defp auto_open(state, name) do
+    if automap?(state, name),
+      do: Automap.open(name, auto_order(state, name)),
+      else: %{knobs: false, pads: false, pass: Automap.joystick(name)}
   end
 
   defp reconfigure(state) do
@@ -446,45 +568,192 @@ defmodule FMutate.MIDI do
 
   ## Automap (FMutate.MIDI.Automap): on by default for devices, off for the virtual port (apps)
 
-  defp automap?(state, name), do: Map.get(Map.get(state.prefs, name, %{}), :automap, name != port_name(state.id))
-  defp auto_order(state, name), do: get_in(state.prefs, [name, :auto_order]) || Automap.empty()
+  defp source_pref(state, name, key, default), do: Map.get(Map.get(state.prefs, name, %{}), key, default)
+  defp automap?(state, name), do: source_pref(state, name, :automap, name != port_name(state.id))
+  defp auto_order(state, name), do: Automap.normalize(source_pref(state, name, :auto_order, Automap.empty()))
+
+  # a source's pins on the running firmware, resolved against its parameter list: %{{ch, cc} => param}
+  defp pins(state, name) do
+    for {k, label} <- get_in(state.prefs, [name, :pins, state.firmware]) || %{},
+        p = Params.by_label(state.params, label),
+        p != nil,
+        into: %{},
+        do: {k, p}
+  end
+
+  defp put_pref(state, name, key, value) do
+    prefs = Map.update(state.prefs, name, %{key => value}, &Map.put(&1, key, value))
+    %{state | prefs: prefs}
+  end
+
+  # a source setting changed by the player: applied, saved, and the watchers' tables refreshed
+  defp configured(state, name, key, value) do
+    state = state |> put_pref(name, key, value) |> reconfigure()
+    save(state)
+    notify_watchers(state, {:changed, name})
+    state
+  end
 
   defp automap_summary(state, name) do
     order = auto_order(state, name)
-
-    assigned =
-      for {{type, ch, n}, _i, _kind, target} <- Automap.assignments(name, order) do
-        what = if type == :cc, do: "CC #{n} ch #{ch}", else: "note #{n} ch #{ch}"
-        {what, Automap.target_name(target)}
-      end
+    src = mapping_source(state, name)
+    program = Automap.program(name, order)
 
     %{
-      on: automap?(state, name),
+      on: src.automap,
       profile: with(%{name: p} <- Automap.profile(name), do: p),
-      assigned: assigned,
-      open: Automap.open(name, order)
+      program: program && program.name,
+      by: order.by,
+      open: Automap.open(name, order) |> Map.take([:knobs, :pads]),
+      unmapped: src.unmapped,
+      rows: Mapping.rows(src),
+      free: Mapping.free(src)
+    }
+  end
+
+  defp mapping_source(state, name) do
+    fw = state.firmware && Firmware.get(state.firmware)
+
+    %{
+      name: name,
+      automap: automap?(state, name),
+      order: auto_order(state, name),
+      pins: pins(state, name),
+      learned: Enum.filter(learned(state.layout), &(&1.device in [nil, name])),
+      seen: Map.get(state.seen, name, []),
+      unmapped: source_pref(state, name, :unmapped, :synth),
+      firmware: (fw && fw.name) || "the firmware",
+      params: state.params,
+      pass: auto_open(state, name).pass
     }
   end
 
   defp refresh_auto(state, name) do
-    assignments = if automap?(state, name), do: Automap.assignments(name, auto_order(state, name)), else: []
-    %{state | controls: Controls.put_auto(state.controls, name, assignments)}
+    order = auto_order(state, name)
+    auto = if automap?(state, name), do: Automap.assignments(name, order), else: []
+
+    pins =
+      for {{ch, cc}, p} <- pins(state, name),
+          do: {{:cc, ch, cc}, nil, :pin, %{"midi" => %{"type" => "cc", "channel" => ch, "number" => p.cc}}}
+
+    tags = Mapping.tags(name, order, for({m, _, _, _} <- auto ++ pins, do: m))
+    %{state | controls: Controls.put_auto(state.controls, name, auto ++ pins, tags)}
   end
 
-  # first touch: a new knob or pad joins the source's order (kept with its settings)
+  # first touch: a new knob or pad joins the source's order, or a known controller's CCs tell its program
+  # (kept with its settings)
   defp first_touch(state, source, name, ev) do
     case Automap.touch(name, auto_order(state, name), ev) do
       :same ->
         state
 
       {:new, order} ->
-        prefs = Map.update(state.prefs, name, %{auto_order: order}, &Map.put(&1, :auto_order, order))
-        state = refresh_auto(%{state | prefs: prefs}, name)
+        state = refresh_auto(put_pref(state, name, :auto_order, order), name)
         save(state)
+        notify_watchers(state, {:changed, name})
         parser = MidiMap.configure(state.parsers[source], options(state, name))
         %{state | parsers: Map.put(state.parsers, source, parser)}
     end
   end
+
+  ## Line up (the I/O screen's guided flow): the player turns the knob they want for KNOB1, then KNOB2, …
+
+  defp line_up_take(%{lineup: lu} = state, name, {:cc, ch, cc, _v}) do
+    k = {ch, cc}
+    targets = length(Automap.knob_targets())
+
+    if Automap.knob_cc?(cc) and k not in lu.knobs and lu.step < targets do
+      knobs = List.replace_at(lu.knobs, lu.step, k)
+      step = Enum.find_index(knobs, &is_nil/1) || targets
+      line_up_tell(%{state | lineup: %{lu | knobs: knobs, step: max(step, lu.step + 1) |> min(targets)}}, name)
+    else
+      state
+    end
+  end
+
+  defp line_up_take(state, _name, _ev), do: state
+
+  defp line_up_tell(%{lineup: lu} = state, name) do
+    send(lu.pid, {:midi, state.id, {:line_up, line_up_view(state, name)}})
+    state
+  end
+
+  defp line_up_view(%{lineup: lu} = state, name) do
+    order = auto_order(state, name)
+    lined = Enum.reject(lu.knobs, &is_nil/1)
+    known = %{order | seen: Enum.uniq(order.seen ++ lined)}
+
+    slots =
+      for {t, k} <- Enum.zip(Automap.knob_targets(), lu.knobs) do
+        %{target: Automap.target_name(t), key: k, label: k && knob_label(name, known, k)}
+      end
+
+    %{source: name, step: lu.step, slots: slots}
+  end
+
+  defp knob_label(name, order, {ch, cc} = k) do
+    msg = if ch == 1, do: "CC #{cc}", else: "CC #{cc} ch #{ch}"
+
+    case Automap.hardware_name(name, order, k) do
+      nil -> msg
+      hw -> "#{hw} (#{msg})"
+    end
+  end
+
+  defp line_up_end(%{lineup: nil} = state), do: state
+
+  defp line_up_end(%{lineup: lu} = state) do
+    Process.demonitor(lu.ref, [:flush])
+    send(lu.pid, {:midi, state.id, {:line_up, nil}})
+    reconfigure(%{state | lineup: nil})
+  end
+
+  ## Watchers (the I/O screen): which hardware control moved, for its table
+
+  @touch_every_ms 150
+  @seen_max 24
+
+  # the CC or pad a parser output is about, or nil
+  defp moved_key({kind, ev}) when kind in [:auto, :learned, :learn], do: MidiMap.key(ev)
+  defp moved_key({:midi, <<st, cc, _v>>}) when st in 0xB0..0xBF, do: {:cc, rem(st, 16) + 1, cc}
+  defp moved_key(_out), do: nil
+
+  defp moved(state, _name, nil), do: state
+
+  defp moved(state, name, key) do
+    state = remember_seen(state, name, key)
+
+    if state.watchers == %{} do
+      state
+    else
+      now = System.monotonic_time(:millisecond)
+
+      case Map.get(state.touched, name) do
+        {^key, at} when now - at < @touch_every_ms ->
+          state
+
+        _ ->
+          notify_watchers(state, {:touched, name, key})
+          %{state | touched: Map.put(state.touched, name, {key, now})}
+      end
+    end
+  end
+
+  # knob CCs that came from a source this session: its table lists them with what they do
+  defp remember_seen(state, name, {:cc, _ch, cc} = key) do
+    seen = Map.get(state.seen, name, [])
+
+    if key in seen or not Automap.knob_cc?(cc) do
+      state
+    else
+      notify_watchers(state, {:changed, name})
+      %{state | seen: Map.put(state.seen, name, Enum.take(seen ++ [key], @seen_max))}
+    end
+  end
+
+  defp remember_seen(state, _name, _key), do: state
+
+  defp notify_watchers(state, what), do: for(pid <- Map.keys(state.watchers), do: send(pid, {:midi, state.id, what}))
 
   defp release_sources(state, sources) do
     Enum.reduce(sources, state, fn src, st ->
@@ -508,13 +777,26 @@ defmodule FMutate.MIDI do
 
   defp event(state, source, {:auto, ev}) do
     name = source_name(state, source)
-    state = first_touch(state, source, name, ev)
-    {inputs, shown, controls} = Controls.handle_auto(state.controls, name, ev)
-    show(%{state | controls: controls}, inputs, shown)
+    state = if automap?(state, name), do: first_touch(state, source, name, ev), else: state
+
+    case Controls.handle_auto(state.controls, name, ev) do
+      :unmapped -> default_path(state, name, ev)
+      {inputs, shown, controls} -> show(%{state | controls: controls}, inputs, shown)
+    end
   end
 
-  defp event(%{learn: %{} = l} = state, source, {:learn, ev}) do
-    case Learn.offer(l.learn, source_name(state, source), ev) do
+  defp event(state, source, {:learn, ev}) do
+    name = source_name(state, source)
+
+    case state do
+      %{lineup: %{source: ^name}} -> line_up_take(state, name, ev)
+      %{learn: %{} = l} -> learn_offer(state, l, name, ev)
+      _ -> state
+    end
+  end
+
+  defp learn_offer(state, l, name, ev) do
+    case Learn.offer(l.learn, name, ev) do
       {:done, midi_in} ->
         send(l.pid, {:midi_learn, state.id, {:ok, midi_in}})
         disarm(state)
@@ -532,7 +814,17 @@ defmodule FMutate.MIDI do
     end
   end
 
-  defp event(state, _source, {:learn, _ev}), do: state
+  # a message first touch handed over that nothing took (the knobs are full): where it would have gone
+  defp default_path(state, name, {:cc, ch, cc, v}) do
+    drop =
+      source_pref(state, name, :unmapped, :synth) == :drop and Automap.knob_cc?(cc) and
+        not MapSet.member?(auto_open(state, name).pass, {ch, cc})
+
+    if drop, do: state, else: input!(state, {:midi, <<0xB0 + ch - 1, cc, v>>})
+  end
+
+  defp default_path(state, _name, {:note, ch, n, v}), do: input!(state, {:midi, <<0x90 + ch - 1, n, v>>})
+  defp default_path(state, _name, _ev), do: state
 
   defp input!(state, input) do
     Instance.input(state.id, input)
@@ -562,7 +854,15 @@ defmodule FMutate.MIDI do
 
   defp learned(layout) do
     for {c, sub, m} <- LayoutEdit.midi_ins(layout) do
-      %{control: c["id"], sub: sub, on: m["on"], device: m["device"], message: Learn.message(m), name: control_name(c, sub)}
+      %{
+        control: c["id"],
+        sub: sub,
+        on: m["on"],
+        device: m["device"],
+        message: Learn.message(m),
+        name: control_name(c, sub),
+        match: Controls.match_of(m)
+      }
     end
   end
 

@@ -35,9 +35,17 @@ defmodule FMutate.MIDI.Map do
 
     * `auto` — the keys of this source's automapped knobs and pads: `{:auto, event}` instead of the default
       path.
-    * `auto_open` — `%{knobs: bool, pads: bool}`, whether first touch still takes new ones: a message that
-      would be one (`FMutate.MIDI.Automap.candidate?/2`) is `{:auto, event}` too, and its key joins `auto`
-      at once (so its note off, in the same packet, follows it).
+    * `auto_open` — `%{knobs: bool, pads: bool, pass: MapSet}`, whether first touch still takes new ones: a
+      message that would be one (`FMutate.MIDI.Automap.candidate?/2`) is `{:auto, event}` too, and its key
+      joins `auto` at once (so its note off, in the same packet, follows it). `pass`: `{channel, cc}`s that
+      are never knobs (a known controller's joystick).
+
+  And for what is left:
+
+    * `unmapped` — `:synth` (default): a CC that drives nothing in FMutate goes to the firmware's MIDI in, where
+      the firmware's own MIDI map may change its sound; `:drop`: a CC that could be a knob
+      (`FMutate.MIDI.Automap.knob_cc?/1`, not one of `auto_open.pass`) is dropped instead. Pedals, bank select,
+      (N)RPN, channel mode and the joystick still go.
 
   `event`s are `{:note, ch, note, velocity}` (velocity 0: off), `{:cc, ch, number, value}`,
   `{:pitch_bend, ch, 0..16383}`, `{:channel_pressure, ch, value}`, `{:poly_pressure, ch, note, value}` and
@@ -55,6 +63,7 @@ defmodule FMutate.MIDI.Map do
             learning: false,
             auto: MapSet.new(),
             auto_open: %{knobs: false, pads: false},
+            unmapped: :synth,
             status: nil,
             data: [],
             sysex: false,
@@ -70,6 +79,7 @@ defmodule FMutate.MIDI.Map do
           learning: boolean(),
           auto: MapSet.t(),
           auto_open: %{knobs: boolean(), pads: boolean()},
+          unmapped: :synth | :drop,
           status: nil | byte(),
           data: [byte()],
           sysex: boolean(),
@@ -91,7 +101,10 @@ defmodule FMutate.MIDI.Map do
           | {:learn, event()}
           | {:auto, event()}
 
-  @doc "A parser with `opts` (`:channel`, `:notes`, `:bend`, `:clock`, `:learned`, `:learning`, `:auto`, `:auto_open`)."
+  @doc """
+  A parser with `opts` (`:channel`, `:notes`, `:bend`, `:clock`, `:learned`, `:learning`, `:auto`, `:auto_open`,
+  `:unmapped`).
+  """
   @spec new(keyword()) :: t()
   def new(opts \\ []), do: configure(%__MODULE__{}, opts)
 
@@ -122,6 +135,9 @@ defmodule FMutate.MIDI.Map do
 
       {:auto_open, %{knobs: k, pads: p} = open}, m when is_boolean(k) and is_boolean(p) ->
         %{m | auto_open: open}
+
+      {:unmapped, mode}, m when mode in [:synth, :drop] ->
+        %{m | unmapped: mode}
 
       {key, value}, _ ->
         raise ArgumentError, "bad MIDI setting #{inspect(key)}: #{inspect(value)}"
@@ -283,6 +299,15 @@ defmodule FMutate.MIDI.Map do
   defp channel_message(0xB, st, [cc, v], acc, map) when cc in [120, 123] do
     {ups, map} = release_all(map)
     {[{:midi, <<st, cc, v>>} | Enum.reverse(ups, acc)], map}
+  end
+
+  # a CC that drives nothing here and could be a knob: to the firmware's MIDI map, or dropped
+  defp channel_message(0xB, st, [cc, v], acc, %{unmapped: :drop} = map) do
+    pass = Map.get(map.auto_open, :pass, MapSet.new())
+
+    if FMutate.MIDI.Automap.knob_cc?(cc) and not MapSet.member?(pass, {rem(st, 16) + 1, cc}),
+      do: {acc, map},
+      else: {[{:midi, <<st, cc, v>>} | acc], map}
   end
 
   defp channel_message(_kind, st, data, acc, map),
