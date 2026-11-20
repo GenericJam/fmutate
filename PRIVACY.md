@@ -15,7 +15,7 @@ crash-reporting service of its own. The app sends no identifier or other informa
   the editor) are used on the device only; nothing from them is recorded or sent. FMutate doesn't use the camera,
   microphone or photo library: iOS lists those permission texts because the app's framework contains code for them.
 - **TestFlight**: if you test FMutate through Apple's TestFlight, Apple shares with the developer what TestFlight
-  collects under its own terms: crash reports, the feedback and screenshots you choose to send, and install and
-  session counts.
+  collects under its own terms, such as crash reports, the feedback and screenshots you choose to send, your
+  device model and OS version, install and session counts, and, if you were invited by email, your name and email.
 
 Questions: genericjam@gmail.com
