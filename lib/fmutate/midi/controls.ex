@@ -183,7 +183,7 @@ defmodule FMutate.MIDI.Controls do
   defp shown(_c, _m, {:value, _control, key, v}), do: [{:value, "midi", key, v}]
   defp shown(_c, _m, _other), do: []
 
-  @doc "The short tag of a learned message's hardware control (\"CC74\", \"CC74/2\" off channel 1, \"N36\")."
+  @doc ~S|The short tag of a learned message's hardware control ("CC74", "CC74/2" off channel 1, "N36").|
   def tag_of({:cc, 1, n}), do: "CC#{n}"
   def tag_of({:cc, ch, n}), do: "CC#{n}/#{ch}"
   def tag_of({:note, _ch, n}), do: "N#{n}"

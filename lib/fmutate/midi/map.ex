@@ -52,6 +52,8 @@ defmodule FMutate.MIDI.Map do
   `{:program, ch, number}`, with `ch` 1..16.
   """
 
+  alias FMutate.MIDI.Automap
+
   @key_low 53
   @key_high 79
 
@@ -269,7 +271,7 @@ defmodule FMutate.MIDI.Map do
   defp auto?(%{held: held}, {:note, _ch, n, 0}) when is_map_key(held, n), do: false
 
   defp auto?(map, ev),
-    do: MapSet.member?(map.auto, key(ev)) or FMutate.MIDI.Automap.candidate?(ev, map.auto_open)
+    do: MapSet.member?(map.auto, key(ev)) or Automap.candidate?(ev, map.auto_open)
 
   defp accepts?(%{channel: :all}, _ch), do: true
   defp accepts?(%{channel: want}, ch), do: want == ch
@@ -305,7 +307,7 @@ defmodule FMutate.MIDI.Map do
   defp channel_message(0xB, st, [cc, v], acc, %{unmapped: :drop} = map) do
     pass = Map.get(map.auto_open, :pass, MapSet.new())
 
-    if FMutate.MIDI.Automap.knob_cc?(cc) and not MapSet.member?(pass, {rem(st, 16) + 1, cc}),
+    if Automap.knob_cc?(cc) and not MapSet.member?(pass, {rem(st, 16) + 1, cc}),
       do: {acc, map},
       else: {[{:midi, <<st, cc, v>>} | acc], map}
   end

@@ -37,51 +37,56 @@ defmodule FMutate.MIDI.Mapping do
     slots = if src.automap, do: Automap.slots(src.name, order), else: %{knobs: [], pads: []}
     program = Automap.program(src.name, known)
 
-    knob_keys =
-      (Enum.reject(slots.knobs, &is_nil/1) ++
-         ((program && program.knobs) || []) ++
-         Map.keys(src.pins) ++
-         for(%{match: {:cc, ch, n}} <- src.learned, do: {ch, n}) ++
-         for({:cc, ch, n} <- src.seen, do: {ch, n}))
-      |> Enum.uniq()
-
     knobs =
-      knob_keys
+      src
+      |> knob_keys(slots, program)
       |> Enum.map(&knob_row(src, slots, &1))
       |> Enum.sort_by(&{&1.hw == nil, &1.hw || "", &1.slot || 99, elem(&1.key, 2)})
 
-    pads =
-      for {{ch, n}, i} <- Enum.with_index(slots.pads), t = Enum.at(Automap.pad_targets(), i), t != nil do
-        key = {:note, ch, n}
+    knobs ++ pad_rows(src, slots)
+  end
 
-        {via, to} =
-          case learned(src, key) do
-            nil -> {:automap, Automap.target_name(t)}
-            l -> {:learned, l.name}
-          end
+  defp pad_rows(src, slots) do
+    for {{ch, n}, i} <- Enum.with_index(slots.pads),
+        t = Enum.at(Automap.pad_targets(), i),
+        t != nil do
+      key = {:note, ch, n}
 
-        %{key: key, kind: :pad, hw: "Pad #{i + 1}", msg: "note #{n} ch #{ch}", via: via, to: to, slot: i + 1}
-      end
+      {via, to} =
+        case learned(src, key) do
+          nil -> {:automap, Automap.target_name(t)}
+          l -> {:learned, l.name}
+        end
 
-    knobs ++ pads
+      %{
+        key: key,
+        kind: :pad,
+        hw: "Pad #{i + 1}",
+        msg: "note #{n} ch #{ch}",
+        via: via,
+        to: to,
+        slot: i + 1
+      }
+    end
+  end
+
+  defp knob_keys(src, slots, program) do
+    program_knobs = if program, do: program.knobs, else: []
+    learned = for %{match: {:cc, ch, n}} <- src.learned, do: {ch, n}
+    seen = for {:cc, ch, n} <- src.seen, do: {ch, n}
+
+    Enum.uniq(
+      Enum.reject(slots.knobs, &is_nil/1) ++
+        program_knobs ++ Map.keys(src.pins) ++ learned ++ seen
+    )
   end
 
   defp knob_row(src, slots, {ch, cc} = k) do
-    key = {:cc, ch, cc}
     slot = Enum.find_index(slots.knobs, &(&1 == k))
-    target = slot && Enum.at(Automap.knob_targets(), slot)
-
-    {via, to} =
-      cond do
-        l = learned(src, key) -> {:learned, l.name}
-        p = Map.get(src.pins, k) -> {:pin, Params.label(p)}
-        target -> {:automap, Automap.target_name(target)}
-        src.unmapped == :drop and not MapSet.member?(src.pass, k) -> {:dropped, "nothing (unmapped knobs are off)"}
-        true -> {:synth, synth(src, cc)}
-      end
+    {via, to} = knob_target(src, k, slot && Enum.at(Automap.knob_targets(), slot))
 
     %{
-      key: key,
+      key: {:cc, ch, cc},
       kind: :knob,
       hw: Automap.hardware_name(src.name, src.order, k),
       msg: if(ch == 1, do: "CC #{cc}", else: "CC #{cc} ch #{ch}"),
@@ -89,6 +94,26 @@ defmodule FMutate.MIDI.Mapping do
       to: to,
       slot: slot && slot + 1
     }
+  end
+
+  # learned > pin > automap > the default path
+  defp knob_target(src, {ch, cc} = k, target) do
+    cond do
+      l = learned(src, {:cc, ch, cc}) ->
+        {:learned, l.name}
+
+      p = Map.get(src.pins, k) ->
+        {:pin, Params.label(p)}
+
+      target ->
+        {:automap, Automap.target_name(target)}
+
+      src.unmapped == :drop and not MapSet.member?(src.pass, k) ->
+        {:dropped, "nothing (unmapped knobs are off)"}
+
+      true ->
+        {:synth, synth(src, cc)}
+    end
   end
 
   defp learned(src, key), do: Enum.find(src.learned, &(&1.match == key))
@@ -115,7 +140,7 @@ defmodule FMutate.MIDI.Mapping do
     end
   end
 
-  @doc "The short tags of a source's knobs and pads for the surface (`\"K1\"`, else `\"CC20\"`), by match."
+  @doc ~S|The short tags of a source's knobs and pads for the surface ("K1", else "CC20"), by match.|
   def tags(name, order, matches) do
     Map.new(matches, fn
       {:cc, ch, cc} = m -> {m, Automap.hardware_name(name, order, {ch, cc}) || Controls.tag_of(m)}

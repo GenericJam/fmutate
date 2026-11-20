@@ -17,8 +17,8 @@ defmodule FMutate.IOScreen do
   import Mob.Canvas, only: [rect: 5, circle: 4]
 
   alias FMutate.{Audio, Dist, Firmware, IO, Instance, MIDI, Style, Subscription}
-  alias FMutate.MIDI.{Automap, Params}
   alias FMutate.Instance.Health
+  alias FMutate.MIDI.{Automap, Params}
 
   @instance "a"
   @refresh_ms 250
@@ -650,38 +650,21 @@ defmodule FMutate.IOScreen do
     lit = with {key, _ref} <- Map.get(assigns.touched, name), do: key
     {knobs, pads} = Enum.split_with(a.rows, &(&1.kind == :knob))
 
-    status =
-      cond do
-        not a.on -> "Automap off: its knobs follow the rows below, not the panel."
-        a.by == :line_up -> "Your lined-up order."
-        a.factory -> "#{a.profile}#{program_note(a.program)}: its factory knobs."
-        a.profile -> "#{a.profile}, not on its factory settings: knobs in the order you first turned them."
-        true -> "Knobs in the order you first turned them; pads (channel 10) in the order you hit them."
-      end
-
     knob_rows =
       case knobs do
         [] -> [hint_text("Turn a knob: it shows up here, with what it drives.")]
         _ -> Enum.map(knobs, &mapping_row(name, &1, &1.key == lit))
       end
 
-    pad_line =
-      case pads do
-        [] -> nil
-        _ -> hint_text("Pads: " <> Enum.map_join(pads, " · ", &"#{&1.msg |> String.replace(" ch 10", "")} → #{&1.to}"))
-      end
-
+    pad_line = if pads != [], do: hint_text("Pads: " <> Enum.map_join(pads, " · ", &pad_text/1))
     free = if a.on and a.free != [], do: hint_text("No knob on: " <> Enum.join(a.free, ", ") <> ".")
     line_up = {self(), {:line_up, name}}
     reset = {self(), {:automap_reset, name}}
     toggle = {self(), {:automap, name, not a.on}}
     unmapped = {self(), {:unmapped, name}}
     synth_on = a.unmapped == :synth
-
-    unmapped_hint =
-      if synth_on,
-        do: "On: a knob that drives nothing here goes to #{fw}'s own MIDI map and may change its sound (the rows above say what it sets). Pedals and the joystick always go.",
-        else: "Off: a knob that drives nothing here does nothing. Pedals and the joystick still go."
+    status = controller_status(a)
+    unmapped_hint = unmapped_hint(synth_on, fw)
 
     card(
       [section_label("CONTROLLER · " <> String.upcase(name)), hint_text(status)] ++
@@ -706,6 +689,23 @@ defmodule FMutate.IOScreen do
         ]
     )
   end
+
+  defp controller_status(%{on: false}), do: "Automap off: its knobs follow the rows below, not the panel."
+  defp controller_status(%{by: :line_up}), do: "Your lined-up order."
+  defp controller_status(%{factory: true} = a), do: "#{a.profile}#{program_note(a.program)}: its factory knobs."
+
+  defp controller_status(%{profile: p}) when p != nil,
+    do: "#{p}, not on its factory settings: knobs in the order you first turned them."
+
+  defp controller_status(_a), do: "Knobs in the order you first turned them; pads (channel 10) in the order you hit them."
+
+  defp unmapped_hint(true, fw),
+    do:
+      "On: a knob that drives nothing here goes to #{fw}'s own MIDI map and may change its sound (the rows above say what it sets). Pedals and the joystick always go."
+
+  defp unmapped_hint(false, _fw), do: "Off: a knob that drives nothing here does nothing. Pedals and the joystick still go."
+
+  defp pad_text(row), do: "#{String.replace(row.msg, " ch 10", "")} → #{row.to}"
 
   defp program_note(nil), do: ""
   defp program_note(p), do: " · " <> p
@@ -1073,38 +1073,11 @@ defmodule FMutate.IOScreen do
   # lining up a controller's knobs: the target it is at, lit, and what each target got
   defp sheet(%{sheet: {:line_up, name}} = assigns) do
     dismiss = {self(), :line_up}
-    lu = assigns.line_up
-    slots = (lu && lu.slots) || []
-    step = (lu && lu.step) || 0
+    %{slots: slots, step: step} = assigns.line_up || %{slots: [], step: 0}
     current = Enum.at(slots, step)
-
-    ask =
-      if current,
-        do: "Turn the knob you want for #{current.target}",
-        else: "All set: tap Done to keep this order."
-
-    chips =
-      for {s, i} <- Enum.with_index(slots) do
-        {bg, fg} =
-          cond do
-            i == step -> {c(:fm), c(:ink)}
-            s.key -> {c(:selected), c(:text)}
-            true -> {c(:raised), c(:faint)}
-          end
-
-        ~MOB"""
-        <Text text={s.target} text_size={12} text_color={fg} font="monospace" font_weight="bold" background={bg} corner_radius={8} padding={8} />
-        """
-      end
-
-    got =
-      for {s, i} <- Enum.with_index(slots), i < step or s.key do
-        line = "#{s.target} ← " <> (s.label || "skipped: drives nothing")
-
-        ~MOB"""
-        <Text text={line} text_size={13} text_color={if s.key, do: c(:text), else: c(:faint)} font="monospace" />
-        """
-      end
+    ask = if current, do: "Turn the knob you want for #{current.target}", else: "All set: tap Done to keep this order."
+    chips = for {s, i} <- Enum.with_index(slots), do: line_up_chip(s, i == step)
+    got = for {s, i} <- Enum.with_index(slots), i < step or s.key, do: line_up_got(s)
 
     skip = {self(), :line_up_skip}
     done = {self(), :line_up_done}
@@ -1274,6 +1247,28 @@ defmodule FMutate.IOScreen do
     """
   end
 
+
+  defp line_up_chip(s, here) do
+    {bg, fg} =
+      cond do
+        here -> {c(:fm), c(:ink)}
+        s.key -> {c(:selected), c(:text)}
+        true -> {c(:raised), c(:faint)}
+      end
+
+    ~MOB"""
+    <Text text={s.target} text_size={12} text_color={fg} font="monospace" font_weight="bold" background={bg} corner_radius={8} padding={8} />
+    """
+  end
+
+  defp line_up_got(s) do
+    line = "#{s.target} ← " <> (s.label || "skipped: drives nothing")
+    color = if s.key, do: c(:text), else: c(:faint)
+
+    ~MOB"""
+    <Text text={line} text_size={13} text_color={color} font="monospace" />
+    """
+  end
   defp chip(label, selected, tag) do
     tap = {self(), tag}
     {bg, fg} = if selected, do: {c(:selected), c(:fm)}, else: {c(:raised), c(:text)}

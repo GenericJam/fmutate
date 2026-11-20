@@ -26,8 +26,15 @@ defmodule MidiParams do
     for {id, header, main} <- @firmwares do
       {repo, commit, version} = Map.fetch!(pins, id)
       dir = Path.join([@root, "native/build/fw", id])
-      head = dir |> then(&System.cmd("git", ["-C", &1, "rev-parse", "HEAD"])) |> elem(0) |> String.trim()
-      if head != commit, do: raise("#{id}: #{dir} is at #{head}, native/build_android.sh pins #{commit}")
+
+      head =
+        dir
+        |> then(&System.cmd("git", ["-C", &1, "rev-parse", "HEAD"]))
+        |> elem(0)
+        |> String.trim()
+
+      if head != commit,
+        do: raise("#{id}: #{dir} is at #{head}, native/build_android.sh pins #{commit}")
 
       h = File.read!(Path.join([dir, "firmware/src", header]))
       c = File.read!(Path.join([dir, "firmware/src", main]))
@@ -62,14 +69,22 @@ defmodule MidiParams do
 
     pdef =
       for [_, p, name, _max, cc] <-
-            Regex.scan(~r/\[(P_[A-Z0-9_]+)\]\s*=\s*\{"([^"]*)",\s*([^,]+),\s*[^,]+,\s*[^,]+,\s*(\d+)\}/, block(h, "PDEF")),
+            Regex.scan(
+              ~r/\[(P_[A-Z0-9_]+)\]\s*=\s*\{"([^"]*)",\s*([^,]+),\s*[^,]+,\s*[^,]+,\s*(\d+)\}/,
+              block(h, "PDEF")
+            ),
           into: %{},
           do: {p, %{name: name, cc: String.to_integer(cc)}}
 
-    if map_size(pdef) != length(names), do: raise("PDEF has #{map_size(pdef)} entries for #{length(names)} parameters")
+    if map_size(pdef) != length(names),
+      do: raise("PDEF has #{map_size(pdef)} entries for #{length(names)} parameters")
 
     page_of =
-      for [_, pg, title, knobs] <- Regex.scan(~r/\[(PG_[A-Z0-9_]+)\]\s*=\s*\{"([^"]*)",\s*\{([^}]*)\}\}/, block(h, "PAGE")),
+      for [_, pg, title, knobs] <-
+            Regex.scan(
+              ~r/\[(PG_[A-Z0-9_]+)\]\s*=\s*\{"([^"]*)",\s*\{([^}]*)\}\}/,
+              block(h, "PAGE")
+            ),
           into: %{},
           do: {pg, {title, knobs |> String.split(",") |> Enum.map(&String.trim/1)}}
 
@@ -77,19 +92,27 @@ defmodule MidiParams do
     order = Enum.reject(pages, &(&1 == "PG_PERFORM")) ++ ["PG_PERFORM"]
 
     place =
-      for pg <- order, {title, knobs} = Map.get(page_of, pg, {nil, []}), {p, i} <- Enum.with_index(knobs),
-          String.starts_with?(p, "P_"), reduce: %{} do
+      for pg <- order,
+          {title, knobs} = Map.get(page_of, pg, {nil, []}),
+          {p, i} <- Enum.with_index(knobs),
+          String.starts_with?(p, "P_"),
+          reduce: %{} do
         acc -> Map.put_new(acc, p, {Enum.find_index(order, &(&1 == pg)), i, title})
       end
 
-    taken_first = for(m <- Regex.scan(~r/d1 == (\d+)u/, c), do: String.to_integer(Enum.at(m, 1))) |> Enum.uniq()
+    taken_first =
+      for(m <- Regex.scan(~r/d1 == (\d+)u/, c), do: String.to_integer(Enum.at(m, 1)))
+      |> Enum.uniq()
+
     cc_of = cc_map(names, pdef)
 
     names
     |> Enum.with_index()
     |> Enum.map(fn {p, i} -> {p, i, Map.fetch!(cc_of, p)} end)
     |> Enum.reject(fn {_p, _i, cc} -> cc == nil or cc in taken_first end)
-    |> Enum.sort_by(fn {p, i, _cc} -> {Map.get(place, p, {length(order), i, nil}) |> Tuple.delete_at(2), i} end)
+    |> Enum.sort_by(fn {p, i, _cc} ->
+      {Map.get(place, p, {length(order), i, nil}) |> Tuple.delete_at(2), i}
+    end)
     |> Enum.map(fn {p, _i, cc} ->
       d = pdef[p]
       {_, _, page} = Map.get(place, p, {nil, nil, "OTHER"})
@@ -107,8 +130,13 @@ defmodule MidiParams do
         if Map.has_key?(fixed, p) do
           {map, taken, next}
         else
-          next = Stream.iterate(next, &(&1 + 1)) |> Enum.find(&(&1 >= 120 or (&1 not in taken and &1 != 64)))
-          if next < 120, do: {Map.put(map, p, next), MapSet.put(taken, next), next + 1}, else: {Map.put(map, p, nil), taken, next}
+          next =
+            Stream.iterate(next, &(&1 + 1))
+            |> Enum.find(&(&1 >= 120 or (&1 not in taken and &1 != 64)))
+
+          if next < 120,
+            do: {Map.put(map, p, next), MapSet.put(taken, next), next + 1},
+            else: {Map.put(map, p, nil), taken, next}
         end
       end)
 
@@ -117,7 +145,12 @@ defmodule MidiParams do
 
   defp enum(h, re) do
     [_, body] = Regex.run(re, h)
-    body |> String.replace(~r{/\*.*?\*/}s, "") |> String.split([",", "\n"]) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+    body
+    |> String.replace(~r{/\*.*?\*/}s, "")
+    |> String.split([",", "\n"])
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp block(h, name) do
@@ -127,7 +160,13 @@ defmodule MidiParams do
 
   defp pretty(%{"params" => params} = json) do
     rows = Enum.map_join(params, ",\n", &("    " <> JSON.encode!(&1)))
-    head = json |> Map.delete("params") |> Enum.sort() |> Enum.map_join(",\n", fn {k, v} -> "  #{JSON.encode!(k)}: #{JSON.encode!(v)}" end)
+
+    head =
+      json
+      |> Map.delete("params")
+      |> Enum.sort()
+      |> Enum.map_join(",\n", fn {k, v} -> "  #{JSON.encode!(k)}: #{JSON.encode!(v)}" end)
+
     "{\n#{head},\n  \"params\": [\n#{rows}\n  ]\n}\n"
   end
 end

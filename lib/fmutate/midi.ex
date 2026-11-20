@@ -332,7 +332,8 @@ defmodule FMutate.MIDI do
 
   def handle_call({:line_up, pid, name}, _from, state) do
     state = line_up_end(state)
-    lu = %{pid: pid, ref: Process.monitor(pid), source: name, step: 0, knobs: List.duplicate(nil, length(Automap.knob_targets()))}
+    knobs = List.duplicate(nil, length(Automap.knob_targets()))
+    lu = %{pid: pid, ref: Process.monitor(pid), source: name, step: 0, knobs: knobs}
     state = reconfigure(%{state | lineup: lu})
     {:reply, :ok, line_up_tell(state, name)}
   end
