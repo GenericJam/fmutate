@@ -48,7 +48,9 @@ defmodule FMutate.Library.Catalog do
         url: URI.merge(@hub, pkg) |> to_string(),
         size: h["size"],
         sha256: h["sha256"],
-        repo: repo(h)
+        repo: repo(h),
+        ref: hub_ref(h),
+        picture: picture(h["card"])
       }
     end
   end
@@ -63,6 +65,22 @@ defmodule FMutate.Library.Catalog do
 
   defp repo(%{"repo" => r}) when is_binary(r) and r != "", do: "https://github.com/" <> r
   defp repo(h), do: h["site"]
+
+  # the git ref the Hub's package was built from, where its README is read: the commit of its verified build
+  # provenance (of this repository), else its source ref, else its release tag; nil = the default branch
+  defp hub_ref(h) do
+    prov = h["provenance"]
+    commit = if is_map(prov) and prov["repo"] == h["repo"], do: prov["commit"]
+    Enum.find([commit, h["srcref"], h["tag"]], &(is_binary(&1) and &1 != ""))
+  end
+
+  # the Hub's copy of the maker's card picture (`fw/cards/<id>-<hash>.w640.webp`): a path on the Hub only, so
+  # the catalogue can't point the app anywhere else
+  defp picture(card) when is_binary(card) do
+    if card =~ ~r{\A[\w][\w./@+-]*\z} and not String.contains?(card, ".."), do: URI.merge(@hub, card) |> to_string()
+  end
+
+  defp picture(_card), do: nil
 
   @doc """
   A Hub package's version from its file name, `<id>-<version>.fwsc` (a `+build` suffix dropped), as
@@ -116,7 +134,7 @@ defmodule FMutate.Library.Catalog do
       for fw <- bundled do
         case hub_by_id[fw.id] do
           nil -> fw
-          h -> %{fw | tags: h.tags, repo: h.repo}
+          h -> %{fw | tags: h.tags, repo: fw.repo || h.repo, picture: h.picture}
         end
       end
 
@@ -150,7 +168,10 @@ defmodule FMutate.Library.Catalog do
     if File.regular?(path), do: %{h | package: path}, else: h
   end
 
+  # the README of a native build is the one at the commit the cartridge was built from
   defp native_firmware(h, n) do
+    {repo, ref} = if n[:repo] && n[:commit], do: {"https://github.com/" <> n.repo, n.commit}, else: {h.repo, h.ref}
+
     %{
       h
       | backend: :native,
@@ -160,6 +181,8 @@ defmodule FMutate.Library.Catalog do
         size: n.size,
         sha256: n.sha256,
         package: nil,
+        repo: repo,
+        ref: ref,
         native: n,
         cart: n.bundled || n.cart,
         new: n[:new] == true
@@ -186,12 +209,13 @@ defmodule FMutate.Library.Catalog do
   @spec hub_id(String.t()) :: String.t()
   def hub_id(id), do: "hub:" <> id
 
+  # (the Hub's package keeps the Hub's ref and the maker's text; the remark on its card is FMutate's)
   defp hub_variant(h, native) do
     %{
       h
       | id: hub_id(h.id),
         name: "#{h.name} (Hub package)",
-        about: "The Hub's package, run in the emulator, to compare with the native #{native.name}. Its saves are its own."
+        note: "The Hub's package, run in the emulator, to compare with the native #{native.name}. Its saves are its own."
     }
   end
 
@@ -229,7 +253,7 @@ defmodule FMutate.Library.Catalog do
       version: version || "—",
       author: "imported",
       license: "—",
-      about: "Imported from #{file}.",
+      note: "Imported from #{file}.",
       backend: :emu,
       package: path,
       source: :imported,

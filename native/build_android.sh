@@ -25,7 +25,8 @@ CFLAGS="-O2 -Wall -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-
 # 16 KB pages (Android 15+ devices and the current emulator images) need 16 KB-aligned LOAD segments
 LDFLAGS="-Wl,-z,max-page-size=16384"
 
-# name repo commit version
+# name repo commit version (FMutate.Firmware's @bundled names the same repo, commit and version: its synth page
+# reads the README at that commit)
 CARTRIDGES="
 obervave https://github.com/zvenson/obervave.git 792535d23ef4265475b1c2f9895ca30e857fe596 3.3.2
 shineon https://github.com/zvenson/shineon.git 2f37738d690a628e0ae1d23d07ea5ee3eeda2de7 3.0.1
