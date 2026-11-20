@@ -81,8 +81,13 @@ defmodule FMutate.LibraryUI do
   def meta(%{source: :imported} = fw), do: "imported · #{fw.version} · #{size(fw.size)}"
 
   def meta(%{backend: :native, native: %{} = n} = fw) do
-    commit = if is_binary(n.commit), do: " · " <> String.slice(n.commit, 0, 7), else: ""
-    "#{fw.author} · v#{n.version}#{commit} · #{fw.license}"
+    # (the index's commit is the build's, unless the app links another version: linked_note/1)
+    commit =
+      if is_binary(n.commit) and linked_note(fw) == nil,
+        do: " · " <> String.slice(n.commit, 0, 7),
+        else: ""
+
+    "#{fw.author} · v#{fw.version}#{commit} · #{fw.license}"
   end
 
   def meta(fw) do
@@ -104,6 +109,16 @@ defmodule FMutate.LibraryUI do
 
   @doc "iOS runs only the native cartridges linked into the app."
   def ios_note?(fw), do: fw.backend == :emu and fw.native != nil
+
+  @doc """
+  iOS: the cartridge linked into the app is another version than the index's build (the index moved on since
+  the app was built). The linked one plays natively (the card's version); the index's comes with an app update.
+  """
+  def linked_note(%{backend: :native, native: %{bundled_version: v, version: latest}})
+      when is_binary(v) and v != latest,
+      do: "Plays v#{v}, built into this app; v#{latest} plays natively after the next app update"
+
+  def linked_note(_fw), do: nil
 
   @doc "What Why? explains, when it is open for `fw`."
   def why(fw, status, assigns) do

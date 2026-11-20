@@ -62,7 +62,7 @@ defmodule FMutate.EngineNif do
   @doc "As kill -9: exit status 137 now; the thread is abandoned (it ends when it next looks, if ever)."
   def kill(_handle), do: :erlang.nif_error(:nif_not_loaded)
 
-  @doc "The cartridges linked in, `[{id, :ok | :hung}]`."
+  @doc "The cartridges linked in (native/build_ios.sh), `[{id, version, :ok | :hung}]`."
   def cartridges, do: :erlang.nif_error(:nif_not_loaded)
 
   @doc "From now on a fatal signal writes the ids of the cartridges running to `path` (one per line)."

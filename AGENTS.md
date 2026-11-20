@@ -33,7 +33,7 @@ The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`
 | Engine + cartridges for the phone (all ABIs into `jniLibs`) | `sh native/build_android.sh` |
 | The same for this computer (the tests run them) | `sh native/build_host.sh` |
 | The emulator engine (`libfm1emu.so`; host, arm64-v8a, x86_64; also fetches test packages) | `mise exec -- sh native/build_emu.sh` |
-| iOS (in progress, `docs/decisions/2026-11-13-ios-port.md`): engines, cartridges and emulator as one archive per target, linked into the app | `mise exec -- sh native/build_ios.sh` (`TARGETS="sim device host"`; `host` = macOS, for `test/fmutate/inproc_engine_test.exs`) |
+| iOS (in progress, `docs/decisions/2026-11-13-ios-port.md`): engines, the built-in cartridges, every published iOS cartridge pinned in `native/ios_cartridges.lock` (~100 MB per target; it warns about any it leaves out) and the emulator as one archive per target, linked into the app | `mise exec -- sh native/build_ios.sh` (`TARGETS="sim device host"`; `host` = macOS, the built-ins only, for `test/fmutate/inproc_engine_test.exs`). `IOS_CARTRIDGES_REFRESH=1` re-pins the lock from the signed index; commit it |
 | Tests | `mise exec -- mix test` |
 | Compile check | `mise exec -- mix compile --warnings-as-errors` |
 | Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |

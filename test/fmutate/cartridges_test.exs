@@ -3,7 +3,7 @@ defmodule FMutate.CartridgesTest do
 
   import ExUnit.CaptureLog
 
-  alias FMutate.{Cartridges, Firmware, Library, Paths}
+  alias FMutate.{Cartridges, Firmware, Library, LibraryUI, Paths}
   alias FMutate.Library.Catalog
 
   @platform "android-arm64-v8a"
@@ -116,8 +116,8 @@ defmodule FMutate.CartridgesTest do
       File.mkdir_p!(carts)
       ctx = %{current: nil, quarantined: [], emu?: true}
 
-      merge = fn bundled_cart ->
-        natives = body |> entries_of() |> Cartridges.resolve(carts, bundled_cart)
+      merge = fn bundled ->
+        natives = body |> entries_of() |> Cartridges.resolve(carts, bundled)
         Catalog.merge(Firmware.bundled(), hub, dir, natives)
       end
 
@@ -145,7 +145,7 @@ defmodule FMutate.CartridgesTest do
       refute Catalog.update?(skiff)
 
       # a cartridge of the build wins over the download: nothing to download or update
-      bundled = fn id -> if id == "skiff", do: "/lib/libcart_skiff.so" end
+      bundled = fn id -> if id == "skiff", do: {"/lib/libcart_skiff.so", nil} end
       skiff = Enum.find(merge.(bundled), &(&1.id == "skiff"))
       assert skiff.cart == "/lib/libcart_skiff.so" and Catalog.status(skiff, ctx) == :on_phone
       refute Catalog.update?(skiff)
@@ -177,16 +177,31 @@ defmodule FMutate.CartridgesTest do
       assert Catalog.status(skiff, %{current: nil, quarantined: [], emu?: true}) == :available
     end
 
-    test "on iOS only a cartridge linked into the app runs natively; the others play emulated", %{dir: dir, priv: priv, hub: hub} do
+    test "on iOS only a cartridge linked into the app runs natively, at its linked version; the others play emulated",
+         %{dir: dir, priv: priv, hub: hub} do
       {_, skiff} = cart("skiff", "2.6", priv, "ios-device")
       {_, hort} = cart("hortator", "1.1", priv, "ios-device")
-      linked = fn id -> if id == "hortator", do: "hortator" end
-      natives = index([skiff, hort]) |> entries_of("ios-device") |> Cartridges.resolve(dir, linked)
-      all = Catalog.merge([], hub, dir, natives)
+      body = index([skiff, hort])
 
-      assert %{backend: :emu, native: %{version: "2.6"}} = Enum.find(all, &(&1.id == "skiff"))
+      merge = fn linked ->
+        natives = body |> entries_of("ios-device") |> Cartridges.resolve(dir, &linked[&1])
+        Catalog.merge([], hub, dir, natives)
+      end
+
+      all = merge.(%{"hortator" => {"hortator", "1.1"}})
+      assert %{backend: :emu, native: %{version: "2.6"}} = skiff = Enum.find(all, &(&1.id == "skiff"))
+      assert LibraryUI.ios_note?(skiff)
       refute Enum.find(all, &(&1.id == "hub:skiff"))
-      assert %{backend: :native, cart: "hortator"} = Enum.find(all, &(&1.id == "hortator"))
+      assert %{backend: :native, cart: "hortator", version: "1.1"} = hort = Enum.find(all, &(&1.id == "hortator"))
+      refute LibraryUI.ios_note?(hort) or LibraryUI.linked_note(hort)
+
+      # the index moved on since the app was built: the linked version plays, and the card says which
+      skiff = Enum.find(merge.(%{"skiff" => {"skiff", "2.5"}}), &(&1.id == "skiff"))
+      assert %{backend: :native, cart: "skiff", version: "2.5"} = skiff
+      refute LibraryUI.ios_note?(skiff)
+      assert LibraryUI.linked_note(skiff) =~ "v2.5" and LibraryUI.linked_note(skiff) =~ "v2.6"
+      assert LibraryUI.meta(skiff) =~ "v2.5"
+      assert Catalog.status(skiff, %{current: nil, quarantined: [], emu?: true}) == :on_phone
     end
   end
 

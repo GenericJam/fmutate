@@ -53,11 +53,25 @@ defmodule FMutate.Paths do
 
   @doc "A bundled cartridge (its path, or in-process its id), or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
+    case bundled(firmware_id) do
+      {cart, _version} -> cart
+      nil -> nil
+    end
+  end
+
+  @doc """
+  A cartridge of this build and its version: in-process `{id, version}` (linked into the app,
+  `FMutate.EngineNif.cartridges/0`), else `{path, nil}` (the APK's `libcart_<id>.so`, which doesn't say), or nil.
+  """
+  def bundled(firmware_id) do
     if inproc?() do
-      if List.keymember?(FMutate.EngineNif.cartridges(), firmware_id, 0), do: firmware_id
+      case List.keyfind(FMutate.EngineNif.cartridges(), firmware_id, 0) do
+        {id, version, _status} -> {id, version}
+        nil -> nil
+      end
     else
       path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
-      if File.exists?(path), do: path
+      if File.exists?(path), do: {path, nil}
     end
   end
 

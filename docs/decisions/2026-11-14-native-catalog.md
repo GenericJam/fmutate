@@ -81,8 +81,24 @@ native/engine/live.c.
 - **Android**: download per firmware on demand (dlopen from the app's files dir; only exec() is barred there).
   Cartridges are 0.6–1.8 MB each per ABI (~0.7 MB average): all of them bundled would add ~140 MB per ABI, so
   bundling is for a short list Kevin picks; both stay possible (`assets` per ABI).
-- **iOS**: no downloaded native code. The app build pulls the `ios-*` static libraries it links; a firmware not
-  linked into the installed app plays emulated with "Plays emulated on iPhone until the next app update".
+- **iOS**: no downloaded native code. The app build links every published `ios-*` cartridge
+  (`native/build_ios.sh`, 2026-11-20): `native/ios_cartridges.lock` pins the set (the index's `generated` and per
+  firmware and target its version, SHA-256, size, signature, URL and commit), written from the index only when its
+  signature verifies with the app's key (`IOS_CARTRIDGES_REFRESH=1`; an index older than the lock's is refused),
+  so an app build is reproducible and a later index changes nothing until the lock is refreshed and committed.
+  Each archive is downloaded into a cache keyed by SHA-256 and kept only when size, SHA-256 and its own signature
+  match the lock (otherwise the build fails). The built-ins (OberVave, Shine On, built from source) win over the
+  index's copies. An archive that breaks what the in-process host assumes (one object, `fm1c_<id>` its only
+  global, data/BSS bounds naming two `__DATA` sections, no other writable data such as `__mod_init_func`, links
+  for the target) is left out with a build warning and plays emulated. A Mach-O image holds at most 255 sections,
+  so the build moves each published cartridge's data and BSS into two shared sections between markers that
+  define its bounds, and checks the layout on a link map. First build (index of 2026-11-20): 120 published + 2
+  built-in linked; JIANT and Vesper left out (a static constructor each, `__mod_init_func`, which the per-boot
+  reset would undo). A firmware not linked into the installed app plays emulated with "Plays emulated on iPhone
+  until the next app update". **Versions**: when the index the app reads has another version of a linked id than
+  the one linked (the index moved on after the app was built), the linked version plays natively and the card
+  says which ("Plays vX, built into this app; vY plays natively after the next app update"); the Hub's package
+  of the new version stays available emulated as `hub:<id>`.
 
 ## Still the emulator
 

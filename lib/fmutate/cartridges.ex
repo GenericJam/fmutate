@@ -15,8 +15,9 @@ defmodule FMutate.Cartridges do
   cartridge of another engine ABI, left from an app update, is never found as one to run).
 
   iOS runs no downloaded native code: there only the cartridges linked into the app run natively
-  (`FMutate.Paths.bundled_cart/1`), and an entry with an iOS asset that isn't linked plays emulated until an
-  app update links it.
+  (`FMutate.Paths.bundled/1`; native/build_ios.sh links every iOS cartridge of the index pinned at the app's
+  build), and an entry with an iOS asset that isn't linked plays emulated until an app update links it. A linked
+  cartridge of another version than the index's build plays natively at its own version (`bundled_version`).
   """
 
   alias FMutate.Library.Catalog
@@ -29,10 +30,14 @@ defmodule FMutate.Cartridges do
   @typedoc """
   One firmware's native build for this platform: the index's fields (`id`, `name`, `version`, `commit`,
   `license`, `repo`, `build`, `parity`, `updated`), its asset (`platform`, `url`, `size`, `sha256`, `sig`),
-  and once resolved (`resolve/3`) where it is on the phone: `bundled` (a cartridge of the build, or nil),
-  `cart` and `cart_version` (the downloaded file and its version, or nil).
+  and once resolved (`resolve/3`) where it is on the phone: `bundled` (a cartridge of the build, or nil) and
+  `bundled_version` (its version when the build says, as iOS's linked ones do, else nil), `cart` and
+  `cart_version` (the downloaded file and its version, or nil).
   """
   @type entry :: %{required(atom) => term}
+
+  @typedoc "A cartridge of the build and its version, when the build says (`FMutate.Paths.bundled/1`)."
+  @type bundled :: {String.t(), String.t() | nil}
 
   @doc "The signed index's URL (nil: don't fetch)."
   def index_url, do: config(:index_url)
@@ -185,19 +190,22 @@ defmodule FMutate.Cartridges do
     do: "libcart_#{id}@#{version}@#{platform}@#{@abi_tag}.so"
 
   @doc """
-  Entries with where they are on the phone: `bundled` (`bundled_cart.(id)`, a cartridge of the build) and,
-  where cartridges download, `cart` and `cart_version` (the file of the id in `dir` for this engine ABI: this
-  version's, else an older one, which keeps working until the update is downloaded).
+  Entries with where they are on the phone: `bundled` and `bundled_version` (`bundled.(id)`, a cartridge of the
+  build: `{cart, version | nil}` or nil) and, where cartridges download, `cart` and `cart_version` (the file of
+  the id in `dir` for this engine ABI: this version's, else an older one, which keeps working until the update
+  is downloaded).
   """
-  @spec resolve(%{String.t() => entry}, Path.t(), (String.t() -> String.t() | nil)) :: %{String.t() => entry}
-  def resolve(entries, dir, bundled_cart \\ &Paths.bundled_cart/1) do
+  @spec resolve(%{String.t() => entry}, Path.t(), (String.t() -> bundled | nil)) :: %{String.t() => entry}
+  def resolve(entries, dir, bundled \\ &Paths.bundled/1) do
     files = list(dir)
 
     Map.new(entries, fn {id, e} ->
       {cart, version} =
         if downloadable?(e.platform), do: downloaded(files, dir, e), else: {nil, nil}
 
-      {id, Map.merge(e, %{bundled: bundled_cart.(id), cart: cart, cart_version: version})}
+      {b_cart, b_version} = bundled.(id) || {nil, nil}
+      where = %{bundled: b_cart, bundled_version: b_version, cart: cart, cart_version: version}
+      {id, Map.merge(e, where)}
     end)
   end
 
