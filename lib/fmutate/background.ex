@@ -5,9 +5,11 @@ defmodule FMutate.Background do
   Android freezes a cached app's process shortly after it leaves the screen: the BEAM, the engines and the
   MIDI port stop, and the audio with them. While any instance has an engine (phase `:booting`, `:running`
   or `:crashed`, which restarts it) this process holds the `mob_background` keep-alive on: a
-  `mediaPlayback` foreground service with the notification "FMutate is playing", owned by this process (it
-  goes if this process does). Nothing to play (safe mode, a firmware that can't run here) lets it go, and
-  Android may freeze the app again.
+  `mediaPlayback` foreground service with the notification "FMutate is playing". The session is owned by
+  `FMutate.Background.Session` (it ends if its owner does), started before everything else that could fail,
+  so a restart of this process (with the instances or the I/O before it) finds the keep-alive still held:
+  Android wouldn't start it again from the background. Nothing to play (safe mode, a firmware that can't
+  run here) lets it go, and Android may freeze the app again.
 
   Android only starts a foreground service while the app is in the foreground. A start it refuses (`{:error,
   :refused}` at once, or `{:mob_background, {:error, :foreground_refused}}` after: the instance came back from
@@ -38,26 +40,61 @@ defmodule FMutate.Background do
 
   @playing [:booting, :running, :crashed]
 
-  defmodule Native do
+  defmodule Session do
     @moduledoc false
-    # The device side: mob_background's keep-alive and Mob's permission request (Android); the audio output (iOS).
+    # Owns mob_background's session (Android), which ends when its owner exits: this process does nothing that
+    # can fail, and FMutate.Supervisor starts it right after the Registry, so it outlives restarts of
+    # FMutate.Background. The notification's actions and Android's refusals go on to FMutate.Background.
+    use GenServer
+
     @notification %{
       title: "FMutate",
       text: "FMutate is playing",
       actions: [%{id: :quit, label: "Quit"}]
     }
 
-    def keep_alive do
-      if ios?(),
-        do: FMutate.AudioNif.start(),
-        else: MobBackground.start(self(), mode: :media_playback, notification: @notification)
+    def start_link(_opts), do: GenServer.start_link(__MODULE__, nil, name: __MODULE__)
+
+    def start, do: GenServer.call(__MODULE__, :start)
+    def stop, do: GenServer.call(__MODULE__, :stop)
+    def on?, do: GenServer.call(__MODULE__, :on?)
+
+    @impl true
+    def init(nil), do: {:ok, false}
+
+    @impl true
+    def handle_call(:start, _from, _on) do
+      result = MobBackground.start(self(), mode: :media_playback, notification: @notification)
+      {:reply, result, result == :ok}
     end
 
-    def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: MobBackground.stop())
+    def handle_call(:stop, _from, _on), do: {:reply, MobBackground.stop(), false}
+    def handle_call(:on?, _from, on), do: {:reply, on, on}
+
+    @impl true
+    def handle_info({:mob_background, event} = msg, on) do
+      if pid = Process.whereis(FMutate.Background), do: send(pid, msg)
+      {:noreply, on and not match?({:error, _}, event)}
+    end
+  end
+
+  defmodule Native do
+    @moduledoc false
+    # The device side: mob_background's keep-alive (through Session) and Mob's permission request (Android); the
+    # audio output (iOS).
+    def keep_alive, do: if(ios?(), do: FMutate.AudioNif.start(), else: Session.start())
+
+    def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: Session.stop())
 
     # whether the keep-alive is already held when this process starts: on iOS (in-process engines) the output's
-    # own state; elsewhere not
-    def on?, do: FMutate.Paths.inproc?() and FMutate.AudioNif.stats().running
+    # own state; on Android the session's
+    def on? do
+      cond do
+        FMutate.Paths.inproc?() -> FMutate.AudioNif.stats().running
+        Process.whereis(Session) -> Session.on?()
+        true -> false
+      end
+    end
 
     # back in the foreground with the keep-alive held: on iOS reopen the output if an interruption closed it and
     # never reported its end (AudioNif.start leaves a running output alone); elsewhere nothing

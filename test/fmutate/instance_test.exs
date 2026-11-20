@@ -330,24 +330,66 @@ defmodule FMutate.InstanceTest do
       assert_quit("a", pids)
     end
 
-    test "while the engine boots" do
+    test "right after the start, while the engine boots" do
       start_instance()
-      assert [%{ready: false} = eng] = engines("a")
-      pids = os_pids([eng])
+      # (quit usually lands before READY; the outcome must be the same either way)
+      assert [_eng] = engines = engines("a")
+      pids = os_pids(engines)
       assert :ok = Instance.quit("a")
       assert_quit("a", pids)
     end
 
-    test "while a crashed engine restarts" do
+    test "an engine that crashes just after the quit isn't restarted, and its crash isn't counted" do
       start_instance()
       await_state(running?("obervave"))
-      Instance.debug("a", :crash)
-      await_state(&(&1.phase == :crashed))
-      pids = os_pids(Enum.filter(engines("a"), &Process.alive?(&1.pid)))
-      assert :ok = Instance.quit("a")
+      [eng] = engines("a")
+      pids = os_pids([eng])
+      pid = GenServer.whereis(Instance.via("a"))
+
+      # the quit is queued first, the engine's exit right behind it
+      :sys.suspend(pid)
+      quit = Task.async(fn -> Instance.quit("a") end)
+      Process.sleep(50)
+      ref = Process.monitor(eng.pid)
+      FMutate.Engine.kill9(eng.pid)
+      assert_receive {:DOWN, ^ref, :process, _, _}, 2_000
+      :sys.resume(pid)
+
+      assert :ok = Task.await(quit)
       assert_quit("a", pids)
-      # (the crash and the quit don't add up to a quarantine)
+      assert %{restarts: 0, last_exit: nil} = Instance.view("a")
       assert Instance.quarantined("a") == []
+    end
+
+    # suspend the instance once the new engine plays and the old one crossfades out (stopped 200 ms after the new
+    # one's READY, {:finish_switch, _})
+    defp suspend_crossfading(pid, tries \\ 500) do
+      :sys.suspend(pid)
+
+      case :sys.get_state(pid) do
+        %{next: nil, stopping: stopping} when map_size(stopping) == 1 ->
+          :ok
+
+        _ when tries > 0 ->
+          :sys.resume(pid)
+          Process.sleep(2)
+          suspend_crossfading(pid, tries - 1)
+      end
+    end
+
+    test "while a switch crossfades: the old engine not yet told to stop ends too" do
+      start_instance()
+      await_state(running?("obervave"))
+      :ok = Instance.switch_firmware("a", "shineon")
+      pid = GenServer.whereis(Instance.via("a"))
+      suspend_crossfading(pid)
+      pids = os_pids(engines("a"))
+      quit = Task.async(fn -> Instance.quit("a") end)
+      Process.sleep(50)
+      :sys.resume(pid)
+
+      assert :ok = Task.await(quit)
+      assert_quit("a", pids)
     end
 
     test "in the middle of a switch: the new engine booting and the old one playing both end" do

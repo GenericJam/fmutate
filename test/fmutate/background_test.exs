@@ -32,11 +32,12 @@ defmodule FMutate.BackgroundTest do
     end
   end
 
-  # the keep-alive, permission and quit calls, reported to the test; keep_alive answers what the test set
+  # the keep-alive, permission and quit calls, reported to the test; keep_alive answers what the test set, on?
+  # whether the keep-alive is already held (the session outlives a restart of Background)
   defmodule Backend do
     def keep_alive, do: report(:keep_alive, :persistent_term.get({__MODULE__, :answer}, :ok))
     def stop, do: report(:stop, :ok)
-    def on?, do: false
+    def on?, do: :persistent_term.get({__MODULE__, :on}, false)
     def resume, do: report(:resume, :ok)
     def request_notifications, do: report(:request_notifications, :ok)
     def quit, do: report(:quit, :ok)
@@ -50,7 +51,7 @@ defmodule FMutate.BackgroundTest do
   setup do
     :persistent_term.put({Backend, :test}, self())
     :persistent_term.put({Backend, :answer}, :ok)
-    on_exit(fn -> :persistent_term.erase({Backend, :answer}) end)
+    on_exit(fn -> Enum.each([:answer, :on], &:persistent_term.erase({Backend, &1})) end)
     start_supervised!({Registry, keys: :unique, name: FMutate.Registry})
     :ok
   end
@@ -86,6 +87,16 @@ defmodule FMutate.BackgroundTest do
     start(:not_installed)
     assert %{on: false, want: false} = Background.state(:background_test)
     refute_received {:backend, _}
+  end
+
+  test "a restarted Background takes over the keep-alive still held instead of starting it again" do
+    :persistent_term.put({Backend, :on}, true)
+    start(:running)
+    assert %{on: true, want: true} = Background.state(:background_test)
+    refute_received {:backend, :keep_alive}
+
+    FakeInstance.set_phase("a", :safe_mode)
+    assert_receive {:backend, :stop}
   end
 
   test "a start Android refuses in the background is tried again when the app comes back" do

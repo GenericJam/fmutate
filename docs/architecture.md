@@ -338,10 +338,12 @@ flowchart LR
   in the background): the `<service>` is declared in our `AndroidManifest.xml` with that type and
   `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it; the plugin's `FOREGROUND_SERVICE_MICROPHONE` (its
   microphone mode) is removed there (`tools:node="remove"`), since Google Play asks an app to justify each one. The
-  session is owned by `FMutate.Background` (it ends if that process does). Android starts a foreground service
-  only from the foreground; a refused start (at once, or `{:mob_background, {:error, :foreground_refused}}` after)
-  is retried when the app comes back. The first start asks for `POST_NOTIFICATIONS` (Android 13+ hides the
-  notification without it; the service runs either way).
+  session ends when its owner process exits, so its owner is `FMutate.Background.Session`, a process that does
+  nothing that can fail, started right after the Registry: a restart of `FMutate.Background` (after a crash below
+  it in the `rest_for_one` supervisor) finds it still held, where Android would refuse to start it again from
+  the background. Android starts a foreground service only from the foreground; a refused start (at once, or
+  `{:mob_background, {:error, :foreground_refused}}` after) is retried when the app comes back. The first start
+  asks for `POST_NOTIFICATIONS` (Android 13+ hides the notification without it; the service runs either way).
 - **Quit** (the notification's button, `{:mob_background, {:action, :quit}}`): a backgrounded app has no other
   way to stop short of the system settings, and a phone keeps playing until it is told. In order: each instance
   stops its engines as a switch stops the old one (`FMutate.Instance.quit/1`, which returns once every engine,
