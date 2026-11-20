@@ -603,6 +603,7 @@ defmodule FMutate.MIDI do
       on: src.automap,
       profile: with(%{name: p} <- Automap.profile(name), do: p),
       program: program && program.name,
+      factory: program != nil and order.by == :auto,
       by: order.by,
       open: Automap.open(name, order) |> Map.take([:knobs, :pads]),
       unmapped: src.unmapped,

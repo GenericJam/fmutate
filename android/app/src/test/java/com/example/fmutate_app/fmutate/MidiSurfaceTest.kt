@@ -6,12 +6,13 @@ import org.junit.Test
 class MidiSurfaceTest {
     @Test
     fun parsesWhatFMutateMidiSends() {
-        val text = "p\tarp\t1\nt\tpads#3\t0\nv\tmaster\tpot:master\t0.5039\ne\tknob1\t-3"
+        val text = "p\tarp\t1\nt\tpads#3\t0\nv\tmaster\tpot:master\t0.5039\ng\tknob1\tK1\ne\tknob1\t-3"
         assertEquals(
             listOf(
                 MidiShow.Press("arp", true),
                 MidiShow.Toggle("pads#3", false),
                 MidiShow.Value("master", "pot:master", 0.5039f),
+                MidiShow.Tag("knob1", "K1"),
                 MidiShow.Clicks("knob1", -3),
             ),
             MidiShow.parse(text),

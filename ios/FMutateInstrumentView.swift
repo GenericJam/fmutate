@@ -503,6 +503,8 @@ final class FMInstrumentSurface: UIView {
     // and when each one's bubble was last moved (it goes once the control has been still for a moment)
     private var allControls: [String: FMControl] = [:]
     private var midiStill: [String: Int64] = [:]
+    // the hardware control that last drove a control ("K1", "CC20"; FMutate.MIDI.Controls): its bubble names it
+    private var midiTags: [String: String] = [:]
     // the note-level toggle (binding target .action("note_level")): the controls bound to it; lit while any
     // strike-position strip has note level on (as FMutate.LayoutEdit.surface/2 resolved it); greyed out on a
     // firmware without per-note pressure or a layout without such a strip; a press asks FMutate.Editor to switch
@@ -1741,8 +1743,8 @@ extension FMInstrumentSurface: FMMidiShower {
     }
 
     /// A learned knob's bubble and an encoder's turn go away once it has been still for a moment.
-    private func midiMoved(_ id: String, _ bubble: String) {
-        setBubble(id, bubble)
+    private func midiMoved(_ id: String, _ value: String) {
+        setBubble(id, midiTags[id].map { "\($0)  \(value)" } ?? value)
         let at = fmNowMs() + MIDI_BUBBLE_MS
         midiStill[id] = at
         fmAfter(MIDI_BUBBLE_MS) { [weak self] in
@@ -1784,6 +1786,8 @@ extension FMInstrumentSurface: FMMidiShower {
                     setEncoderTurns(control, turns)
                     midiMoved(control, (turns > 0 ? "+" : "") + "\(turns)")
                 }
+            case let .tag(control, tag):
+                midiTags[control] = tag
             }
         }
     }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.channels.Channel
  *     t <key> <0|1>                  its toggle is now off / on
  *     v <control> <target> <value>   absolute target (Target.absoluteKey) moved to value (0..1) by control
  *     e <control> <clicks>           encoder clicks sent for a knob / slider / XY pad
+ *     g <control> <tag>              the hardware control driving it ("K1", "CC20"): its bubble names it
  *     h <key> <0|1>                  an automapped pad holds the FM-1 button this control is bound to: lit only
  *     o <-1|1>                       an automapped pad pressed OCT− / OCT+ (velocity strips' own octave follows)
  */
@@ -24,6 +25,7 @@ sealed class MidiShow {
     data class Toggle(val key: String, val on: Boolean) : MidiShow()
     data class Value(val control: String, val target: String, val v: Float) : MidiShow()
     data class Clicks(val control: String, val n: Int) : MidiShow()
+    data class Tag(val control: String, val tag: String) : MidiShow()
     data class Shine(val key: String, val down: Boolean) : MidiShow()
     data class Octave(val dir: Int) : MidiShow()
 
@@ -36,6 +38,7 @@ sealed class MidiShow {
                 "t" -> if (f.size == 3) Toggle(f[1], f[2] == "1") else null
                 "v" -> if (f.size == 4) f[3].toFloatOrNull()?.let { Value(f[1], f[2], it.coerceIn(0f, 1f)) } else null
                 "e" -> if (f.size == 3) f[2].toIntOrNull()?.let { Clicks(f[1], it) } else null
+                "g" -> if (f.size == 3) Tag(f[1], f[2]) else null
                 "h" -> if (f.size == 3) Shine(f[1], f[2] == "1") else null
                 "o" -> if (f.size == 2) f[1].toIntOrNull()?.let { Octave(it.coerceIn(-1, 1)) } else null
                 else -> null
