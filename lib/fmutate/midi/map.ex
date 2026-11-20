@@ -102,6 +102,7 @@ defmodule FMutate.MIDI.Map do
           | {:learned, event()}
           | {:learn, event()}
           | {:auto, event()}
+          | {:dropped, event()}
 
   @doc """
   A parser with `opts` (`:channel`, `:notes`, `:bend`, `:clock`, `:learned`, `:learning`, `:auto`, `:auto_open`,
@@ -308,7 +309,7 @@ defmodule FMutate.MIDI.Map do
     pass = Map.get(map.auto_open, :pass, MapSet.new())
 
     if Automap.knob_cc?(cc) and not MapSet.member?(pass, {rem(st, 16) + 1, cc}),
-      do: {acc, map},
+      do: {[{:dropped, {:cc, rem(st, 16) + 1, cc, v}} | acc], map},
       else: {[{:midi, <<st, cc, v>>} | acc], map}
   end
 

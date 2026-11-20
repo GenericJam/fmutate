@@ -173,9 +173,10 @@ defmodule FMutate.MIDI.Automap do
   defp pass(nil, _order), do: MapSet.new()
 
   defp pass(p, order) do
-    prog = if order.by == :auto, do: fitting(p, order.seen)
-    knobs = if prog, do: prog.knobs, else: []
-    (p.joystick ++ ((prog && prog.joystick) || [])) |> Enum.reject(&(&1 in knobs)) |> MapSet.new()
+    case order.by == :auto and fitting(p, order.seen) do
+      %{} = prog -> (p.joystick ++ prog.joystick) |> Enum.reject(&(&1 in prog.knobs)) |> MapSet.new()
+      _ -> joystick(p)
+    end
   end
 
   @doc "Whether a CC number can be a knob (not bank select, data entry, (N)RPN, a pedal or channel mode)."
@@ -215,7 +216,7 @@ defmodule FMutate.MIDI.Automap do
       true ->
         # fits no program: first touch from here, with the knobs seen so far in the order they came
         seen = order.seen ++ [k]
-        knobs = seen |> Enum.reject(&(&1 in p.joystick)) |> Enum.take(length(@knob_targets))
+        knobs = seen |> Enum.reject(&MapSet.member?(joystick(p), &1)) |> Enum.take(length(@knob_targets))
         {:new, %{order | seen: seen, knobs: knobs, by: :touch}}
     end
   end
@@ -291,12 +292,14 @@ defmodule FMutate.MIDI.Automap do
   Every joystick CC of a known controller (any program's), for a source with automap off: they go to the
   firmware even when its unmapped knobs don't.
   """
-  def joystick(name) do
+  def joystick(name) when is_binary(name) do
     case profile(name) do
       nil -> MapSet.new()
-      p -> MapSet.new(p.joystick ++ Enum.flat_map(p.programs, & &1.joystick))
+      p -> joystick(p)
     end
   end
+
+  def joystick(%{} = p), do: MapSet.new(p.joystick ++ Enum.flat_map(p.programs, & &1.joystick))
 
   @doc "A target's name on the panel (\"KNOB1\", \"MASTER\", \"OCT−\")."
   def target_name(%{"pot" => _}), do: "MASTER"

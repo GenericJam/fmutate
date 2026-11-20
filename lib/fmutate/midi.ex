@@ -716,7 +716,7 @@ defmodule FMutate.MIDI do
   @seen_max 24
 
   # the CC or pad a parser output is about, or nil
-  defp moved_key({kind, ev}) when kind in [:auto, :learned, :learn], do: MidiMap.key(ev)
+  defp moved_key({kind, ev}) when kind in [:auto, :learned, :learn, :dropped], do: MidiMap.key(ev)
   defp moved_key({:midi, <<st, cc, _v>>}) when st in 0xB0..0xBF, do: {:cc, rem(st, 16) + 1, cc}
   defp moved_key(_out), do: nil
 
@@ -745,7 +745,7 @@ defmodule FMutate.MIDI do
   defp remember_seen(state, name, {:cc, _ch, cc} = key) do
     seen = Map.get(state.seen, name, [])
 
-    if key in seen or not Automap.knob_cc?(cc) do
+    if key in seen or not Automap.knob_cc?(cc) or length(seen) >= @seen_max do
       state
     else
       notify_watchers(state, {:changed, name})
@@ -771,6 +771,7 @@ defmodule FMutate.MIDI do
 
   defp event(state, _source, {:key, _, _} = input), do: input!(state, input)
   defp event(state, _source, {:midi, _} = input), do: input!(state, input)
+  defp event(state, _source, {:dropped, _ev}), do: state
 
   defp event(state, source, {:learned, ev}) do
     {inputs, shown, controls} = Controls.handle(state.controls, source_name(state, source), ev)

@@ -185,6 +185,10 @@ defmodule FMutate.MIDI.LearnTest do
       refute Automap.candidate?({:cc, 1, 1, 5}, Automap.open(name, o))
       # PROG 4's joystick (CC 30) tells it apart
       assert Automap.program(name, turn(name, o, [{30, [3]}])).name == "PROG 4"
+      # off its programs (PROG 4 seen, then a stranger CC): no joystick CC of any program becomes a knob
+      t = turn(name, o, [{30, [3]}, {40, [1]}, {31, [2]}])
+      assert t.by == :touch and {1, 30} not in t.knobs and {1, 31} not in t.knobs
+      assert MapSet.member?(Automap.open(name, t).pass, {1, 31})
     end
 
     test "a known controller off its factory programs: the first CC that fits none switches it to first touch" do
@@ -229,7 +233,9 @@ defmodule FMutate.MIDI.LearnTest do
       bytes = [0xB0, 20, 9, 0xB0, 64, 127, 0xB0, 1, 50, 0xB0, 7, 100]
       assert length(inputs(M.new(), bytes)) == 4
       map = M.new(unmapped: :drop, auto_open: %{knobs: false, pads: false, pass: MapSet.new([{1, 1}])})
-      assert inputs(map, bytes) == [{:midi, <<0xB0, 64, 127>>}, {:midi, <<0xB0, 1, 50>>}]
+      # a dropped CC is still told (the I/O table lists it), but plays nothing
+      assert inputs(map, bytes) ==
+               [{:dropped, {:cc, 1, 20, 9}}, {:midi, <<0xB0, 64, 127>>}, {:midi, <<0xB0, 1, 50>>}, {:dropped, {:cc, 1, 7, 100}}]
       # automapped and learned CCs aren't unmapped
       assert inputs(M.configure(map, auto: MapSet.new([{:cc, 1, 20}])), [0xB0, 20, 9]) == [{:auto, {:cc, 1, 20, 9}}]
     end
