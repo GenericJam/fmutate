@@ -38,6 +38,8 @@ defmodule FMutate.RemoteTest do
     assert Remote.status_of(%{phase: :running, slow: true, clock_pct: 80}) == {:slow, 80}
     assert Remote.status_of(%{phase: :booting, slow: false, clock_pct: nil}) == :booting
     assert Remote.status_of(%{phase: :not_installed, slow: false, clock_pct: nil}) == :crashed
+    # the notification's Quit: not a crash
+    assert Remote.status_of(%{phase: :stopped, slow: false, clock_pct: nil}) == :stopped
   end
 
   test "LEDs: 27 key bits and the 14 buttons by name" do

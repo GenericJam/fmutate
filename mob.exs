@@ -72,9 +72,8 @@ config :mob_dev,
 config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
-# Bluetooth central); mob_background likewise (the mediaPlayback service type and notification text). A git
-# checkout has no signature (CI signs releases), so they are acknowledged here.
-config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_background]
+# Bluetooth central). A git checkout has no signature (CI signs releases), so it is acknowledged here.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an

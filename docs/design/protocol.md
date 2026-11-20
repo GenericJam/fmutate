@@ -42,7 +42,8 @@ Events sent to subscribers:
                                   # send only changed frames; coalesce to ≤ 30 fps per subscriber
 {:leds, keys_bitmap, buttons_map} # keys: 27-bit integer; buttons: %{id => :off | :on | :blink}
 {:midi_out, bytes}
-{:status, status}                 # :booting | :running | :crashed | :safe_mode | {:slow, clock_pct}
+{:status, status}                 # :booting | :running | :crashed | :safe_mode | :stopped | {:slow, clock_pct}
+                                  # :stopped: the app is quitting (the notification's Quit); the node goes next
 {:layout_changed, layout_id}
 ```
 

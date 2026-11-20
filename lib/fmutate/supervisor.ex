@@ -17,6 +17,8 @@ defmodule FMutate.Supervisor do
     children =
       [
         {Registry, keys: :unique, name: FMutate.Registry},
+        # owns the Android keep-alive session (FMutate.Background), so restarts of anything below don't end it
+        FMutate.Background.Session,
         # I/O (device-level): Android's MIDI/audio devices, and distribution for sibling apps (node named
         # after the first instance)
         FMutate.IO,

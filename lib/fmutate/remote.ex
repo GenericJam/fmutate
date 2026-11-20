@@ -17,7 +17,7 @@ defmodule FMutate.Remote do
       {:list_layouts, firmware_id} → {:ok, [%{id, name, made_by}]}
       {:get_layout, layout_id} → {:ok, json} | {:error, :not_found}
 
-  Events to subscribers (§3): `{:status, status}` (`:booting | :running | :crashed | :safe_mode |
+  Events to subscribers (§3): `{:status, status}` (`:booting | :running | :crashed | :safe_mode | :stopped |
   {:slow, clock_pct}`), `{:leds, keys_bitmap, buttons_map}` (on change), `{:screen, seq, frame}` (240×240
   RGB565, 115 200 bytes, changed frames only, at most 30 per second). `:midi_out` and `:layout` are
   accepted, but nothing produces them yet: the engine protocol has no firmware MIDI out, and layouts don't
@@ -75,7 +75,10 @@ defmodule FMutate.Remote do
   @doc false
   # the instance's view → the §3 status (too slow is the instance's call: FMutate.Instance.Health)
   def status_of(%{phase: :running, slow: true, clock_pct: pct}) when is_integer(pct), do: {:slow, pct}
-  def status_of(%{phase: phase}) when phase in [:booting, :running, :crashed, :safe_mode], do: phase
+  def status_of(%{phase: phase})
+      when phase in [:booting, :running, :crashed, :safe_mode, :stopped],
+      do: phase
+
   # (a native build's cartridge downloading before it starts: §3 has no word for it)
   def status_of(%{phase: :downloading}), do: :booting
   def status_of(_view), do: :crashed

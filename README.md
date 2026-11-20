@@ -37,6 +37,9 @@ early: Android only, installed from source.
   and CCs, portrait or landscape. Saved per firmware.
 - **I/O**: low-latency audio (AAudio), a virtual MIDI port `FMutate A`, USB and Bluetooth MIDI devices, MIDI clock
   in and out.
+- **Plays in the background**: while a firmware plays, the notification "FMutate is playing" keeps it running
+  with the screen off or another app in front. Its **Quit** button stops the firmware (its settings saved) and
+  ends FMutate.
 - **MIDI controllers**: an MPK mini's knobs and pads drive the FM-1's knobs and buttons out of the box (automap,
   any of the mk2's factory programs; other controllers by the order you touch them). I/O shows what each knob
   drives as you turn it, lines up your knobs one by one ("turn the knob you want for KNOB1"), pins a knob to a

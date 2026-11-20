@@ -464,6 +464,8 @@ class MainActivity : ComponentActivity() {
             } catch (_: Throwable) {
             }
         }
+        // The notification's Quit finished this activity: the process ends with it (fmutate/FMutateIO.kt).
+        com.example.fmutate_app.fmutate.FMutateIO.activityDestroyed()
     }
 }
 
