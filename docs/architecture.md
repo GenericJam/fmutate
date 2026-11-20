@@ -173,7 +173,7 @@ flowchart LR
   the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. **Limits of strike
   position** (said in the strip's editor sheet too): the notes go to the firmware's MIDI in on channel 1, so the
   firmware's own MIDI channel setting (OberVave's and Shine On's GLOBAL page; OMNI by default) must be OMNI or 1:
-  any other channel drops them and the strip is silent (on 1 they play track A, not the selected track). FMutate
+  any other channel drops them and the strip is silent (on OMNI or 1 they play the selected track, as key presses do). FMutate
   doesn't read that setting (it lives in the firmware's flash, which FMutate doesn't parse). A firmware layer held
   open with HOME (OberVave: SEQ, EDIT, GLO, SAVE) isn't seen by the surface, so the strip sends notes there, not
   the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. Measured on the Moto G
