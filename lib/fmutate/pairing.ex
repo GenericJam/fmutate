@@ -97,8 +97,8 @@ defmodule FMutate.Pairing do
   def front_port(server \\ __MODULE__), do: GenServer.call(server, :front_port)
 
   @doc """
-  Whether this platform pairs: Android, and hosts (tests). Not iOS yet (protocol.md §1, "Not yet"): there
-  the supervisor starts neither this service nor `MobPair.Pairings`, and the menu has no Pair an app.
+  Whether this platform pairs: Android, and hosts (tests). Not iOS yet (protocol.md §7 "Pairing", "Not yet"):
+  there the supervisor starts neither this service nor `MobPair.Pairings`, and the menu has no Pair an app.
   """
   def available?, do: platform() != :ios
 
