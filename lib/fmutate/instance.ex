@@ -27,6 +27,15 @@ defmodule FMutate.Instance do
 
   Keys held when the engine changes are released first, so nothing sticks.
 
+  ## Native builds not on the phone yet
+
+  A Hub firmware that the cartridge index has made native runs from a cartridge the phone downloads
+  (`FMutate.Firmware.needs_cart?/1`). Starting one that isn't downloaded (at boot, after a crash, on a
+  switch) downloads it first through `FMutate.Library` (phase `:downloading`, with `download` in the
+  view: `{bytes, total | nil}`), then starts it. Only if the download fails does its Hub package run in the
+  emulator instead (`hub:<id>`, labelled as the Hub package, when it is on the phone); the saved firmware stays
+  the native one, so the next start tries the download again.
+
   ## Health
 
   The running engine's speed and its ring fill (`FMutate.Instance.Health`): the view carries `clock_pct`
@@ -47,8 +56,9 @@ defmodule FMutate.Instance do
   use GenServer
   require Logger
 
-  alias FMutate.{Audio, Engine, Firmware, Inputs, Paths}
+  alias FMutate.{Audio, Engine, Firmware, Inputs, Library, Paths}
   alias FMutate.Instance.Health
+  alias FMutate.Library.Catalog
 
   @crossfade_ms 150
   @restart_window_ms 60_000
@@ -77,7 +87,12 @@ defmodule FMutate.Instance do
             cpu: %{},
             # per firmware (in-process engines): times it ended the app with no clean minute since (CrashMarker)
             app_crashes: %{},
-            health: nil
+            health: nil,
+            # a cartridge being downloaded before its firmware starts: %{fw, role, carry, progress}
+            fetching: nil,
+            # the native firmware chosen while its Hub package runs instead (its download failed): saved as the
+            # firmware, so the next start tries it again
+            wanted: nil
 
   ## API
 
@@ -229,13 +244,13 @@ defmodule FMutate.Instance do
   @impl true
   def handle_call({:switch, fw}, _from, state) do
     cond do
-      Firmware.runnable(fw) == nil ->
+      Firmware.runnable(fw) == nil and not Firmware.needs_cart?(Firmware.get(fw)) ->
         {:reply, {:error, :not_installed}, state}
 
       MapSet.member?(state.quarantined, fw) ->
         {:reply, {:error, :quarantined}, state}
 
-      fw == state.firmware and state.phase in [:booting, :running] ->
+      fw == state.firmware and state.phase in [:booting, :running, :downloading] ->
         {:reply, :ok, state}
 
       state.live != nil and fw == state.live.firmware ->
@@ -367,6 +382,14 @@ defmodule FMutate.Instance do
 
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
+  def handle_info({:library, {:downloaded, fw, result}}, %{fetching: %{fw: fw} = f} = state),
+    do: {:noreply, %{state | fetching: nil} |> fetched(f, result) |> publish()}
+
+  def handle_info({:library, :changed}, %{fetching: %{fw: fw} = f} = state) do
+    progress = Library.info().downloads[fw]
+    {:noreply, publish(%{state | fetching: %{f | progress: progress}})}
+  end
+
   def handle_info({:DOWN, _ref, :process, pid, _}, state),
     do: {:noreply, %{state | subscribers: Map.delete(state.subscribers, pid)}}
 
@@ -421,11 +444,7 @@ defmodule FMutate.Instance do
       Map.put(%{state | phase: phase}, role, eng)
     else
       nil ->
-        Logger.error(
-          "instance #{state.id}: #{fw} can't run here (no cartridge, package or emulator)"
-        )
-
-        %{state | phase: :not_installed}
+        fetch_cart(state, role, fw, carry)
 
       {:error, reason} ->
         Logger.error("instance #{state.id}: cannot start #{fw}: #{inspect(reason)}")
@@ -433,11 +452,70 @@ defmodule FMutate.Instance do
     end
   end
 
+  # a Hub firmware gone native whose cartridge isn't on the phone: download it first (the library tells us
+  # when it's in, `fetched/3`); the live role waits in `:downloading`, a switch keeps the old engine playing
+  defp fetch_cart(state, role, fw, carry) do
+    with true <- Firmware.needs_cart?(Firmware.get(fw)),
+         :ok <- Library.subscribe(),
+         :ok <- Library.download(fw) do
+      Logger.info("instance #{state.id}: #{fw} runs natively; downloading its cartridge first")
+      phase = if role == :live, do: :downloading, else: state.phase
+      %{state | phase: phase, fetching: %{fw: fw, role: role, carry: carry, progress: nil}}
+    else
+      _ ->
+        Logger.error("instance #{state.id}: #{fw} can't run here (no cartridge, package or emulator)")
+        not_installed(state, role)
+    end
+  end
+
+  defp fetched(state, %{fw: fw, role: role, carry: carry}, :ok), do: start_engine(state, role(state, role), fw, carry)
+
+  # the download failed: the firmware's Hub package in the emulator, when it's on the phone and not
+  # quarantined (then the live role shows its safe mode, Run anyway; a switch keeps the old firmware)
+  defp fetched(state, %{fw: fw, role: role}, {:error, reason}) do
+    hub = Catalog.hub_id(fw)
+    role = role(state, role)
+    why = "#{fw}'s cartridge didn't download (#{inspect(reason)})"
+
+    cond do
+      Firmware.runnable(hub) == nil ->
+        Logger.error("instance #{state.id}: #{why} and its Hub package isn't on the phone")
+        not_installed(state, role)
+
+      MapSet.member?(state.quarantined, hub) and role == :live ->
+        Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
+        %{state | firmware: hub, wanted: fw, phase: :safe_mode}
+
+      MapSet.member?(state.quarantined, hub) ->
+        Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
+        not_installed(state, role)
+
+      true ->
+        Logger.warning("instance #{state.id}: #{why}; running #{hub} in the emulator")
+        start_engine(%{state | firmware: hub, wanted: fw}, role, hub)
+    end
+  end
+
+  # (a switch whose old engine has gone meanwhile, quarantined: the new one is the live one)
+  defp role(%{live: nil}, :next), do: :live
+  defp role(_state, role), do: role
+
+  defp not_installed(state, :live), do: %{state | phase: :not_installed}
+
+  # a switch to it: the old firmware plays on, and is the current one again
+  defp not_installed(%{live: %{firmware: old}} = state, :next) do
+    state = %{state | firmware: old}
+    save_state(state)
+    state
+  end
+
+  defp not_installed(state, :next), do: %{state | phase: :not_installed}
+
   # the engine booting for an earlier switch goes; :keep_live stays on the live engine (it runs `fw`), :start
   # boots `fw` (beside a live engine, as the next one)
   defp switch(state, fw, how) do
     state = if state.next, do: drop_engine(state, :next), else: state
-    state = %{state | firmware: fw, restarts: 0, failures: []}
+    state = %{state | firmware: fw, restarts: 0, failures: [], fetching: nil, wanted: nil}
 
     state =
       case how do
@@ -750,7 +828,9 @@ defmodule FMutate.Instance do
         restarts: state.restarts,
         last_exit: state.last_exit,
         master: state.master,
-        buffer: state.buffer
+        buffer: state.buffer,
+        # a cartridge downloading before its firmware starts: {bytes, total | nil}, or nil
+        download: state.fetching && (state.fetching.progress || {0, nil})
       },
       health_view(state)
     )
@@ -811,7 +891,7 @@ defmodule FMutate.Instance do
 
   defp save_state(state) do
     data = %{
-      firmware: state.firmware,
+      firmware: state.wanted || state.firmware,
       master: state.master,
       quarantined: MapSet.to_list(state.quarantined),
       buffer: state.buffer,

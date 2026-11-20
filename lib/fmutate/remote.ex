@@ -76,6 +76,8 @@ defmodule FMutate.Remote do
   # the instance's view → the §3 status (too slow is the instance's call: FMutate.Instance.Health)
   def status_of(%{phase: :running, slow: true, clock_pct: pct}) when is_integer(pct), do: {:slow, pct}
   def status_of(%{phase: phase}) when phase in [:booting, :running, :crashed, :safe_mode], do: phase
+  # (a native build's cartridge downloading before it starts: §3 has no word for it)
+  def status_of(%{phase: :downloading}), do: :booting
   def status_of(_view), do: :crashed
 
   @doc false

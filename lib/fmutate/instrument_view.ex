@@ -47,7 +47,7 @@ defmodule FMutate.InstrumentView do
       restarts: view.restarts,
       slow: view[:slow] == true,
       speed: if(view[:slow] == true, do: view[:clock_pct] || 0, else: 0),
-      hint: hint(view[:advice], view[:cpu_mhz]),
+      hint: if(view.phase == :downloading, do: downloading(view[:download]), else: hint(view[:advice], view[:cpu_mhz])),
       editing: assigns[:editing] == true,
       page: assigns[:page] || "",
       toast: toast,
@@ -62,6 +62,10 @@ defmodule FMutate.InstrumentView do
   defp hint(:limit, _mhz), do: "This phone can't run it at full speed"
   defp hint(:raise_buffer, _mhz), do: "Raise the buffer in I/O"
   defp hint(_advice, _mhz), do: ""
+
+  # under "Downloading…": how far the native build's cartridge is (FMutate.Instance's `download`)
+  defp downloading({got, total}) when is_integer(total) and total > 0, do: "The native build · #{div(got * 100, total)} %"
+  defp downloading(_progress), do: "The native build"
 
   @impl true
   def handle_event("in", %{"c" => _, "v" => _} = payload, socket) do

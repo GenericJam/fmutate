@@ -1,10 +1,12 @@
 defmodule FMutate.Library.Catalog do
   @moduledoc """
-  The library's catalogue, as pure functions over its three sources (HANDOFF §9):
+  The library's catalogue, as pure functions over its sources (HANDOFF §9):
 
     * the bundled native cartridges (`FMutate.Firmware.bundled/0`),
     * the FM-1 Firmware Hub's catalogue (thefirmwarehub.com `catalog.json`; fm1-emu's
       `tools/hub_catalog.mjs` reads the same file): every firmware with a package,
+    * the native builds of Hub firmwares in the signed cartridge index (`FMutate.Cartridges`), with their
+      cartridges of the build or downloaded,
     * the packages on the phone, under `FMutate.Paths.packages_dir/0`: a Hub package downloaded as
       its Hub file name (`<id>-<version>.fwsc`), an imported one under `imported/`.
 
@@ -15,7 +17,7 @@ defmodule FMutate.Library.Catalog do
   `package` only when its file is on the phone.
   """
 
-  alias FMutate.{Firmware, Fwsc}
+  alias FMutate.{Cartridges, Firmware, Fwsc}
 
   @hub "https://thefirmwarehub.com/"
 
@@ -99,12 +101,18 @@ defmodule FMutate.Library.Catalog do
   @doc """
   The whole catalogue: bundled first, then imported packages, then the Hub's. A native cartridge wins
   over the Hub's entry of the same id; that entry stays in the Hub's place as `hub:<id>`.
+
+  `natives` are the cartridge index's entries for this phone (`FMutate.Cartridges.resolve/3`, with `new`). A
+  Hub firmware with one that runs here becomes `backend: :native` in the Hub's place, with the entry as
+  `native` and its cartridge as `cart` (of the build, else the downloaded file, else nil: Download), followed
+  by its Hub package as `hub:<id>`; an entry without a Hub firmware is listed after the Hub's. The bundled
+  firmwares ignore the index. On iOS an entry that isn't linked into the app stays `:emu` with `native` set.
   """
-  @spec merge([Firmware.t()], [Firmware.t()], Path.t()) :: [Firmware.t()]
-  def merge(bundled, hub, dir) do
+  @spec merge([Firmware.t()], [Firmware.t()], Path.t(), %{String.t() => map}) :: [Firmware.t()]
+  def merge(bundled, hub, dir, natives \\ %{}) do
     hub_by_id = Map.new(hub, &{&1.id, &1})
 
-    natives =
+    statics =
       for fw <- bundled do
         case hub_by_id[fw.id] do
           nil -> fw
@@ -112,16 +120,66 @@ defmodule FMutate.Library.Catalog do
         end
       end
 
-    native_by_id = Map.new(natives, &{&1.id, &1})
+    static_by_id = Map.new(statics, &{&1.id, &1})
+    natives = Map.drop(natives, Map.keys(static_by_id))
 
-    hubs =
-      for h <- hub do
-        h = if native = native_by_id[h.id], do: hub_variant(h, native), else: h
-        path = hub_package_path(h, dir)
-        if File.regular?(path), do: %{h | package: path}, else: h
-      end
+    hubs = Enum.flat_map(hub, &hub_rows(&1, static_by_id[&1.id], natives[&1.id], dir))
 
-    natives ++ imported(dir) ++ hubs
+    index_only =
+      for {id, n} <- Enum.sort(natives), not Map.has_key?(hub_by_id, id), Cartridges.native?(n),
+          do: native_firmware(index_firmware(n), n)
+
+    statics ++ imported(dir) ++ hubs ++ index_only
+  end
+
+  # a Hub firmware's rows (`static`: a bundled cartridge of the id; `n`: the index's native build of it, never
+  # both): under one that runs here, its package follows as `hub:<id>`
+  defp hub_rows(h, nil, nil, dir), do: [with_package(h, dir)]
+  defp hub_rows(h, nil, n, dir), do: native_rows(h, n, Cartridges.native?(n), dir)
+  defp hub_rows(h, static, nil, dir), do: [with_package(hub_variant(h, static), dir)]
+
+  defp native_rows(h, n, true, dir) do
+    fw = native_firmware(h, n)
+    [fw, with_package(hub_variant(h, fw), dir)]
+  end
+
+  defp native_rows(h, n, false, dir), do: [with_package(%{h | native: n}, dir)]
+
+  defp with_package(h, dir) do
+    path = hub_package_path(h, dir)
+    if File.regular?(path), do: %{h | package: path}, else: h
+  end
+
+  defp native_firmware(h, n) do
+    %{
+      h
+      | backend: :native,
+        version: n.version,
+        license: n.license || h.license,
+        url: n.url,
+        size: n.size,
+        sha256: n.sha256,
+        package: nil,
+        native: n,
+        cart: n.bundled || n.cart,
+        new: n[:new] == true
+    }
+  end
+
+  # a native build the Hub's catalogue (not read yet, or not listing it) has no entry for
+  defp index_firmware(n) do
+    repo = n.repo && "https://github.com/" <> n.repo
+    author = if n.repo, do: n.repo |> String.split("/") |> hd(), else: "?"
+
+    %Firmware{
+      id: n.id,
+      name: n.name,
+      version: n.version,
+      author: author,
+      license: n.license || "see the repository",
+      source: :hub,
+      repo: repo
+    }
   end
 
   @doc "The id the Hub's package of a firmware with a native cartridge goes by."
@@ -133,9 +191,19 @@ defmodule FMutate.Library.Catalog do
       h
       | id: hub_id(h.id),
         name: "#{h.name} (Hub package)",
-        about: "The Hub's package, run in the emulator, to compare with the built-in #{native.name}. Its saves are its own."
+        about: "The Hub's package, run in the emulator, to compare with the native #{native.name}. Its saves are its own."
     }
   end
+
+  @doc """
+  Whether a native firmware's downloaded cartridge is older than the index's build: Download again offers the
+  update while the old one keeps running.
+  """
+  @spec update?(Firmware.t()) :: boolean
+  def update?(%{backend: :native, native: %{bundled: nil, cart_version: v, version: latest}}) when is_binary(v),
+    do: v != latest
+
+  def update?(_fw), do: false
 
   @doc "The imported packages on the phone."
   @spec imported(Path.t()) :: [Firmware.t()]
@@ -202,12 +270,16 @@ defmodule FMutate.Library.Catalog do
     cond do
       fw.id in ctx.quarantined -> :quarantined
       fw.id == ctx.current -> :running
-      fw.backend == :native -> :on_phone
-      fw.package == nil -> :available
-      ctx.emu? -> :on_phone
-      true -> :not_yet
+      true -> on_phone(fw, ctx.emu?)
     end
   end
+
+  # (neither quarantined nor running) a native Hub build without its cartridge is a download, like a package
+  defp on_phone(%{backend: :native, source: :hub, cart: nil}, _emu?), do: :available
+  defp on_phone(%{backend: :native}, _emu?), do: :on_phone
+  defp on_phone(%{package: nil}, _emu?), do: :available
+  defp on_phone(_fw, true), do: :on_phone
+  defp on_phone(_fw, _emu?), do: :not_yet
 
   @doc "Whether a firmware matches a search (name, author, tags, description; case-insensitive)."
   @spec matches?(Firmware.t(), String.t()) :: boolean

@@ -42,6 +42,12 @@ defmodule FMutate.Paths do
   @doc "Where downloaded and imported firmware packages are kept."
   def packages_dir, do: ensure(Path.join(data_dir(), "packages"))
 
+  @doc """
+  Downloaded native cartridges (`libcart_<id>@<version>@<platform>@abi<N>.so`) and the cartridge index's cache
+  (`FMutate.Cartridges`).
+  """
+  def cartridges_dir, do: ensure(Path.join(data_dir(), "cartridges"))
+
   @doc "A bundled cartridge (its path, or in-process its id), or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
     if inproc?() do

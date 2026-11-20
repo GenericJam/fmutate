@@ -76,6 +76,11 @@ with `dlopen`; that engine/cartridge combination runs in a separate OS process f
 engine communicate over an Erlang Port and shared audio/screen memory. The APK built with the native cartridges
 therefore contains GPL components: it is **not an MIT-only distribution**.
 
+Native cartridges the app downloads through the cartridge index (`FMutate.Cartridges`) are not in the APK: the
+[fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges) repository builds, signs and distributes
+them, each from its firmware's pinned source and under that firmware's own licence (the index lists each one's
+`license`, `repo` and `commit`). Downloading one does not relicense it.
+
 When conveying GPL cartridges or a GPL-covered combined work, comply with GPL v3 for that work, including:
 
 - retaining copyright/licence notices and supplying the GPL text;
