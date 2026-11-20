@@ -88,8 +88,12 @@ flowchart LR
   mode, "Run anyway"), else "Doesn't run here yet", and the
   native id stays the saved choice for the next start (`FMutate.Instance` "Native builds not on the phone yet").
   A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
-  downloaded native code: an entry with an iOS asset runs natively only when linked into the app, otherwise
-  emulated with "Plays emulated on iPhone until the next app update". When an id turns native, its emulator
+  downloaded native code: the app build links every published iOS cartridge pinned in `native/ios_cartridges.lock`
+  (`native/build_ios.sh`; `EngineNif.cartridges/0` lists them with their versions), and an entry with an iOS
+  asset runs natively only when linked, otherwise emulated with "Plays emulated on iPhone until the next app
+  update". A linked cartridge of another version than the index's plays at its linked version, which its card
+  shows ("Plays vX, built into this app; vY plays natively after the next app update";
+  `docs/decisions/2026-11-14-native-catalog.md` "Packaging"). When an id turns native, its emulator
   flash `emu/<id>.bin` moves to `emu/hub:<id>.bin` (once, never over an existing file; at the next start for
   an instance that was running it), so the emulated saves stay with the Hub package and the native one starts
   fresh. Builds new or updated since the player last opened the library are "New" (`cartridges/seen.term`;
@@ -109,7 +113,7 @@ flowchart LR
 | `native/engine/fm1engine.c`, `fm1engine.h`, `live.c` | the engine (`fm1engine_run`, wrapped as an executable by `main`) and the cartridge harness (from `../fmutate_spike`) |
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests; Linux or macOS) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
-| `native/build_ios.sh`, `c_src/fm1host.c`, `ios/` | iOS: the engines linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
+| `native/build_ios.sh`, `native/ios_cartridges.exs` + `.lock`, `c_src/fm1host.c`, `ios/` | iOS: the engines and every published iOS cartridge (pinned by the lock) linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
 | `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
 | `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
@@ -403,6 +407,18 @@ Over `tools/rpc.exs <udid>` (see its header), native OberVave, the built-in spea
 | 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns; again at iOS's new default fill 697 (input → mixer 15.2–23.6 ms, median ~17 ms; the fill stayed at 697) |
 | App CPU (Instruments Activity Monitor, % of one core) | idle with OberVave loaded 10.6–11.2 %; playing those chords 24.6–28.0 %; footprint 76–82 MiB |
 | Emulator, interpreted, `EngineNif.bench` | per package in the decision doc: 0.38–0.76x real time at 240 MHz (FMini 1.42x), 0.66–1.40x at 120 |
+
+Every published iOS cartridge linked (2026-11-20, index of 2026-11-20T14:21:24Z: 122 cartridges, 120 published +
+the 2 built-ins; JIANT and Vesper left out), against the same build with the built-ins only:
+
+| What | Built-ins only | All linked |
+|---|---|---|
+| `libfm1native.a` (device / sim) | 10.2 / 10.2 MB | 102.9 / 103.4 MB |
+| App binary in the IPA (`FmutateApp`, release) | 12.5 MB | 83.5 MB (`__TEXT` 79.6 MB; `__fm1c_d` 0.2 MB, `__fm1c_b` 133 MB zero-fill, not in the file) |
+| IPA (`mix mob.release --ios`) / the app installed | 159.0 MiB / 194 MB | 194.3 MiB / 261 MB |
+| Simulator (iPhone 18 Pro, M4 Pro), `simctl launch` → dev node up → instance running (OberVave), 4 runs | 1.74–1.96 s → 2.18–2.64 s | 1.73–1.87 s → 2.15–2.36 s (an earlier set: up to 3.5 s → 13.3 s, with another simulator busy) |
+| Same, `footprint` 5 s after launch | 121–123 MB, `__DATA` dirty 12 MB | 122–125 MB, `__DATA` dirty 12 MB |
+| Same, after playing all 122 in turn (each booted, ~1 s) | — | 136 MB, `__DATA` dirty 15 MB (140 MB before the host gave each one's BSS pages back when its engine ends) |
 
 ### Emulated CPU clock (emulator engine)
 

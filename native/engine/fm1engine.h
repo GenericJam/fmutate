@@ -37,6 +37,15 @@ struct fm1c_api {
 const void *fm1host_marker(void);
 void fm1host_set_marker(const void *marker);
 
+/* In-process only: the cartridges linked into the app, the table native/build_ios.sh generates into
+ * libfm1native.a (built-ins first, then the published ones it links). */
+struct fm1native_cart {
+    const char *id, *version;
+    const struct fm1c_api *api;
+};
+extern const struct fm1native_cart fm1native_carts[];
+extern const size_t fm1native_ncarts;
+
 /* How an engine talks to its host. */
 struct fm1engine_io {
     void *ctx;

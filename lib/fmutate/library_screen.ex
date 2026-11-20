@@ -185,6 +185,9 @@ defmodule FMutate.LibraryScreen do
     badge = LibraryUI.badge(status)
     backend = LibraryUI.backend(fw)
     ios_note = LibraryUI.ios_note?(fw)
+    linked = LibraryUI.linked_note(fw)
+    has_linked = linked != nil
+    linked = linked || ""
     open = {self(), {:open, fw.id}}
 
     # one LazyList row: the list has no padding or gap of its own, so the row carries them
@@ -203,6 +206,7 @@ defmodule FMutate.LibraryScreen do
             <Text text={meta} text_size={11} text_color="#A9A3B8" max_lines={1} weight={1} />
           </Row>
           <Text text="Plays emulated on iPhone until the next app update" text_size={12} text_color="#FFB547" :if={ios_note} />
+          <Text text={linked} text_size={12} text_color="#FFB547" :if={has_linked} />
           <Text text={desc} text_size={13} text_color="#D6D0E0" max_lines={2} :if={has_desc} />
           <Text text={repo} text_size={11} text_color="#6B6580" max_lines={1} :if={has_repo} />
           {why}

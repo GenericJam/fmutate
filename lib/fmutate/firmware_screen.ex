@@ -113,6 +113,9 @@ defmodule FMutate.FirmwareScreen do
     backend = LibraryUI.backend(fw)
     new_badge = if fw.new, do: LibraryUI.new_badge()
     ios_note = LibraryUI.ios_note?(fw)
+    linked = LibraryUI.linked_note(fw)
+    has_linked = linked != nil
+    linked = linked || ""
     why = LibraryUI.why(fw, status, assigns)
     actions = LibraryUI.actions(fw, status, assigns)
     tags = Enum.map(fw.tags, &LibraryUI.tag_chip/1)
@@ -153,6 +156,7 @@ defmodule FMutate.FirmwareScreen do
               text_color="#FFB547"
               :if={ios_note}
             />
+            <Text text={linked} text_size={12} text_color="#FFB547" :if={has_linked} />
             {why}
             <Wrap spacing={6} run_spacing={6}>
               {tags}

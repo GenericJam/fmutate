@@ -124,7 +124,8 @@ defmodule FMutate.Library.Catalog do
   Hub firmware with one that runs here becomes `backend: :native` in the Hub's place, with the entry as
   `native` and its cartridge as `cart` (of the build, else the downloaded file, else nil: Download), followed
   by its Hub package as `hub:<id>`; an entry without a Hub firmware is listed after the Hub's. The bundled
-  firmwares ignore the index. On iOS an entry that isn't linked into the app stays `:emu` with `native` set.
+  firmwares ignore the index. On iOS an entry that isn't linked into the app stays `:emu` with `native` set, and
+  one linked at another version than the index's plays that version (`version` is the linked one's).
   """
   @spec merge([Firmware.t()], [Firmware.t()], Path.t(), %{String.t() => map}) :: [Firmware.t()]
   def merge(bundled, hub, dir, natives \\ %{}) do
@@ -175,7 +176,7 @@ defmodule FMutate.Library.Catalog do
     %{
       h
       | backend: :native,
-        version: n.version,
+        version: n[:bundled_version] || n.version,
         license: n.license || h.license,
         url: n.url,
         size: n.size,
