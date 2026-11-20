@@ -81,8 +81,9 @@ struct FMControl: Equatable {
     var wobble = false
     var bendRange: CGFloat = 0.5          // semitones at half a key width of slide
     var pitchColors = false
-    // velocity "position": the strip plays MIDI notes, velocity from where the key is struck (velMin..velMax);
-    // "fixed" (default): firmware key presses, the firmware's own fixed velocity
+    // velocity "position" (a keyboard strip's default): the strip plays MIDI notes, velocity from where the key is
+    // struck (velMin..velMax); "fixed": firmware key presses, the firmware's own fixed velocity.
+    // FMutate.LayoutEdit.surface/2 resolves the source; the parse below falls back to the same default
     var strikeVelocity = false
     var velMin = 40
     var velMax = 127
@@ -239,6 +240,7 @@ struct FMLayout: Equatable {
             color: o.optString("color", "default"),
             bindings: try bindings(o.optArr("bindings"))
         )
+        c.strikeVelocity = c.type == "keyboard" && (kb?.optObj("velocity")?.optString("source", "position") ?? "position") == "position"
         if let kb {
             c.fromKey = kb.optInt("from_key", 0)
             c.toKey = kb.optInt("to_key", 26)
@@ -248,7 +250,6 @@ struct FMLayout: Equatable {
             c.bendRange = CGFloat(kb.optDouble("bend_range", 0.5))
             c.pitchColors = kb.optBool("pitch_colors", false)
             if let v = kb.optObj("velocity") {
-                c.strikeVelocity = v.optString("source", "fixed") == "position"
                 c.velMin = v.optInt("min", 40)
                 c.velMax = v.optInt("max", 127)
                 c.velSwell = v.optBool("swell", false)

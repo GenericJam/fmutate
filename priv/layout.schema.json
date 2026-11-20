@@ -140,13 +140,13 @@
             "pitch_colors": { "type": "boolean", "default": false },
             "velocity": {
               "type": "object",
-              "description": "fixed: firmware key presses at the firmware's own velocity (as the hardware). position: MIDI notes, velocity from where the key is struck (front edge = max, back = min); octave is the strip's own.",
+              "description": "position (default): MIDI notes, velocity from where the key is struck (front edge = max, back = min); octave is the strip's own. fixed: firmware key presses at the firmware's own velocity (as the hardware).",
               "properties": {
-                "source": { "enum": ["fixed", "position"], "default": "fixed" },
+                "source": { "enum": ["fixed", "position"], "default": "position" },
                 "min": { "type": "integer", "minimum": 1, "maximum": 127, "default": 40 },
                 "max": { "type": "integer", "minimum": 1, "maximum": 127, "default": 127 },
                 "swell": { "type": "boolean", "default": false, "description": "position only, opt-in: sliding front/back on a held key sets MIDI CC7 (volume), the same front = max, back = min. CC7 is the firmware's whole volume, so every sounding note swells together (a note's own velocity is fixed once it starts)." },
-                "pressure": { "type": "boolean", "description": "Note level, position only, for firmwares that take MIDI polyphonic aftertouch as a note's level (FMutate's OberVave): the held note's own level follows the finger, full at the key's front edge, silent at its back edge. Absent: on, unless swell is true (an explicit swell wins over this default); true takes precedence over swell; false is off." }
+                "pressure": { "type": "boolean", "description": "Note level, position only, for firmwares that take MIDI polyphonic aftertouch as a note's level (FMutate's OberVave): the held note plays as struck and its own level follows the finger relative to where it struck: full there and in front of it, fading to silent at the key's back edge. Absent: on, unless swell is true (an explicit swell wins over this default); true takes precedence over swell; false is off." }
               },
               "additionalProperties": false
             },

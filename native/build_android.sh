@@ -35,7 +35,7 @@ shineon https://github.com/zvenson/shineon.git 2f37738d690a628e0ae1d23d07ea5ee3e
 fetch() {  # name repo commit
     src=build/fw/$1
     [ -d "$src/.git" ] || git clone -q "$2" "$src"
-    git -C "$src" fetch -q origin "$3" 2>/dev/null || true
+    git -C "$src" cat-file -e "$3^{commit}" 2>/dev/null || git -C "$src" fetch -q origin "$3" 2>/dev/null || true
     git -C "$src" checkout -q -f "$3"
     for p in patches/$1/*.patch; do
         [ -e "$p" ] && git -C "$src" apply "$HERE/$p"

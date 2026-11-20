@@ -119,8 +119,9 @@ build.
 - **Pixels and audio never pass through the BEAM**: they go through shared memory between the engine, the mixer
   NIF and the Kotlin view. Keep it that way.
 - **Firmware changes are patches**: FMutate's changes to firmwares or fm1-emu are files in `native/patches/<name>/`,
-  applied by the build scripts to sources pinned by commit. Regenerate a patch from a clean checkout of the pinned
-  commit with the earlier patches applied.
+  applied by the build scripts to sources pinned by commit (every run of `build_android.sh`, `build_host.sh` and
+  `build_ios.sh` checks the sources out again and applies them, so no build compiles a tree from before a patch).
+  Regenerate a patch from a clean checkout of the pinned commit with the earlier patches applied.
 - **Firmware capabilities** (pitch bend, octave reset, per-note pressure) are `caps` in `FMutate.Firmware`; the UI
   greys out what a firmware doesn't support.
 - **The instrument surface is performance-critical** (`InstrumentView.kt`): controls are drawn on layers that
