@@ -6,7 +6,7 @@ the panel is yours: a classic FM-1 layout to start, then any arrangement of keys
 you like.
 
 It is built with [Mob](https://github.com/GenericJam/mob) (Elixir on the phone, native Compose views), and it is
-early: Android only, installed from source.
+early: Android, as a sideloaded APK or built from source (an iOS port is in testing).
 
 <p align="center">
   <img src="docs/media/instrument.png" width="720" alt="The classic layout on a phone: the firmware's screen, knobs, buttons and the 27 keys">
@@ -78,14 +78,16 @@ latest release; each [release](https://github.com/GenericJam/fmutate/releases) a
 `fmutate-<version>.apk`) and open it on the phone (allow installs from your browser or file manager when Android
 asks), or from a computer: `adb install FMutate.apk`.
 
-- Android 9 or newer; arm64 phones (most), 32-bit ARM, and x86-64. On 32-bit ARM the built-in firmwares play,
-  but downloaded ones don't (the emulator needs 64-bit).
+- Android 9 or newer; arm64 phones (most), 32-bit ARM, and x86-64. On 32-bit ARM the built-in firmwares and the
+  native builds of Hub firmwares play, but a Hub package that only runs in the emulator doesn't (the emulator
+  needs 64-bit).
 - Releases are signed with FMutate's release key, so a later release installs over an earlier one and keeps your
   layouts and saves. A copy built from source is signed with your own debug key: Android won't install a release
   over it (or the other way round) until the other is uninstalled, which deletes its data.
 - 0.2.0 changed the release key: if you installed 0.1.0, uninstall it first (that deletes its layouts and saves).
-- Downloaded firmwares come from the [FM-1 Firmware Hub](https://thefirmwarehub.com/), so the Library needs the
-  internet; the instrument itself doesn't.
+- Downloaded firmwares come from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) and their native builds
+  from [fmutate-cartridges](https://github.com/GenericJam/fmutate-cartridges), so the Library needs the internet;
+  the instrument itself doesn't.
 
 ## Building
 
