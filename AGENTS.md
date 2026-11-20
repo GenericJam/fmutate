@@ -98,18 +98,21 @@ Installed copies only accept an update signed with the same certificate.
 
 1. **Version** (in a PR): `version` in `mix.exs` and `versionName` in `android/app/build.gradle` match; raise
    `versionCode` there by one. iOS's `CFBundleShortVersionString` follows `version` at the next TestFlight build.
-2. **Build** from merged master: `sh native/build_android.sh` (all three ABIs), then
-   `mise exec -- mix mob.release --android` (stages `android/app/src/release/assets/otp.zip`, builds the AAB) and
-   `cd android && ./gradlew assembleRelease` → `android/app/build/outputs/apk/release/app-release.apk`.
+2. **Build** from merged master, in a fresh worktree: `sh native/build_android.sh` (engine and built-in cartridges,
+   all three ABIs) and `mise exec -- sh native/build_emu.sh` (`libfm1emu.so`: without it the APK can't run
+   downloaded packages), then `mise exec -- mix mob.release --android` (stages
+   `android/app/src/release/assets/otp.zip`, builds the AAB) and `cd android && ./gradlew assembleRelease` →
+   `android/app/build/outputs/apk/release/app-release.apk`.
 3. **Check** it: `apksigner verify --print-certs` shows the certificate above; `aapt dump badging` shows the
-   version and `native-code: 'arm64-v8a' 'armeabi-v7a' 'x86_64'`. Install it on an emulator or phone and play.
+   version and `native-code: 'arm64-v8a' 'armeabi-v7a' 'x86_64'`, and `unzip -l` lists `libfm1emu.so` for
+   arm64-v8a and x86_64. Install it on an emulator or phone and play.
 4. **Publish**: copy the APK to `fmutate-<version>.apk` and `FMutate.apk` (identical; `FMutate.apk` keeps
    `releases/latest/download/FMutate.apk` working), write `shasum -a 256 fmutate-<version>.apk >
    fmutate-<version>.apk.sha256`, then `gh release create v<version> -R GenericJam/fmutate --target <master sha>
    --title "FMutate <version>" --notes-file <notes> fmutate-<version>.apk fmutate-<version>.apk.sha256
    FMutate.apk`. The notes follow the last release's: install line, what's new, certificate and APK SHA-256, and
-   the source paragraph (tag, commit, and the OberVave, Shine On and fm1-emu commits `native/build_android.sh`
-   pins).
+   the source paragraph (tag, commit, and the OberVave and Shine On commits `native/build_android.sh` pins and
+   the fm1-emu commit `native/build_emu.sh` pins).
 
 ## Publishing to TestFlight (iOS)
 
