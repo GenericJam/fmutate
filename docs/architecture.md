@@ -130,7 +130,12 @@ flowchart LR
   kept apart from the maker's text (`about`) so the page never presents one as the other.
 - **Layout fitting** (`Layout.kt` `fit/4`): authoring grid as is when it matches; else keep the authoring grid
   with smaller cells if they stay ≥ 40 dp; else move cells onto the device grid and show "doesn't fit".
-- **Immersive** while the instrument shows; orientation locked to the layout's frame.
+- **Immersive** while the instrument shows; orientation locked to the layout's frame, and only while the
+  instrument's screen is the one shown: the other screens follow the phone, turning at once to the way it is held.
+  On iOS a pushed screen (Library, I/O) keeps the instrument's surface in the window, parked off-screen (Mob's
+  two-slot navigation), so the surface lets go when Mob's `mobScreenIsActive` turns false, not on leaving the
+  window; and as iOS rotates only when the phone turns, letting go asks for the phone's own orientation
+  (`ios/FMutateOrientation.swift`).
 - **Engine ring fill** = max(1024, 2 × device burst + 512) frames (`FMutate.Audio.engine_fill/0`) to start with; on
   the I/O buffer's Auto it rises while the slot underruns and settles back after a quiet minute, or it is a fixed
   2048 / 3072 / 3840 (`FMutate.Instance.set_buffer/2`), set on the running engine (`docs/engine_protocol.md`

@@ -417,15 +417,21 @@ private func sendValueBytes(_ t: FMTarget, _ v: Float, _ control: String) -> [St
 struct FMInstrumentRepresentable: UIViewRepresentable {
     let props: [String: Any]
     let send: MobNativeSend
+    // false while a pushed screen parks this one (Mob's MobRootView; FMutate's Swift builds into Mob's module)
+    @Environment(\.mobScreenIsActive) private var shown
 
     func makeUIView(context: Context) -> FMInstrumentSurface {
         let v = FMInstrumentSurface()
         v.update(props, send)
+        v.setShown(shown)
         return v
     }
 
+    // props first: a pop back after a firmware switch in the library then holds the new layout's frame, not the one
+    // the surface was parked with
     func updateUIView(_ v: FMInstrumentSurface, context: Context) {
         v.update(props, send)
+        v.setShown(shown)
     }
 
     static func dismantleUIView(_ v: FMInstrumentSurface, coordinator: ()) {
@@ -494,6 +500,9 @@ final class FMInstrumentSurface: UIView {
     private var addMenu: FMAddMenu?
     private var phaseGen = 0
     private var disposed = false
+    // whether Mob shows this surface's screen: a pushed screen (the library, I/O) parks the one it covers off-screen
+    // but still in the window (Mob's two-slot navigation), where it must not hold the frame
+    private var shown = true
     // motion controls (FMutateMotionControl.swift); values the page doesn't show wait in heldBack (motionValue)
     private lazy var motion = FMMotionControls(sink: self)
     private let motionView = FMLayerView()
@@ -677,8 +686,8 @@ final class FMInstrumentSurface: UIView {
         }
 
         // the layout's frame never rotates while playing (HANDOFF §5), and the instrument takes the whole screen.
-        // iOS: Kotlin locks the orientation and hides the system bars here; on iOS the parent does both from
-        // Elixir (Mob.Device.lock_orientation/1), not this view.
+        // iOS: Kotlin locks the orientation and hides the system bars here; this surface holds the frame in
+        // holdFrame() (FMutateOrientation.swift) while its screen is shown, and hides no bars.
 
         // the firmware's screen and LEDs, once per display frame
         if first || newFb != fbPath {
@@ -815,7 +824,19 @@ final class FMInstrumentSurface: UIView {
         super.didMoveToWindow()
         updateDisplayLink()
         if window != nil { haptics.prepare() }
-        FMOrientation.hold(window != nil && !disposed ? layout?.landscape : nil, window)
+        holdFrame()
+    }
+
+    /// Mob shows the surface's screen (true), or parks it behind a pushed one (false).
+    func setShown(_ s: Bool) {
+        if s == shown { return }
+        shown = s
+        holdFrame()
+    }
+
+    /// The layout's frame is held while the surface is on screen and let go otherwise (FMutateOrientation.swift).
+    private func holdFrame() {
+        FMOrientation.hold(window != nil && !disposed && shown ? layout?.landscape : nil, window)
     }
 
     private func structureChanged() {
@@ -827,7 +848,7 @@ final class FMInstrumentSurface: UIView {
         let p = layout.pages[fmClamp(state.page, 0, layout.pages.count - 1)]
         page = p
         controls = layout.dock + p.controls
-        if window != nil && !disposed { FMOrientation.hold(layout.landscape, window) }
+        if window != nil { holdFrame() }
         let w = sizeDp.width, h = sizeDp.height
         fitted = w <= 0 ? nil : (editing ? fmEditFit(layout, p, w, h, margins) : fmFit(layout, p, w, h, margins))
         // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
