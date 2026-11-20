@@ -78,6 +78,32 @@ JNI symbols in Mob's generated code follow it.)
   reads the sibling cookie; `tools/sibling_probe.exs` is a sibling node; `tools/midi_latency.exs` measures MIDI
   latency.
 
+## Publishing to TestFlight (iOS, internal testers)
+
+Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate", SKU `fmutate`. Internal
+testing only (group "Internal"): the GPL firmwares are compiled in, so no external groups or Beta App Review.
+
+1. **Build number**: bump `CFBundleVersion` in `ios/Info.plist` to an integer above every build App Store Connect
+   has seen for the app (it refuses a number twice, even after a failed upload; gaps are fine).
+   `CFBundleShortVersionString` follows `version` in `mix.exs` (Android's `versionName`); mob_dev doesn't stamp it.
+2. `mise exec -- sh native/build_ios.sh` (at least `TARGETS=device`), then `mise exec -- mix mob.release --ios` →
+   `_build/mob_release/FmutateApp.ipa`, signed with the Apple Distribution certificate and the "FMutate App
+   Store" profile (both auto-detected; the profile expires with the certificate, 2027-05-02). It links
+   `priv/generated/driver_tab_ios.c` and regenerates both C tables; commit them if they change.
+3. `xcrun altool --validate-app --type ios --file _build/mob_release/FmutateApp.ipa --apiKey <key_id> --apiIssuer
+   <issuer_id>`, then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload).
+   Apple processes the build for 5–30 min; then add it to the "Internal" group if it isn't already.
+
+The App Store Connect API key is configured in `mob.local.exs` (git-ignored, imported by `mob.exs`):
+`config :mob_dev, app_store_connect: [key_id:, issuer_id:, key_path: "~/.appstoreconnect/AuthKey_<id>.p8"]`, the
+team key the other GenericJam apps use. Never commit the `.p8`.
+
+A release build keeps only the usage descriptions in `ios/Info.plist`: mob_dev 0.7.31 doesn't merge the plugins'
+`plist_keys` into the IPA (a dev build does), so the Bluetooth (mob_midi), Motion (mob_sensors) and Microphone
+(Mob core) strings live in the host plist. A release build has no Erlang distribution and none of Mob's test
+harness NIFs (`:mob_nif.screen_info/0`, `ui_tree/0`, …): don't call them from app code. Prove a release on a dev
+build (`mix mob.deploy --native --slim --device <udid>`), since `tools/rpc.exs` can't reach a release build.
+
 ## Conventions
 
 - **Per instance, no singletons**: everything a firmware has (layout, saves, MIDI port, distribution name) is keyed
