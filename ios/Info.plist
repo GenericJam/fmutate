@@ -23,11 +23,17 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>FMutate uses Bluetooth to connect to wireless (Bluetooth LE) MIDI keyboards and controllers.</string>
+	<string>FMutate plays Bluetooth MIDI keyboards and controllers once they are paired with this device.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>FMutate doesn't use the camera. iOS requires this text because the app's framework includes camera code.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>FMutate doesn't record audio. iOS requires this text because the app's framework includes recording code.</string>
 	<key>NSMotionUsageDescription</key>
-	<string>FMutate's motion controls can read the phone's motion sensors (including the barometer) as controls you bind in the editor.</string>
+	<string>FMutate's motion controls read the phone's motion sensors. The app's framework also includes step counter and barometer code.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>FMutate doesn't save to your photo library. iOS requires this text because the app's framework includes photo code.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>FMutate doesn't use your photo library. iOS requires this text because the app's framework includes photo code.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

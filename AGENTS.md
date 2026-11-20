@@ -91,18 +91,21 @@ testing only (group "Internal"): the GPL firmwares are compiled in, so no extern
    Store" profile (both auto-detected; the profile expires with the certificate, 2027-05-02). It links
    `priv/generated/driver_tab_ios.c` and regenerates both C tables; commit them if they change.
 3. `xcrun altool --validate-app --type ios --file _build/mob_release/FmutateApp.ipa --apiKey <key_id> --apiIssuer
-   <issuer_id>`, then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload).
-   Apple processes the build for 5–30 min; then add it to the "Internal" group if it isn't already.
+   <issuer_id>` (altool finds the key only in `~/.appstoreconnect/private_keys/`, where `mix mob.publish` copies
+   it), then `mise exec -- mix mob.publish --ios` (or `mix mob.republish --ios`: bump, build, upload). Apple
+   processes the build for 5–30 min; then add it to the "Internal" group if it isn't already.
 
 The App Store Connect API key is configured in `mob.local.exs` (git-ignored, imported by `mob.exs`):
 `config :mob_dev, app_store_connect: [key_id:, issuer_id:, key_path: "~/.appstoreconnect/AuthKey_<id>.p8"]`, the
 team key the other GenericJam apps use. Never commit the `.p8`.
 
 A release build keeps only the usage descriptions in `ios/Info.plist`: mob_dev 0.7.31 doesn't merge the plugins'
-`plist_keys` into the IPA (a dev build does), so the Bluetooth (mob_midi), Motion (mob_sensors) and Microphone
-(Mob core) strings live in the host plist. A release build has no Erlang distribution and none of Mob's test
-harness NIFs (`:mob_nif.screen_info/0`, `ui_tree/0`, …): don't call them from app code. Prove a release on a dev
-build (`mix mob.deploy --native --slim --device <udid>`), since `tools/rpc.exs` can't reach a release build.
+`plist_keys` into the IPA (a dev build does). Keep every string there, including camera, microphone and photo
+library, which FMutate never asks for: Mob core's NIFs reference those APIs, and Apple's post-upload scanner
+(ITMS-90683) demands a string for each one referenced. A release build has no Erlang distribution and none of
+Mob's test harness NIFs (`:mob_nif.screen_info/0`, `ui_tree/0`, …): don't call them from app code. Prove a release
+on a dev build (`mix mob.deploy --native --slim --device <udid>`), since `tools/rpc.exs` can't reach a release
+build.
 
 ## Conventions
 
