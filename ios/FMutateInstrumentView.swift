@@ -317,6 +317,7 @@ final class FMGrab {
     var longFired = false
     var note = -1                 // velocity strips: the MIDI note this finger sounds (-1: a firmware key press)
     var vel = 0                   // and the velocity it struck with (a glissando keeps it)
+    var struck: CGFloat = 1       // where on its key it struck (frontAt): note level is relative to it (a glissando keeps it)
     var cc7 = -1                  // the volume this finger's swell last sent
     var at = -1                   // the pressure (the held note's own level) this finger last sent
     var bendRaw = 8192            // the pitch bend this finger last sent
@@ -417,15 +418,21 @@ private func sendValueBytes(_ t: FMTarget, _ v: Float, _ control: String) -> [St
 struct FMInstrumentRepresentable: UIViewRepresentable {
     let props: [String: Any]
     let send: MobNativeSend
+    // false while a pushed screen parks this one (Mob's MobRootView; FMutate's Swift builds into Mob's module)
+    @Environment(\.mobScreenIsActive) private var shown
 
     func makeUIView(context: Context) -> FMInstrumentSurface {
         let v = FMInstrumentSurface()
         v.update(props, send)
+        v.setShown(shown)
         return v
     }
 
+    // props first: a pop back after a firmware switch in the library then holds the new layout's frame, not the one
+    // the surface was parked with
     func updateUIView(_ v: FMInstrumentSurface, context: Context) {
         v.update(props, send)
+        v.setShown(shown)
     }
 
     static func dismantleUIView(_ v: FMInstrumentSurface, coordinator: ()) {
@@ -494,6 +501,9 @@ final class FMInstrumentSurface: UIView {
     private var addMenu: FMAddMenu?
     private var phaseGen = 0
     private var disposed = false
+    // whether Mob shows this surface's screen: a pushed screen (the library, I/O) parks the one it covers off-screen
+    // but still in the window (Mob's two-slot navigation), where it must not hold the frame
+    private var shown = true
     // motion controls (FMutateMotionControl.swift); values the page doesn't show wait in heldBack (motionValue)
     private lazy var motion = FMMotionControls(sink: self)
     private let motionView = FMLayerView()
@@ -679,8 +689,8 @@ final class FMInstrumentSurface: UIView {
         }
 
         // the layout's frame never rotates while playing (HANDOFF §5), and the instrument takes the whole screen.
-        // iOS: Kotlin locks the orientation and hides the system bars here; on iOS the parent does both from
-        // Elixir (Mob.Device.lock_orientation/1), not this view.
+        // iOS: Kotlin locks the orientation and hides the system bars here; this surface holds the frame in
+        // holdFrame() (FMutateOrientation.swift) while its screen is shown, and hides no bars.
 
         // the firmware's screen and LEDs, once per display frame
         if first || newFb != fbPath {
@@ -725,7 +735,7 @@ final class FMInstrumentSurface: UIView {
             guard let c = g.control, c.type == "keyboard", g.note >= 0, g.sub >= 0 else { continue }
             let l = live(c)
             if l.velPressure {
-                if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last)) }
+                if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last, g.struck)) }
             } else if g.at >= 0 {
                 pressureTo(g, 127)
                 g.at = -1
@@ -817,7 +827,19 @@ final class FMInstrumentSurface: UIView {
         super.didMoveToWindow()
         updateDisplayLink()
         if window != nil { haptics.prepare() }
-        FMOrientation.hold(window != nil && !disposed ? layout?.landscape : nil, window)
+        holdFrame()
+    }
+
+    /// Mob shows the surface's screen (true), or parks it behind a pushed one (false).
+    func setShown(_ s: Bool) {
+        if s == shown { return }
+        shown = s
+        holdFrame()
+    }
+
+    /// The layout's frame is held while the surface is on screen and let go otherwise (FMutateOrientation.swift).
+    private func holdFrame() {
+        FMOrientation.hold(window != nil && !disposed && shown ? layout?.landscape : nil, window)
     }
 
     private func structureChanged() {
@@ -829,7 +851,7 @@ final class FMInstrumentSurface: UIView {
         let p = layout.pages[fmClamp(state.page, 0, layout.pages.count - 1)]
         page = p
         controls = layout.dock + p.controls
-        if window != nil && !disposed { FMOrientation.hold(layout.landscape, window) }
+        if window != nil { holdFrame() }
         let w = sizeDp.width, h = sizeDp.height
         fitted = w <= 0 ? nil : (editing ? fmEditFit(layout, p, w, h, margins) : fmFit(layout, p, w, h, margins))
         // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
@@ -952,9 +974,14 @@ final class FMInstrumentSurface: UIView {
         }
     }
 
-    /// A velocity strip's own octave follows OCT presses (the firmware's OCT doesn't reach its MIDI notes).
+    /// A firmware button other than OCT is held: keys are a layer of the firmware's (SAVE + key, …).
+    private var layerHeld: Bool { fnButtons.contains { state.pressed[$0] == true } }
+
+    /// A velocity strip's own octave follows OCT presses (the firmware's OCT doesn't reach its MIDI notes), except
+    /// under a held firmware button: there OCT is the layer's (OberVave: SEQ + OCT pages the sequencer, EDIT + OCT is
+    /// undo/redo) and the firmware's octave stays.
     private func octaveFollows(_ id: String, _ down: Bool) {
-        if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") {
+        if down && hasVelocityStrip && (id == "oct_down" || id == "oct_up") && !layerHeld {
             state.noteOct = fmClamp(state.noteOct + (id == "oct_down" ? -1 : 1), -2, 2)
             keysView.setNeedsDisplay()
         }
@@ -1009,7 +1036,6 @@ final class FMInstrumentSurface: UIView {
     /// A keyboard strip's key down: a velocity strip plays a MIDI note (FM-1 key 0 = F3 = MIDI 53, plus its own
     /// octave) at the finger's velocity; otherwise, or while a firmware function button is held, a firmware key.
     private func keyOn(_ c: FMControl, _ g: FMGrab, _ k: Int) {
-        let layerHeld = fnButtons.contains { state.pressed[$0] == true }
         if c.strikeVelocity && !layerHeld {
             g.note = fmClamp(53 + k + 12 * state.noteOct, 0, 127)
             g.at = -1
@@ -1156,8 +1182,12 @@ final class FMInstrumentSurface: UIView {
         fmClamp(fmRound(CGFloat(c.velMin) + CGFloat(c.velMax - c.velMin) * frontAt(c, r, k, p)), 1, 127)
     }
 
-    /// A held note's level from where the finger is now: full at the key's front edge, silent at its back edge.
-    private func levelAt(_ c: FMControl, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint) -> Int { fmRound(127 * frontAt(c, r, k, p)) }
+    /// A held note's level from where the finger is now, relative to where it struck (`FMGrab.struck`): as struck
+    /// (127) there and in front of it, fading to silent at the key's back edge. A tap plays at its strike velocity alone.
+    private func levelAt(_ c: FMControl, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint, _ struck: CGFloat) -> Int {
+        let f = frontAt(c, r, k, p)
+        return f >= struck ? 127 : fmRound(127 * f / struck)
+    }
 
     private func arrowAt(_ c: FMControl, _ r: FMGrid.Rect, _ p: CGPoint) -> Int {
         if !c.octaveArrows || fmHasRail(c) { return 0 }
@@ -1260,9 +1290,10 @@ final class FMInstrumentSurface: UIView {
             if let k = keyAt(c, r, p) {
                 g.sub = k
                 g.vel = strikeVelocity(c, r, k, p)
+                g.struck = frontAt(c, r, k, p)
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p)) }
+                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p, g.struck)) }
             }
         case "strum":
             if let s = stringAt(c, r, p) { g.sub = s; setHeld("\(c.id)#\(s)", true); fire(.key(c.strings[s]), true) }
@@ -1332,7 +1363,7 @@ final class FMInstrumentSurface: UIView {
             if g.sub < 0 { return }
             if g.note >= 0 {
                 let l = live(c)
-                if l.velPressure { pressureTo(g, levelAt(c, r, g.sub, p)) }
+                if l.velPressure { pressureTo(g, levelAt(c, r, g.sub, p, g.struck)) }
                 else if l.velSwell { swellTo(g, strikeVelocity(c, r, g.sub, p)) }
             }
             if bends(c) { bend(c, g, r, p); return }
@@ -1342,7 +1373,7 @@ final class FMInstrumentSurface: UIView {
                 g.sub = k
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p)) }
+                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p, g.struck)) }
             }
         case "strum":
             let s = stringAt(c, r, p)

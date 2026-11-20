@@ -130,7 +130,12 @@ flowchart LR
   kept apart from the maker's text (`about`) so the page never presents one as the other.
 - **Layout fitting** (`Layout.kt` `fit/4`): authoring grid as is when it matches; else keep the authoring grid
   with smaller cells if they stay ≥ 40 dp; else move cells onto the device grid and show "doesn't fit".
-- **Immersive** while the instrument shows; orientation locked to the layout's frame.
+- **Immersive** while the instrument shows; orientation locked to the layout's frame, and only while the
+  instrument's screen is the one shown: the other screens follow the phone, turning at once to the way it is held.
+  On iOS a pushed screen (Library, I/O) keeps the instrument's surface in the window, parked off-screen (Mob's
+  two-slot navigation), so the surface lets go when Mob's `mobScreenIsActive` turns false, not on leaving the
+  window; and as iOS rotates only when the phone turns, letting go asks for the phone's own orientation
+  (`ios/FMutateOrientation.swift`).
 - **Engine ring fill** = max(1024, 2 × device burst + 512) frames (`FMutate.Audio.engine_fill/0`) to start with; on
   the I/O buffer's Auto it rises while the slot underruns and settles back after a quiet minute, or it is a fixed
   2048 / 3072 / 3840 (`FMutate.Instance.set_buffer/2`), set on the running engine (`docs/engine_protocol.md`
@@ -161,30 +166,57 @@ flowchart LR
   whole multiples instead (Edit → screen → Size). The classic layout gives the screen 4×3 cells: 310 px (1.29×)
   on the Moto G Power instead of 240.
 - **Velocity** (replaces "keys carry no velocity"): FM-1 firmwares play key presses at a fixed velocity (OberVave's
-  FM-1 build: `KEY_VEL(k)` = 100) but honour MIDI note velocity. A keyboard strip's `velocity.source` is `fixed`
-  (default: firmware key presses, as the hardware) or `position`: MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
+  FM-1 build: `KEY_VEL(k)` = 100) but honour MIDI note velocity. A keyboard strip's `velocity.source` is `position`
+  (**the default**, `FMutate.LayoutEdit.velocity_source/1`: an absent source, in a bundled or a saved layout, is
+  strike position) or `fixed` (firmware key presses, as the hardware; only when the layout says so). `position`:
+  MIDI notes (FM-1 key 0 = F3 = MIDI 53) at a
   velocity from where the key is struck (front edge = `max`, back = `min`, linear). Such a strip keeps its own
-  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware; the
+  octave (±2, a badge on the strip when not 0), moved by OCT−/OCT+ presses, which still reach the firmware (not
+  while a firmware function button is held: there OCT is the layer's, e.g. OberVave's SEQ + OCT pages the
+  sequencer and EDIT + OCT is undo/redo, and the firmware's octave stays); the
   firmware's own octave (its OCT LEDs) only applies to key presses. While a firmware function button is held,
-  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. Measured on the Moto G
+  the strip sends key presses again so the firmware's key layers (SAVE + key, …) work. **Limits of strike
+  position** (said in the strip's editor sheet too): the notes go to the firmware's MIDI in on channel 1, so the
+  firmware's own MIDI channel setting (OberVave's and Shine On's GLOBAL page; OMNI by default) must be OMNI or 1:
+  any other channel drops them and the strip is silent (on OMNI or 1 they play the selected track, as key presses do). FMutate
+  doesn't read that setting (it lives in the firmware's flash, which FMutate doesn't parse). A firmware layer held
+  open with HOME (OberVave: SEQ, EDIT, GLO, SAVE) isn't seen by the surface, so the strip sends notes there, not
+  the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. Measured on the Moto G
   Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
 - **Note level** (`velocity.pressure`, firmwares with `caps.note_pressure`): the held note's own level
-  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, level = 127 × where the finger is on the key
-  (front edge 127, back edge 0), sent at the strike and on every change. Only
+  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, relative to where the key was struck: level =
+  127 × front ÷ struck while the finger is behind its strike point (front = where the finger is on the key, 1 at
+  the front edge, 0 at the back), 127 (as played) there and in front of it; sent at the strike and on every
+  change. A glissando keeps the strike point, as it keeps the velocity. So a tap plays at its strike velocity
+  alone, sliding back fades the note to silence at the back edge, and sliding forward again brings it back to as
+  struck. (#8 had level = 127 × front from the strike on, so the strike was quieted twice, by velocity and by
+  level: host engine, OberVave INIT, ring peaks: a firmware key press 6349, a tap mid-key (velocity 84, level 64)
+  1418 (−13 dB), a quarter in from the back (62, 32) 260 (−28 dB), at the back edge (40, 0) silent; factory 01:
+  4815, 1593, 281, silent. Velocity alone, as now: mid-key 4078, back edge 4203 on INIT; OberVave's amp is
+  `1 − ⌊(127 − vel) × VEL>AMP / 128⌋ × 258 / 32767`, at its default VEL>AMP 60 0.84 for 84 and 0.685 for 40, against
+  0.905 for a key press. Strike-position strips became the default with this; until then no bundled layout had
+  one, so note level never played.) Only
   FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
-  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched).
+  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched). The
+  iOS archive and the Android libraries compile the same patched tree (`native/build_ios.sh` and
+  `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` plays it on the engine
+  executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
+  16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, velocity 127 / 40 ≈ 1500 / 800 (factory 01).
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
   **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
   unless the strip has `swell: true` (swell and note level are exclusive: an explicit swell wins over the default,
   an explicit `pressure: true` wins over swell); an explicit `false` is off. Edits write it explicitly, so a layout
   that never touched it gets the default and one switched off stays off. On a firmware without the cap it is off
-  (swell applies if set). The surface never resolves this: `FMutate.Editor` hands it the layout with every strip's
-  `pressure` resolved for the running firmware (`LayoutEdit.surface/2`); saved files keep what the player set.
+  (swell applies if set). So every bundled layout with a keyboard strip (classic, portrait-groove, sound-designer)
+  plays with velocity and, on FMutate's OberVave, note level, unedited. The surface never resolves these:
+  `FMutate.Editor` hands it the layout with every strip's `source` and `pressure` resolved for the running firmware
+  (`LayoutEdit.surface/2`); saved files keep what the player set. (`Layout.kt` and `FMutateLayout.swift` fall back
+  to `position` too, for a layout that didn't come through it.)
   **Toggle on the surface**: a button or key bound to `{"action": "note_level"}` (binding sheet → Go to page →
   "note level on/off", next to BEND, the other surface action). Each press (touch, or a MIDI-learned press) asks
   the editor to switch it (`note_level` event, `LayoutEdit.toggle_note_level/2`): every strike-position strip of the
@@ -192,7 +224,9 @@ flowchart LR
   editor's "Note level follows the finger" and the surface agree and it survives a restart. Its mode is ignored
   (the state is the layout's, not a toggle's: never re-sent to a new engine, never released with the layout). It
   lights while any strike-position strip has note level on and is greyed out (and does nothing) on a firmware
-  without `note_pressure` or a layout without a strike-position strip. Held notes go with the new layout at once:
+  without `note_pressure` or a layout without a strike-position strip (only strips set to `fixed`). Switching it
+  off leaves velocity as it is (strike position): it is note level only, `fixed` is the strip's own setting in the
+  editor. Held notes go with the new layout at once:
   a held note whose strip stops following gets level 127 back (it is never left quiet), one whose strip starts
   takes the finger's level; the surface reads a held finger's strip from the current layout, not the one it
   grabbed. A swell leaves CC7 where the last finger put it, so when a new layout stops a held finger's strip
