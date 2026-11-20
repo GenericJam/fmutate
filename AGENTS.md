@@ -87,6 +87,30 @@ JNI symbols in Mob's generated code follow it.)
   (`FMutate.Dist` follows `MobPair.Pairings`). Over rpc: `FMutate.Pairing.info()` (shows the live secret),
   `MobPair.Pairings.list()` (shows every paired app's cookie): keep their output out of logs and issues.
 
+## Publishing an Android release
+
+Sideloaded APKs on [GitHub Releases](https://github.com/GenericJam/fmutate/releases), signed with FMutate's release
+key: certificate SHA-256 `56676adfba1c2092a6150e1bfd513853443a5a16f1402348f5b8c35df16d9fa9` (alias `fmutate`,
+from v0.2.0; v0.1.0 used a key that is lost). The keystore is `~/.config/fmutate/android-release.jks` on Kevin's
+Mac, with its properties in `~/.config/fmutate/android-release.properties`; copy that file to
+`android/keystore.properties` (git-ignored, mode 600) in the checkout you build from. Never commit either.
+Installed copies only accept an update signed with the same certificate.
+
+1. **Version** (in a PR): `version` in `mix.exs` and `versionName` in `android/app/build.gradle` match; raise
+   `versionCode` there by one. iOS's `CFBundleShortVersionString` follows `version` at the next TestFlight build.
+2. **Build** from merged master: `sh native/build_android.sh` (all three ABIs), then
+   `mise exec -- mix mob.release --android` (stages `android/app/src/release/assets/otp.zip`, builds the AAB) and
+   `cd android && ./gradlew assembleRelease` → `android/app/build/outputs/apk/release/app-release.apk`.
+3. **Check** it: `apksigner verify --print-certs` shows the certificate above; `aapt dump badging` shows the
+   version and `native-code: 'arm64-v8a' 'armeabi-v7a' 'x86_64'`. Install it on an emulator or phone and play.
+4. **Publish**: copy the APK to `fmutate-<version>.apk` and `FMutate.apk` (identical; `FMutate.apk` keeps
+   `releases/latest/download/FMutate.apk` working), write `shasum -a 256 fmutate-<version>.apk >
+   fmutate-<version>.apk.sha256`, then `gh release create v<version> -R GenericJam/fmutate --target <master sha>
+   --title "FMutate <version>" --notes-file <notes> fmutate-<version>.apk fmutate-<version>.apk.sha256
+   FMutate.apk`. The notes follow the last release's: install line, what's new, certificate and APK SHA-256, and
+   the source paragraph (tag, commit, and the OberVave, Shine On and fm1-emu commits `native/build_android.sh`
+   pins).
+
 ## Publishing to TestFlight (iOS)
 
 Bundle id `com.genericjam.fmutate`, team Q89CW299G8; App Store Connect app "FMutate" (id 6837075931), SKU
