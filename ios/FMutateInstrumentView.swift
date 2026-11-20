@@ -726,8 +726,8 @@ final class FMInstrumentSurface: UIView {
     }
 
     /// A new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
-    /// follows the finger gets its full level back, one whose strip now does takes the finger's level at once. A
-    /// swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
+    /// follows the finger goes back to its strike's level, one whose strip now does takes the finger's level at once.
+    /// A swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
     /// or no strip swells any more, it is full again (Kotlin: LaunchedEffect(layout)).
     private func heldNotesFollowLayout() {
         var full = !allControls.values.contains { $0.type == "keyboard" && $0.strikeVelocity && $0.velSwell && !$0.velPressure }
@@ -735,10 +735,9 @@ final class FMInstrumentSurface: UIView {
             guard let c = g.control, c.type == "keyboard", g.note >= 0, g.sub >= 0 else { continue }
             let l = live(c)
             if l.velPressure {
-                if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last, g.struck)) }
+                if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
             } else if g.at >= 0 {
-                pressureTo(g, 127)
-                g.at = -1
+                pressureTo(g, l.strikeVelocity ? FMStrikeMath.strikeLevel(g.vel) : 127)
             }
             if g.cc7 >= 0 && !(l.velSwell && !l.velPressure) { g.cc7 = -1; full = true }
         }
@@ -1179,14 +1178,21 @@ final class FMInstrumentSurface: UIView {
 
     /// Velocity from where key [k] is struck: velMax at its front edge, velMin at its back.
     private func strikeVelocity(_ c: FMControl, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint) -> Int {
-        fmClamp(fmRound(CGFloat(c.velMin) + CGFloat(c.velMax - c.velMin) * frontAt(c, r, k, p)), 1, 127)
+        FMStrikeMath.velocity(frontAt(c, r, k, p), c.velMin, c.velMax)
     }
 
-    /// A held note's level from where the finger is now, relative to where it struck (`FMGrab.struck`): as struck
-    /// (127) there and in front of it, fading to silent at the key's back edge. A tap plays at its strike velocity alone.
-    private func levelAt(_ c: FMControl, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint, _ struck: CGFloat) -> Int {
-        let f = frontAt(c, r, k, p)
-        return f >= struck ? 127 : fmRound(127 * f / struck)
+    /// A held note's level from where the finger is now, relative to where it struck (`FMGrab.struck`, at its strike
+    /// level): the strike's level there, louder toward the front edge, fading to silent at the back edge.
+    private func levelAt(_ c: FMControl, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint, _ g: FMGrab) -> Int {
+        FMStrikeMath.heldLevel(frontAt(c, r, k, p), g.struck, FMStrikeMath.strikeLevel(g.vel))
+    }
+
+    /// A struck note's level, on a firmware that takes per-note pressure (`FMStrikeMath.strikeLevel`: the strike
+    /// position audible whatever the synth's own velocity response): where the finger is while note level follows
+    /// it, else the strike's level.
+    private func levelTo(_ c: FMControl, _ g: FMGrab, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint) {
+        if g.note < 0 || !notePressureOk { return }
+        pressureTo(g, live(c).velPressure ? levelAt(c, r, k, p, g) : FMStrikeMath.strikeLevel(g.vel))
     }
 
     private func arrowAt(_ c: FMControl, _ r: FMGrid.Rect, _ p: CGPoint) -> Int {
@@ -1293,7 +1299,7 @@ final class FMInstrumentSurface: UIView {
                 g.struck = frontAt(c, r, k, p)
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p, g.struck)) }
+                levelTo(c, g, r, k, p)
             }
         case "strum":
             if let s = stringAt(c, r, p) { g.sub = s; setHeld("\(c.id)#\(s)", true); fire(.key(c.strings[s]), true) }
@@ -1363,7 +1369,7 @@ final class FMInstrumentSurface: UIView {
             if g.sub < 0 { return }
             if g.note >= 0 {
                 let l = live(c)
-                if l.velPressure { pressureTo(g, levelAt(c, r, g.sub, p, g.struck)) }
+                if l.velPressure { pressureTo(g, levelAt(c, r, g.sub, p, g)) }
                 else if l.velSwell { swellTo(g, strikeVelocity(c, r, g.sub, p)) }
             }
             if bends(c) { bend(c, g, r, p); return }
@@ -1373,7 +1379,7 @@ final class FMInstrumentSurface: UIView {
                 g.sub = k
                 setHeld("\(c.id)#\(k)", true)
                 keyOn(c, g, k)
-                if live(c).velPressure { pressureTo(g, levelAt(c, r, k, p, g.struck)) }
+                levelTo(c, g, r, k, p)
             }
         case "strum":
             let s = stringAt(c, r, p)

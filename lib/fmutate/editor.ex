@@ -1288,7 +1288,7 @@ defmodule FMutate.Editor do
       segmented([{"Fixed", {:kb_velocity, "fixed"}, "fixed"}, {"Strike position", {:kb_velocity, "position"}, "position"}], vel_source),
       caption(
         "Fixed: the firmware’s own key presses, every note alike (as the FM-1); works whatever the synth’s MIDI channel. " <>
-          "Strike position (the default): the front edge of a key plays loudest, the back softest; the strip plays the " <>
+          "Strike position (the default): the front edge of a key plays loudest, the back softest (on a synth that takes per-note pressure, as FMutate’s OberVave, about 20 dB softer whatever its patch’s velocity depth); the strip plays the " <>
           "synth over MIDI channel 1, with its own octave (OCT− / OCT+ move it too), so the synth’s MIDI channel must be " <>
           "OMNI (its default) or 1, else the keys are silent. While a firmware button is held, keys are firmware key " <>
           "presses again; a layer held open with HOME gets notes, not key presses (use Fixed for that)."
@@ -1299,7 +1299,7 @@ defmodule FMutate.Editor do
         {soft_buttons}
       </Row>
       """,
-      toggle("Note level follows the finger", "Strike position only: a held key's own note plays as struck; slide back from where you struck to fade it (silent at the key's back edge), forward again to bring it back. Other notes untouched. On unless Swell is on." <>
+      toggle("Note level follows the finger", "Strike position only: a held key's own note starts at its strike's level; slide back from where you struck to fade it (silent at the key's back edge), forward to make it louder (full at the front edge). Other notes untouched. On unless Swell is on." <>
         if(cap?(assigns.firmware, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
         :kb_pressure, pressure, disabled: not pressure_ok),
       toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together. Turn Note level off to use it.",

@@ -185,31 +185,42 @@ flowchart LR
   any other channel drops them and the strip is silent (on OMNI or 1 they play the selected track, as key presses do). FMutate
   doesn't read that setting (it lives in the firmware's flash, which FMutate doesn't parse). A firmware layer held
   open with HOME (OberVave: SEQ, EDIT, GLO, SAVE) isn't seen by the surface, so the strip sends notes there, not
-  the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. Measured on the Moto G
-  Power 5G 2024 with OberVave: front edge peak ~13–14k, back edge ~7.5–8k (VEL>AMP 60). **Swell** (`velocity.swell`,
+  the key presses the layer wants (step entry, …). `fixed` uses the FM-1 keys and has neither limit. **Strike
+  level** (firmwares with `caps.note_pressure`): velocity alone wasn't heard. Kevin, on the Moto G Power 5G 2024:
+  "velocity is the same no matter where the key is hit". The strip sent 43 / 84 / 125 for a tap at the top /
+  middle / bottom of a white key and 45 / 85 / 124 on a black key, but OberVave's amp at its default VEL>AMP 60
+  (INIT and factory 01 alike) spans only `1 − ⌊(127 − vel) × 60 / 128⌋ × 258 / 32767`, 0.69 to 1. Moto G Power 2021,
+  INIT, peak per tap, top / middle / bottom: white key 5162 / 5330 / 7702, black 4287 / 6919 / 8305; factory 01
+  5827 / 6396 / 5897; host engine RMS: the top 2.7–4.5 dB under the bottom on INIT, 4–5 dB on factory 01. So each strike
+  also sends its note's level (poly aftertouch, below) from its velocity, `StrikeMath.strikeLevel` (Kotlin;
+  `FMStrikeMath` in Swift): 127 at velocity 127, equal dB steps down to 24 dB under it at velocity 1 on OberVave's
+  square law, so the default back edge (velocity 40) gets level 49 (−16.5 dB) and the middle (84) 79 (−8 dB). Host
+  engine, RMS over 3 strikes each, against a bottom strike: INIT top −19.9 dB, middle −8.7 dB; factory 01
+  top −21.5 dB, middle −10.2 dB (before: −4.5 / −2.2 and −5.2 / −2.8). Softest (the strip's `min`) narrows it: 64 is −12 dB, 90 −7 dB. The strike level goes out with
+  note level on or off, so switching note level off keeps the strike audible. A synth without the cap gets
+  velocity alone. **Swell** (`velocity.swell`,
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
 - **Note level** (`velocity.pressure`, firmwares with `caps.note_pressure`): the held note's own level
-  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, relative to where the key was struck: level =
-  127 × front ÷ struck while the finger is behind its strike point (front = where the finger is on the key, 1 at
-  the front edge, 0 at the back), 127 (as played) there and in front of it; sent at the strike and on every
-  change. A glissando keeps the strike point, as it keeps the velocity. So a tap plays at its strike velocity
-  alone, sliding back fades the note to silence at the back edge, and sliding forward again brings it back to as
-  struck. (#8 had level = 127 × front from the strike on, so the strike was quieted twice, by velocity and by
-  level: host engine, OberVave INIT, ring peaks: a firmware key press 6349, a tap mid-key (velocity 84, level 64)
-  1418 (−13 dB), a quarter in from the back (62, 32) 260 (−28 dB), at the back edge (40, 0) silent; factory 01:
-  4815, 1593, 281, silent. Velocity alone, as now: mid-key 4078, back edge 4203 on INIT; OberVave's amp is
-  `1 − ⌊(127 − vel) × VEL>AMP / 128⌋ × 258 / 32767`, at its default VEL>AMP 60 0.84 for 84 and 0.685 for 40, against
-  0.905 for a key press. Strike-position strips became the default with this; until then no bundled layout had
-  one, so note level never played.) Only
+  follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, relative to where the key was struck
+  (`StrikeMath.heldLevel`): the strike level (above) at the strike point, falling to 0 at the back edge
+  (strike level × front ÷ struck, front = where the finger is on the key, 1 at the front edge, 0 at the back),
+  rising to 127 at the front edge; sent at the strike and on every change. A glissando keeps the strike point and
+  the strike level, as it keeps the velocity. So a tap plays at its strike, sliding back fades the note to silence
+  at the back edge, and sliding forward makes it louder, up to the full level at the front edge. (#8 had level =
+  127 × front from the strike on: a quarter in from the back edge was 28 dB down and the back edge silent. #13 made
+  the strike 127, so a tap played at its velocity alone and the strike position wasn't heard. The strike level sits
+  between the two: never silent, 20 dB from bottom to top at the default range. Strike-position strips became the
+  default with #13; until then no bundled layout had one, so note level never played.) Only
   FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
   amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched). The
   iOS archive and the Android libraries compile the same patched tree (`native/build_ios.sh` and
   `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` plays it on the engine
   executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
-  16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, velocity 127 / 40 ≈ 1500 / 800 (factory 01).
+  16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, and a strike at the top / middle / bottom of a key as the
+  surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01.
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
   **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
@@ -231,7 +242,7 @@ flowchart LR
   without `note_pressure` or a layout without a strike-position strip (only strips set to `fixed`). Switching it
   off leaves velocity as it is (strike position): it is note level only, `fixed` is the strip's own setting in the
   editor. Held notes go with the new layout at once:
-  a held note whose strip stops following gets level 127 back (it is never left quiet), one whose strip starts
+  a held note whose strip stops following goes back to its strike level (never left where the finger faded it), one whose strip starts
   takes the finger's level; the surface reads a held finger's strip from the current layout, not the one it
   grabbed. A swell leaves CC7 where the last finger put it, so when a new layout stops a held finger's strip
   swelling, or leaves no strip swelling (note level switched on over a swell), CC7 goes back to 127.
