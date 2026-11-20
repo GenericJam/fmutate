@@ -610,8 +610,10 @@ private fun InstrumentSurface(
     val shownIds = remember(controls) { controls.map { it.id }.toSet() }
     // a learned knob's bubble and an encoder's turn go away once it has been still for a moment
     val midiStill = remember(state) { HashMap<String, Long>() }
-    fun midiMoved(id: String, bubble: String) {
-        state.bubbles[id] = bubble
+    // the hardware control that last drove a control ("K1", "CC20"; FMutate.MIDI.Controls): its bubble names it
+    val midiTags = remember(state) { HashMap<String, String>() }
+    fun midiMoved(id: String, value: String) {
+        state.bubbles[id] = midiTags[id]?.let { "$it  $value" } ?: value
         val at = System.currentTimeMillis() + MIDI_BUBBLE_MS
         midiStill[id] = at
         scope.launch {
@@ -652,6 +654,7 @@ private fun InstrumentSurface(
                 state.encoderTurns[s.control] = turns
                 midiMoved(s.control, (if (turns > 0) "+" else "") + turns)
             }
+            is MidiShow.Tag -> midiTags[s.control] = s.tag
         }
     }
     // values learned controls moved while their knob was on another page: shown when it is

@@ -272,17 +272,56 @@ flowchart LR
   device). A CC is listened to for a short window so an endless encoder's coding is recognised (absolute, 64 ± n,
   two's complement, sign bit; changeable in the sheet). At play time `FMutate.MIDI.Controls` (pure) drives the
   control's bindings as a touch would: presses momentary or toggle, absolute values through rule 7 with the
-  hardware control as its own participant (pickup), encoders get clicks from the change (a full sweep = a 200 pt
-  drag, 33 clicks at 6 pt per click). A learned message skips its default path, so a learned pad stops playing
+  hardware control as its own participant (pickup), encoders get clicks from the change (a full sweep = 64
+  clicks, below). A learned message skips its default path, so a learned pad stops playing
   its note; matches include the channel, so keys on another channel still play. I/O lists a device's learned
   controls on the current layout with Clear.
-- **Automap** (`FMutate.MIDI.Automap`, pure; device-wide, every layout, on by default per device and off for the
-  virtual port). Known controllers by name (MPK mini mk3: knobs CC 70–77 ch 1, pads ch 10 notes 36–51; MPK mini
-  mk2: knobs CC 1–8); any other controller by first touch (first CC moved = knob 1, …; first note on channel 10 =
-  pad 1, …), kept per device name until Reset in I/O. Knobs 1–4 → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO
-  (clicks), 8 → MASTER (rule 7 pickup); pads 1–14 → FX, SEL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY,
-  REC, OCT−, OCT+ (momentary); pads 15–16 play notes. Learned beats automap beats the default path. A source's
-  channel filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned.
+- **Automap** (`FMutate.MIDI.Automap`, pure; device-wide, every layout and firmware, on by default per device and
+  off for the virtual port). Known controllers by name, each with its factory programs: MPK mini mk3 knobs CC
+  70–77 ch 1, pads ch 10 notes 36–51; MPK mini mk2 PROG 1 knobs CC 1–8, PROG 2 CC 20, 21, 22, 23, 16, 17, 18, 19,
+  PROG 3 and 4 CC 20–27 (from the mk2's factory `.mk2` presets, decoded with the editor's 117-byte SysEx layout;
+  a captured mk2 sent PROG 2's CCs knob by knob). The device is on the first program every CC seen from it fits
+  (kept with its settings, so K1 alone tells PROG 2); the first CC that fits none switches it to first touch,
+  keeping the CCs seen so far in their order. Before, the mk2 profile said CC 1–8 only and swallowed nothing
+  else: a mk2 on PROG 2 drove no panel knob, its knobs reached OberVave's own CC map (CC 20–23 = OSC 1 WAVE,
+  PW, LEVEL, NOISE), and only the joystick (CC 1 in PROG 1–3, = PROG 1's K1) moved KNOB1. The joystick's CCs
+  never decide a program or take a knob (they stay the firmware's mod wheel). Any other controller by first touch
+  (first CC moved = knob 1, …; first note on channel 10 = pad 1, …). Or lined up: I/O's "Line up knobs" asks for
+  the knob for KNOB1, then KNOB2, … MASTER (Skip, Done), and keeps that order, closed to first touch; a row's
+  sheet puts one knob on a panel knob (a swap). The order is kept per device name until Reset in I/O. Knobs 1–4
+  → KNOB1–4, 5–7 → SELECT, PRESETS, ALGO (clicks), 8 → MASTER (rule 7 pickup); pads 1–14 → FX, SEL, ENV, LFO,
+  EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY, REC, OCT−, OCT+ (momentary); pads 15–16 play notes. A source's channel
+  filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned. A line-up is
+  kept as the device's automap order, not as learned inputs: those are per layout (so per firmware) and per
+  on-screen control, and a line-up is about the hardware, so it holds on every firmware and layout, and a
+  control's learned input still wins over it.
+- **Precedence of a hardware control**: a layout control's learned input > a pinned synth parameter > automap >
+  the default path (notes → keys, the rest → the firmware's MIDI in).
+- **Pins** (I/O, a knob's row → "Synth parameter of …"): a knob set to a parameter of the running firmware by name,
+  per device name and firmware id (kept as the parameter's label, resolved against the firmware's list at its
+  version). A pinned knob is an automap control whose target is the existing MIDI CC out target (`cc:<ch>:<n>`,
+  rule 7 pickup), on the knob's own channel: the firmware scales 0..127 to the parameter's range itself. The
+  parameter lists (`FMutate.MIDI.Params`, `priv/midi_params/<id>@<version>.json`) are generated from the bundled
+  firmwares' source at the pinned commits by `tools/midi_params.exs`: OberVave 3.3.2 (63 parameters) and Shine On
+  3.0.1 (41: its VOLUME, CC 7, is taken by the channel handler before the CC map). A firmware without a list
+  shows no pins.
+- **Unmapped knobs** (per device, I/O "Send unmapped knobs to the synth", on by default): a CC that drives nothing
+  in FMutate goes to the firmware's MIDI in, as before, where OberVave and Shine On give CC 20 and up to their
+  parameters in table order; the table says what each such knob sets there. Off drops CCs that could be knobs;
+  pedals, bank select, (N)RPN, channel mode and the joystick still go. On stays the default: the firmwares' CC
+  maps are a feature (a DAW or a sequencer drives them), and the table now says what they do.
+- **I/O's controller table** (`FMutate.MIDI.Mapping`, pure): per device that plays the instance, one row per knob
+  FMutate knows of (its slots, its program's knobs, pins, learned inputs, CCs that came this session) as "K1 CC 20
+  → KNOB1" and what drives it, lit while that hardware control moves (`FMutate.MIDI.watch/1`: at most one
+  message every 150 ms per control). On the surface, a knob driven from MIDI shows the hardware control in its
+  bubble ("K1 +3", "CC74 64"): a `g <control> <tag>` line before its value or clicks, once per batch.
+- **A full sweep of an absolute hardware knob on an encoder is 64 clicks.** OberVave and Shine On step a 0..127
+  parameter by 2 per click, and by 3× that when more than one click arrives in one of their polls (a fast turn).
+  Measured on the host engine (OberVave, KNOB2 = RESO on PERFORM, read back by matching the firmware's screen
+  against screens of RESO set by CC 71): 33 single clicks 80 ms apart 0 → 66 (the old 200 pt sweep: a hardware
+  knob at its end stop left the parameter half way), 64 → 127; 32 clicks 25 ms or 10 ms apart → 64, 4 ms apart →
+  104, 1 ms → 127; 11 batches of 3 → 127. A sweep turned at a normal pace covers the range once; a flick goes
+  further, as on the device.
 - **What MIDI-driven controls show** never goes through the instrument screen's process: `FMutate.MIDI` sends text
   lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
   display frame. iOS has the same channel: `fm1surface`'s `surface/1` NIF (`FMutate.SurfaceNif`) into
@@ -417,8 +456,8 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.IO` | MIDI devices (list, hot-plug, open/close, reopen by name), Bluetooth MIDI scan/connect, the virtual ports' clients, audio outputs (one per app) |
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
-| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, the rule 7 arbiter, clock follow/send/off |
-| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface, queued and applied once per frame |
+| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`, `.Mapping`, `.Params`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, pins, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, a controller's line-up, the rule 7 arbiter, clock follow/send/off, which hardware control moved (for I/O) |
+| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface (and the hardware control's tag in a knob's bubble), queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
 

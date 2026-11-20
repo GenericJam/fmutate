@@ -10,6 +10,7 @@
 //     t <key> <0|1>                  its toggle is now off / on
 //     v <control> <target> <value>   absolute target (FMTarget.absoluteKey) moved to value (0..1) by control
 //     e <control> <clicks>           encoder clicks sent for a knob / slider / XY pad
+//     g <control> <tag>              the hardware control driving it ("K1", "CC20"): its bubble names it
 //     h <key> <0|1>                  an automapped pad holds the FM-1 button this control is bound to: lit only
 //     o <-1|1>                       an automapped pad pressed OCT− / OCT+ (velocity strips' own octave follows)
 
@@ -20,6 +21,7 @@ enum FMMidiShow: Equatable {
     case toggle(String, Bool)
     case value(control: String, target: String, Float)
     case clicks(String, Int)
+    case tag(String, String)
     case shine(String, Bool)
     case octave(Int)
 
@@ -32,6 +34,7 @@ enum FMMidiShow: Equatable {
             case "t": return f.count == 3 ? .toggle(f[1], f[2] == "1") : nil
             case "v": return f.count == 4 ? Float(f[3]).map { .value(control: f[1], target: f[2], min(max($0, 0), 1)) } : nil
             case "e": return f.count == 3 ? Int(f[2]).map { .clicks(f[1], $0) } : nil
+            case "g": return f.count == 3 ? .tag(f[1], f[2]) : nil
             case "h": return f.count == 3 ? .shine(f[1], f[2] == "1") : nil
             case "o": return f.count == 2 ? Int(f[1]).map { .octave(min(max($0, -1), 1)) } : nil
             default: return nil

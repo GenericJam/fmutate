@@ -920,7 +920,7 @@ defmodule FMutate.Editor do
         [
           segmented(for({mode, name} <- Learn.modes(), do: {name, {:learn_mode, gesture, mode}, mode}), current),
           caption(
-            "Absolute: a knob or fader (encoders get #{round(FMutate.MIDI.Controls.clicks_per_sweep(%{}))} clicks per sweep). " <>
+            "Absolute: a knob or fader (encoders get #{FMutate.MIDI.Controls.sweep_clicks()} clicks per sweep). " <>
               "The others are endless encoders' codings: 64 ± n, two's complement (1 up, 127 down), sign bit (1 up, 65 down).",
             :faint
           )
