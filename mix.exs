@@ -33,6 +33,11 @@ defmodule FmutateApp.MixProject do
       # keeps the app running (mediaPlayback foreground service, its notification's Quit) while a firmware plays
       # (FMutate.Background); 0.3.1 has the :media_playback mode
       {:mob_background, "~> 0.3.1"},
+      # pairing sibling apps (Humdinger, Magpie) by QR code or typed code, and their TLS distribution
+      # (FMutate.Pairing, the Pair screen); pure Elixir, no native code
+      {:mob_pair, github: "GenericJam/mob_pair", ref: "c44aede8009c85c490caddf1972f456aff95c7ae"},
+      # the Pair screen's QR code (pure Elixir)
+      {:eqrcode, "~> 0.2.1"},
       # Code quality — Credo + ex_slop (catches AI-generated patterns
       # like blanket rescue, narrator docs, redundant Enum chains, etc).
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ backup and device-to-device transfer (android:dataExtractionRules). The distribution
+     secrets in files/dist (FMutate.Paths.dist_dir: the sibling cookie, the pairing certificate's private
+     key, the paired apps' cookies) stay on this install: never copied to the cloud or to a new phone.
+     Paired apps pair again on a new phone. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="dist/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="dist/" />
+    </device-transfer>
+</data-extraction-rules>

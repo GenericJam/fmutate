@@ -22,6 +22,16 @@ defmodule FMutate.Supervisor do
         # I/O (device-level): Android's MIDI/audio devices, and distribution for sibling apps (node named
         # after the first instance)
         FMutate.IO,
+        # apps paired on the Pair screen: their cookies and pinned certificates (mob_pair; FMutate.Dist follows
+        # it). FMutate.Dist owns the default cookie. Release builds keep an allow list (paired names added as
+        # they pair; FMutate.Dist adds sibling-cookie names), so no other name gets past OTP's handshake to
+        # make an atom; development builds (mob_dev's cookie) leave it open for their tools.
+        {MobPair.Pairings,
+         default_cookie: :keep,
+         allow_list: if(FMutate.Dist.dev_build?(), do: false, else: :auto),
+         store:
+           {MobPair.Pairings.FileStore,
+            path: Path.join(FMutate.Paths.dist_dir(), "pairings.json")}},
         {FMutate.Dist, instance: hd(instances)},
         FMutate.Audio,
         # the firmware catalogue the instances ask (FMutate.Firmware.all/0)
@@ -37,10 +47,22 @@ defmodule FMutate.Supervisor do
         end) ++
         [
           # keeps the app running in the background while a firmware plays (mob_background)
-          {FMutate.Background, instances: instances}
+          {FMutate.Background, instances: instances},
+          # the Pair screen's endpoint and the TLS front for paired apps on other phones; last, so its
+          # restarts don't restart the instrument
+          {FMutate.Pairing, instance: hd(instances)}
         ]
+
+    # no pairing on iOS yet (FMutate.Pairing.available?/0)
+    children =
+      if FMutate.Pairing.available?(),
+        do: children,
+        else: Enum.reject(children, &pairing_child?/1)
 
     # an audio restart invalidates every slot, so the instances restart with it
     Supervisor.init(children, strategy: :rest_for_one)
   end
+
+  defp pairing_child?({module, _opts}), do: module in [MobPair.Pairings, FMutate.Pairing]
+  defp pairing_child?(_child), do: false
 end

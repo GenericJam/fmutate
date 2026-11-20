@@ -3,6 +3,8 @@
 
     <!-- FMutate's sibling permission (signature): granted because this app is signed with the same key. -->
     <uses-permission android:name="com.genericjam.fmutate.permission.SIBLING" />
+    <!-- a plain socket to FMutate's distribution port (the "atoms" command) -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <queries>
         <package android:name="com.genericjam.fmutate" />

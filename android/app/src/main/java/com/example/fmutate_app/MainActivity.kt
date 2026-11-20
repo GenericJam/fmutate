@@ -291,6 +291,12 @@ class MainActivity : ComponentActivity() {
         // skip extraction once the marker file is present.
         extractPythonAssetsIfNeeded()
 
+        // net_kernel opens its socket inside Node.start/2, before Elixir can call
+        // allow/1. FMutate's transport parks the acceptor until that allow list
+        // is installed. This init argument must exist before the very first BEAM
+        // launch; writing it from Elixir would only protect the next launch.
+        if (!beamStarted.get()) installDistributionTransport()
+
         nativeSetActivity(this)
 
         // The BEAM can only be started ONCE per process: a second erl_start in
@@ -310,6 +316,18 @@ class MainActivity : ComponentActivity() {
             Thread({ nativeStartBeam() }, "beam-main").start()
         } else {
             Log.i(TAG, "onCreate — BEAM already running, re-attaching")
+        }
+    }
+
+    // See fmutate/DistInitArgs.kt. Without the transport, release builds start no distribution (FMutate.Dist):
+    // sibling apps are shut out but the instrument plays. Throwing here would stop every later launch too.
+    private fun installDistributionTransport() {
+        try {
+            if (!com.example.fmutate_app.fmutate.DistInitArgs.install(filesDir)) {
+                Log.e(TAG, "mob_init_args has no room for FMutate's distribution transport")
+            }
+        } catch (e: java.io.IOException) {
+            Log.e(TAG, "mob_init_args: FMutate's distribution transport wasn't written", e)
         }
     }
 
