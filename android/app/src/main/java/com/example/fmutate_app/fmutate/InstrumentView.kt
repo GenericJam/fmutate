@@ -735,11 +735,13 @@ private fun InstrumentSurface(
     /**
      * A struck note's level, on a firmware that takes per-note pressure ([StrikeMath.strikeLevel]: the strike
      * position audible whatever the synth's own velocity response): where the finger is while note level follows it,
-     * else the strike's level.
+     * else the strike's level. Not on a swell strip: its CC7 already plays the strike position and its slide.
      */
     fun levelTo(c: Control, g: Grab, r: Grid.Rect, k: Int, p: Offset) {
         if (g.note < 0 || !notePressureOk) return
-        pressureTo(g, if (live(c).velPressure) levelAt(c, r, k, p, g) else StrikeMath.strikeLevel(g.vel))
+        val l = live(c)
+        if (l.velPressure) pressureTo(g, levelAt(c, r, k, p, g))
+        else if (!l.velSwell) pressureTo(g, StrikeMath.strikeLevel(g.vel))
     }
 
     fun arrowAt(c: Control, r: Grid.Rect, p: Offset): Int {
@@ -1004,7 +1006,7 @@ private fun InstrumentSurface(
             if (c.type != "keyboard" || g.note < 0 || g.sub < 0) continue
             val l = live(c)
             if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
-            else if (g.at >= 0) pressureTo(g, if (l.strikeVelocity) StrikeMath.strikeLevel(g.vel) else 127)
+            else if (g.at >= 0) pressureTo(g, if (l.strikeVelocity && !l.velSwell) StrikeMath.strikeLevel(g.vel) else 127)
             if (g.cc7 >= 0 && !(l.velSwell && !l.velPressure)) { g.cc7 = -1; full = true }
         }
         if (full && state.cc7 in 0..126) {

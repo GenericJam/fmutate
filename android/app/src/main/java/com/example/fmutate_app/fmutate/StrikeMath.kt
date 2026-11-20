@@ -6,7 +6,7 @@ import kotlin.math.roundToInt
 /**
  * Strike position on a keyboard strip (velocity source "position"): how loud a note plays from where its key is struck
  * and where the finger is while it is held. `front` is where the finger is on its key: 1 at the front edge (the bottom
- * of a horizontal strip, nearest the player), 0 at the back edge (the top). FMutateInstrumentView.swift has the same.
+ * of a horizontal strip, nearest the player), 0 at the back edge (the top). ios/FMutateStrikeMath.swift has the same.
  */
 object StrikeMath {
     /** How far below a front-edge strike a strike at velocity 1 plays, by its level alone (dB). */

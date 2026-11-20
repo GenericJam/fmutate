@@ -737,7 +737,7 @@ final class FMInstrumentSurface: UIView {
             if l.velPressure {
                 if let r = rectOf(l) { pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
             } else if g.at >= 0 {
-                pressureTo(g, l.strikeVelocity ? FMStrikeMath.strikeLevel(g.vel) : 127)
+                pressureTo(g, l.strikeVelocity && !l.velSwell ? FMStrikeMath.strikeLevel(g.vel) : 127)
             }
             if g.cc7 >= 0 && !(l.velSwell && !l.velPressure) { g.cc7 = -1; full = true }
         }
@@ -1189,10 +1189,12 @@ final class FMInstrumentSurface: UIView {
 
     /// A struck note's level, on a firmware that takes per-note pressure (`FMStrikeMath.strikeLevel`: the strike
     /// position audible whatever the synth's own velocity response): where the finger is while note level follows
-    /// it, else the strike's level.
+    /// it, else the strike's level. Not on a swell strip: its CC7 already plays the strike position and its slide.
     private func levelTo(_ c: FMControl, _ g: FMGrab, _ r: FMGrid.Rect, _ k: Int, _ p: CGPoint) {
         if g.note < 0 || !notePressureOk { return }
-        pressureTo(g, live(c).velPressure ? levelAt(c, r, k, p, g) : FMStrikeMath.strikeLevel(g.vel))
+        let l = live(c)
+        if l.velPressure { pressureTo(g, levelAt(c, r, k, p, g)) }
+        else if !l.velSwell { pressureTo(g, FMStrikeMath.strikeLevel(g.vel)) }
     }
 
     private func arrowAt(_ c: FMControl, _ r: FMGrid.Rect, _ p: CGPoint) -> Int {

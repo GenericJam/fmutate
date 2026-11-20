@@ -137,6 +137,26 @@ defmodule FMutate.AftertouchTest do
           assert db.(middle, bottom) <= -4 and db.(top, middle) <= -4
         end
       end
+
+      # a held key's arp plays its steps in every octave at the key's level (factory 08 ARP SEQ: up, 2 octaves, so
+      # every other step is the key an octave up, another pitch); the quiet strike first, so the full one's echoes
+      # don't land in its window
+      test "an arp's octave steps play at their key's level", %{pid: pid, prefix: prefix} do
+        program(pid, 7)
+
+        hold = fn level ->
+          Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, level}])
+          rms = level_after(pid, prefix, 300, 1_200)
+          Engine.commands(pid, [{:midi, 0x80, 60, 0}])
+          Rig.firmware_wait(pid, 2_500)
+          rms
+        end
+
+        quiet = hold.(49)
+        full = hold.(127)
+        assert full > 300
+        assert 20 * :math.log10(quiet / full) <= -12
+      end
     end
   end
 end

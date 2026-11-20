@@ -197,8 +197,9 @@ flowchart LR
   square law, so the default back edge (velocity 40) gets level 49 (−16.5 dB) and the middle (84) 79 (−8 dB). Host
   engine, RMS over 3 strikes each, against a bottom strike: INIT top −19.9 dB, middle −8.7 dB; factory 01
   top −21.5 dB, middle −10.2 dB (before: −4.5 / −2.2 and −5.2 / −2.8). Softest (the strip's `min`) narrows it: 64 is −12 dB, 90 −7 dB. The strike level goes out with
-  note level on or off, so switching note level off keeps the strike audible. A synth without the cap gets
-  velocity alone. **Swell** (`velocity.swell`,
+  note level on or off, so switching note level off keeps the strike audible; not on a swell strip, whose CC7
+  already plays the strike position (both would count it twice, and a slide to the front couldn't get back to
+  full). A synth without the cap gets velocity alone. **Swell** (`velocity.swell`,
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
@@ -215,12 +216,18 @@ flowchart LR
   default with #13; until then no bundled layout had one, so note level never played.) Only
   FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
-  amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched). The
+  amp every block on a square law, 127 = as played). The level belongs to the key while it is held or latched: the
+  voices it starts later take it, its arp's steps in every octave too (an octave step is another pitch, so the arp
+  passes its key), and once no key holds the pitch its voices start as played again. (Before the strike level a
+  level was rarely left on a key; with it every strike leaves one, and the sequencer's steps of that pitch, which
+  start voices without a note-on, played up to 24 dB down until the key was pressed again; factory 08's octave
+  steps played full under a quiet strike: level 49 held, host RMS 3 dB under level 127, now 16.6 dB.) Not in the Hub package of OberVave (it runs unpatched). The
   iOS archive and the Android libraries compile the same patched tree (`native/build_ios.sh` and
   `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` plays it on the engine
   executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
   16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, and a strike at the top / middle / bottom of a key as the
-  surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01.
+  surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01, and factory 08's arp octaves at
+  their key's level.
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
   **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
