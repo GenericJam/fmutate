@@ -5,20 +5,29 @@ defmodule FMutate.Background do
   Android freezes a cached app's process shortly after it leaves the screen: the BEAM, the engines and the
   MIDI port stop, and the audio with them. While any instance has an engine (phase `:booting`, `:running`
   or `:crashed`, which restarts it) this process holds the `mob_background` keep-alive on: a
-  `mediaPlayback` foreground service with the notification "FMutate is playing". Nothing to play (safe
-  mode, a firmware that can't run here) lets it go, and Android may freeze the app again.
+  `mediaPlayback` foreground service with the notification "FMutate is playing", owned by this process (it
+  goes if this process does). Nothing to play (safe mode, a firmware that can't run here) lets it go, and
+  Android may freeze the app again.
 
-  Android only starts a foreground service while the app is in the foreground. A start it refuses
-  (`{:error, :start_not_allowed}`: the instance came back from safe mode while the app was away) is tried
-  again when the app returns to the foreground. The first start asks for the notification permission
-  (Android 13+), without which the notification shows only in the system's running-apps list.
+  Android only starts a foreground service while the app is in the foreground. A start it refuses (`{:error,
+  :refused}` at once, or `{:mob_background, {:error, :foreground_refused}}` after: the instance came back from
+  safe mode while the app was away) is tried again when the app returns to the foreground. The first start
+  asks for the notification permission (Android 13+), without which the notification shows only in the
+  system's running-apps list.
+
+  The notification's **Quit** (`{:mob_background, {:action, :quit}}`) ends the app: every instance stops its
+  engines as a normal stop does (`FMutate.Instance.quit/1`: each saves its flash), the keep-alive goes (and
+  the notification with it), and the backend closes the audio output and ends the app (Android: finishes the
+  activity and its task, then ends the process; `FMutateIO.kt`). Nothing restarts it: the service is
+  `START_NOT_STICKY`, and the next launch starts as any other.
 
   iOS keeps an app running in the background while its audio session plays (`UIBackgroundModes` `audio`), so
   there the keep-alive is FMutate's own output (mob_background's iOS keep-alive, a silent audio engine, would be
   a second one): this process starts from whether the output runs (it starts with the app, and a restarted
   Background finds it as it was left), and when nothing plays it stops it, releasing the audio session (other
   apps' audio is no longer mixed with a silent FMutate, and iOS may suspend the app in the background);
-  something playing again starts it.
+  something playing again starts it. iOS has no notification to put a Quit on (docs/architecture.md
+  "Background").
   """
 
   use GenServer
@@ -32,10 +41,16 @@ defmodule FMutate.Background do
   defmodule Native do
     @moduledoc false
     # The device side: mob_background's keep-alive and Mob's permission request (Android); the audio output (iOS).
+    @notification %{
+      title: "FMutate",
+      text: "FMutate is playing",
+      actions: [%{id: :quit, label: "Quit"}]
+    }
+
     def keep_alive do
       if ios?(),
         do: FMutate.AudioNif.start(),
-        else: MobBackground.keep_alive(type: :media_playback, text: "FMutate is playing")
+        else: MobBackground.start(self(), mode: :media_playback, notification: @notification)
     end
 
     def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: MobBackground.stop())
@@ -48,6 +63,14 @@ defmodule FMutate.Background do
     # never reported its end (AudioNif.start leaves a running output alone); elsewhere nothing
     def resume, do: if(ios?(), do: FMutate.AudioNif.start(), else: :ok)
     def request_notifications, do: unless(ios?(), do: :mob_nif.request_permission(:notifications))
+
+    # Quit (Android; the engines have ended): close the audio output, then FMutateIO.kt finishes the activity and
+    # its task and ends the process
+    def quit do
+      FMutate.AudioNif.stop()
+
+      with {:ok, _reply} <- FMutate.IONif.call(~s({"op":"quit"})), do: :ok
+    end
 
     defp ios?, do: :mob_nif.platform() == :ios
   end
@@ -70,7 +93,9 @@ defmodule FMutate.Background do
       phases: Map.new(instances, &{&1, nil}),
       on: backend.on?(),
       asked: false,
-      last_error: nil
+      last_error: nil,
+      # the notification's Quit was tapped: the app is ending, nothing is started again
+      quit: false
     }
 
     {:ok, instances |> Enum.reduce(state, &subscribe/2) |> apply_want()}
@@ -119,11 +144,41 @@ defmodule FMutate.Background do
     {:noreply, state}
   end
 
+  def handle_info({:mob_background, {:action, :quit}}, %{quit: false} = state) do
+    Logger.info("background: Quit from the notification")
+    state = %{state | quit: true}
+    Enum.each(Map.keys(state.phases), &quit_instance/1)
+    state = if state.on, do: stop(state), else: state
+
+    with {:error, reason} <- state.backend.quit(),
+         do: Logger.error("background: the app didn't end: #{inspect(reason)}")
+
+    {:noreply, state}
+  end
+
+  # Android ended the service (a start refused after it was asked for, a time limit): held no longer; tried again
+  # when the app comes back to the foreground
+  def handle_info({:mob_background, {:error, reason}}, %{quit: false} = state) do
+    Logger.warning("background: keep-alive ended by Android: #{inspect(reason)}")
+    {:noreply, %{state | on: false, last_error: reason}}
+  end
+
+  # (a second Quit while quitting, an action FMutate doesn't show)
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # (an instance that is down, restarting under its supervisor, has no engine to stop; the app ends regardless)
+  defp quit_instance(id) do
+    Instance.quit(id)
+  catch
+    :exit, reason -> Logger.warning("background: instance #{id} didn't quit: #{inspect(reason)}")
+  end
 
   defp put_phase(state, id, phase), do: %{state | phases: Map.put(state.phases, id, phase)}
 
+  defp want?(%{quit: true}), do: false
   defp want?(state), do: Enum.any?(state.phases, fn {_id, phase} -> phase in @playing end)
+
+  defp apply_want(%{quit: true} = state), do: state
 
   defp apply_want(state) do
     case {want?(state), state.on} do

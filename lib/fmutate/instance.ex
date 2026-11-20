@@ -14,6 +14,12 @@ defmodule FMutate.Instance do
   way (twice with less than a minute of clean running between). A firmware loop that hangs in-process holds
   its cartridge until the app restarts: phase `:hung`.
 
+  ## Quitting
+
+  `quit/1` (the notification's Quit, `FMutate.Background`) stops every engine as a switch stops the old one:
+  each saves its flash and ends. The instance then stays `:stopped`, starts nothing again in this launch
+  (switching and Run anyway answer `{:error, :quit}`), and the next launch boots its firmware as usual.
+
   ## Inputs
 
   `input/2` takes the same events from touch controls and sibling apps (protocol.md §2):
@@ -63,6 +69,8 @@ defmodule FMutate.Instance do
   @crossfade_ms 150
   @restart_window_ms 60_000
   @quarantine_after 2
+  # an engine's stop grace (3 s, FMutate.Engine) and a margin
+  @quit_timeout_ms 10_000
 
   defstruct id: nil,
             firmware: nil,
@@ -92,7 +100,10 @@ defmodule FMutate.Instance do
             fetching: nil,
             # the native firmware chosen while its Hub package runs instead (its download failed): saved as the
             # firmware, so the next start tries it again
-            wanted: nil
+            wanted: nil,
+            # quit/1 was called: no engine starts again; callers still waiting for the engines to end
+            quit: false,
+            quitting: []
 
   ## API
 
@@ -162,6 +173,13 @@ defmodule FMutate.Instance do
   """
   def set_cpu(id, mode) when mode == :auto or (is_integer(mode) and mode > 0),
     do: GenServer.call(via(id), {:cpu, mode})
+
+  @doc """
+  Quit: stop every engine of this instance (the live one, a switch's new one, any still ending), each saving its
+  flash, and return `:ok` once all have ended. Nothing starts again in this launch. A second call (or one
+  while the first waits) returns when the same engines have ended.
+  """
+  def quit(id), do: GenServer.call(via(id), :quit, @quit_timeout_ms)
 
   # --- library hooks (FMutate.Library / LibraryScreen) ---
   @doc "The firmwares quarantined on this instance (any, not only the current one)."
@@ -242,6 +260,37 @@ defmodule FMutate.Instance do
   end
 
   @impl true
+  def handle_call(:quit, from, state) do
+    # a switch's old engine still crossfading out hasn't been told to stop yet ({:finish_switch, _})
+    for {pid, _eng} <- state.stopping, do: Engine.stop(pid)
+
+    state =
+      [:live, :next]
+      |> Enum.filter(&Map.get(state, &1))
+      |> Enum.reduce(state, &drop_engine(&2, &1))
+
+    if not state.quit, do: Logger.info("instance #{state.id}: quit")
+
+    %{
+      state
+      | quit: true,
+        quitting: [from | state.quitting],
+        phase: :stopped,
+        fetching: nil,
+        health: nil,
+        held_keys: MapSet.new(),
+        held_buttons: MapSet.new()
+    }
+    |> publish()
+    |> quit_done()
+    |> then(&{:noreply, &1})
+  end
+
+  def handle_call({:switch, _fw}, _from, %{quit: true} = state),
+    do: {:reply, {:error, :quit}, state}
+
+  def handle_call(:run_anyway, _from, %{quit: true} = state), do: {:reply, {:error, :quit}, state}
+
   def handle_call({:switch, fw}, _from, state) do
     cond do
       Firmware.runnable(fw) == nil and not Firmware.needs_cart?(Firmware.get(fw)) ->
@@ -379,6 +428,11 @@ defmodule FMutate.Instance do
     save_state(state)
     {:noreply, state}
   end
+
+  # an engine process that ended without its `{:exit, _}` event while stopping: it is gone all the same
+  def handle_info({:EXIT, pid, _reason}, %{stopping: stopping} = state)
+      when is_map_key(stopping, pid),
+      do: {:noreply, stopping_event(state, pid, {:exit, :gone})}
 
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
@@ -549,10 +603,19 @@ defmodule FMutate.Instance do
   defp stopping_event(state, pid, {:exit, _}) do
     {eng, stopping} = Map.pop(state.stopping, pid)
     Audio.release(eng.slot)
-    %{state | stopping: stopping}
+    quit_done(%{state | stopping: stopping})
   end
 
   defp stopping_event(state, _pid, _event), do: state
+
+  # quit/1's callers get their answer once no engine is left
+  defp quit_done(%{quit: true, stopping: stopping, quitting: [_ | _] = waiting} = state)
+       when map_size(stopping) == 0 do
+    for from <- waiting, do: GenServer.reply(from, :ok)
+    %{state | quitting: []}
+  end
+
+  defp quit_done(state), do: state
 
   defp engine_event(state, role, {:ready, ms}) do
     eng = Map.fetch!(state, role)

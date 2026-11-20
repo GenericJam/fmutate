@@ -7,17 +7,20 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.Process
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 
 /**
  * The phone's audio outputs for FMutate.IO (HANDOFF §10), bridged to the BEAM by the `fm1io` NIF
  * (c_src/fm1io.c, Elixir FMutate.IONif): the list is pushed whole as JSON ([nativeEvent]) whenever it
- * changes, and [call] answers `{"op": "state"}`. MIDI is the mob_midi plugin's (FMutate.IO, FMutate.MIDI);
- * what learned MIDI controls show on the instrument comes in through [surface].
+ * changes, and [call] answers `{"op": "state"}` and `{"op": "quit"}` (the notification's Quit). MIDI is the
+ * mob_midi plugin's (FMutate.IO, FMutate.MIDI); what learned MIDI controls show on the instrument comes in
+ * through [surface].
  *
- * [init] runs from MainActivity.onCreate.
+ * [init] runs from MainActivity.onCreate, [activityDestroyed] from its onDestroy.
  */
 object FMutateIO {
     private const val TAG = "FMutateIO"
@@ -28,9 +31,13 @@ object FMutateIO {
     @Volatile private var ready = false
     private val main = Handler(Looper.getMainLooper())
     private var audio: AudioManager? = null
+    @Volatile private var activityRef: WeakReference<Activity>? = null
+    // main thread only
+    private var quitting = false
 
     /** From MainActivity.onCreate (main thread). Safe to call again when the activity is recreated. */
     fun init(activity: Activity) {
+        activityRef = WeakReference(activity)
         if (ready) return
         audio = activity.applicationContext.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
         audio?.registerAudioDeviceCallback(audioCallback, main)
@@ -79,9 +86,43 @@ object FMutateIO {
     fun call(json: String): String {
         val rep = when (JSONObject(json).optString("op")) {
             "state" -> state()
+            "quit" -> {
+                main.post { quit() }
+                JSONObject().put("ok", true)
+            }
             else -> JSONObject().put("error", "unknown_op")
         }
         return rep.toString()
+    }
+
+    /**
+     * The notification's Quit (FMutate.Background, once the engines have ended and the audio output is closed):
+     * finish the activity and remove its task from Recents, then end the process once the activity is destroyed.
+     * The BEAM can't start twice in one process (MainActivity), so the process goes with the activity; nothing
+     * restarts it (the keep-alive service has stopped, and it is START_NOT_STICKY). An activity Android has
+     * already destroyed in the background: the process ends now.
+     */
+    private fun quit() {
+        if (quitting) return
+        quitting = true
+        val activity = activityRef?.get()
+        if (activity == null || activity.isDestroyed) {
+            endProcess()
+            return
+        }
+        activity.finishAndRemoveTask()
+        // (onDestroy comes within a frame or two; don't depend on it)
+        main.postDelayed({ endProcess() }, 2_000)
+    }
+
+    /** From MainActivity.onDestroy. */
+    fun activityDestroyed() {
+        if (quitting) endProcess()
+    }
+
+    private fun endProcess() {
+        Log.i(TAG, "quit: ending the process")
+        Process.killProcess(Process.myPid())
     }
 
     /** fm1io surface/1 (a dirty scheduler thread): what learned MIDI controls show ([MidiSurface]). */

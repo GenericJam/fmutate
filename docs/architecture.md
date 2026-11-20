@@ -329,16 +329,36 @@ flowchart LR
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
-- **Background** (`FMutate.Background`, the `mob_background` plugin pinned by git ref): while any instance has an
+- **Background** (`FMutate.Background`, the `mob_background` plugin, Hex 0.3.1+): while any instance has an
   engine (phase `:booting`, `:running`, or `:crashed` until its restart) the app holds a `mediaPlayback` foreground
   service with the notification "FMutate is playing"; safe mode or a firmware that can't run here lets it go (the
   notification goes, Android may freeze the app). Tied to the engine, not to MIDI clients or sibling apps: they
-  only matter while a firmware plays, and the type has to match what the user hears. `mediaPlayback`, not the
-  plugin's default `dataSync` (Android 15 caps that at 6 h a day in the background): the `<service>` is declared
-  in our `AndroidManifest.xml` with that type and `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it.
-  Android starts a foreground service only from the foreground; a refused start is retried when the app comes
-  back. The first start asks for `POST_NOTIFICATIONS` (Android 13+ hides the notification without it; the service
-  runs either way).
+  only matter while a firmware plays, and the type has to match what the user hears. `mediaPlayback`
+  (`MobBackground.start/2` mode `:media_playback`), not the plugin's `dataSync` (Android 15 caps that at 6 h a day
+  in the background): the `<service>` is declared in our `AndroidManifest.xml` with that type and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK`, and the build leaves it; the plugin's `FOREGROUND_SERVICE_MICROPHONE` (its
+  microphone mode) is removed there (`tools:node="remove"`), since Google Play asks an app to justify each one. The
+  session is owned by `FMutate.Background` (it ends if that process does). Android starts a foreground service
+  only from the foreground; a refused start (at once, or `{:mob_background, {:error, :foreground_refused}}` after)
+  is retried when the app comes back. The first start asks for `POST_NOTIFICATIONS` (Android 13+ hides the
+  notification without it; the service runs either way).
+- **Quit** (the notification's button, `{:mob_background, {:action, :quit}}`): a backgrounded app has no other
+  way to stop short of the system settings, and a phone keeps playing until it is told. In order: each instance
+  stops its engines as a switch stops the old one (`FMutate.Instance.quit/1`, which returns once every engine,
+  even one booting, restarting after a crash or crossfading out, has saved its flash and ended; nothing starts
+  again), the keep-alive goes (the notification with it), the audio output closes, and `FMutateIO.kt` finishes the
+  activity with its task (gone from Recents) and kills the process once the activity is destroyed (the BEAM
+  can't start twice in one process, so the process has to end). Nothing restarts it: the service is
+  `START_NOT_STICKY` and stopped first; the next launch boots the saved firmware as usual (no crash is counted:
+  the engines exited cleanly). No separate Stop (silence, keep the app): it would need a way back to playing
+  from the notification, and Quit is what was asked for.
+- **Quit on iOS: none.** iOS has no foreground-service notification (mob_background's iOS side shows nothing and
+  never delivers actions), and the lock screen / Control Center Now Playing controls (`MPRemoteCommandCenter`) only
+  go to the Now Playing app, which a mixable audio session (`.mixWithOthers`, `FMutateAudioSession.swift`: FMutate
+  plays beside other apps, as on Android) can't become; making it non-mixable would stop the user's other audio
+  whenever FMutate starts. Apple also has no API for an app to quit itself (QA1561). The user swipes FMutate away
+  in the app switcher; with nothing playing (safe mode, a firmware that can't run) FMutate closes its output and
+  iOS suspends it.
 
 ## Inputs: what can lose a press, and how to see it
 

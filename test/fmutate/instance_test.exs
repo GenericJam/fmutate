@@ -288,4 +288,103 @@ defmodule FMutate.InstanceTest do
     refute Enum.any?(got, &match?({:instance, "a", {:status, _}}, &1))
     assert_received {:instance, "a", {:status, _}}
   end
+
+  describe "quit (the notification's Quit)" do
+    # (`os_alive?/1` above reads /proc, which macOS doesn't have)
+    defp os_running?(os_pid),
+      do: match?({_, 0}, System.cmd("kill", ["-0", "#{os_pid}"], stderr_to_stdout: true))
+
+    defp engines(id) do
+      s = :sys.get_state(Instance.via(id))
+      Enum.reject([s.live, s.next], &is_nil/1) ++ Map.values(s.stopping)
+    end
+
+    defp os_pids(engines), do: Enum.map(engines, &:sys.get_state(&1.pid).os_pid)
+
+    # everything the instance had has ended and given its audio slot back, and nothing starts again
+    defp assert_quit(id, os_pids) do
+      assert %{live: nil, next: nil, stopping: stopping, phase: :stopped} =
+               :sys.get_state(Instance.via(id))
+
+      assert stopping == %{}
+      assert :sys.get_state(FMutate.Audio).owners == %{}
+      for os_pid <- os_pids, do: refute(os_running?(os_pid))
+
+      Process.sleep(300)
+      assert %{phase: :stopped} = Instance.view(id)
+      assert {:error, :quit} = Instance.switch_firmware(id, "shineon")
+      assert {:error, :quit} = Instance.run_anyway(id)
+      assert engines(id) == []
+    end
+
+    test "a running engine ends as on a normal stop, saving its flash, before quit returns" do
+      start_instance()
+      await_state(running?("obervave"))
+      [eng] = engines("a")
+      flash = FMutate.Paths.flash("a", "obervave", eng.backend)
+      File.rm(flash)
+      pids = os_pids([eng])
+
+      assert :ok = Instance.quit("a")
+      assert File.exists?(flash)
+      assert_quit("a", pids)
+    end
+
+    test "while the engine boots" do
+      start_instance()
+      assert [%{ready: false} = eng] = engines("a")
+      pids = os_pids([eng])
+      assert :ok = Instance.quit("a")
+      assert_quit("a", pids)
+    end
+
+    test "while a crashed engine restarts" do
+      start_instance()
+      await_state(running?("obervave"))
+      Instance.debug("a", :crash)
+      await_state(&(&1.phase == :crashed))
+      pids = os_pids(Enum.filter(engines("a"), &Process.alive?(&1.pid)))
+      assert :ok = Instance.quit("a")
+      assert_quit("a", pids)
+      # (the crash and the quit don't add up to a quarantine)
+      assert Instance.quarantined("a") == []
+    end
+
+    test "in the middle of a switch: the new engine booting and the old one playing both end" do
+      start_instance()
+      await_state(running?("obervave"))
+      assert :ok = Instance.switch_firmware("a", "shineon")
+      assert [_, _] = engines = engines("a")
+      pids = os_pids(engines)
+      assert :ok = Instance.quit("a")
+      assert_quit("a", pids)
+    end
+
+    test "twice at once: both return once the engines have ended" do
+      start_instance()
+      await_state(running?("obervave"))
+      pids = os_pids(engines("a"))
+      pid = GenServer.whereis(Instance.via("a"))
+      :sys.suspend(pid)
+      quits = for _ <- 1..2, do: Task.async(fn -> Instance.quit("a") end)
+      Process.sleep(50)
+      :sys.resume(pid)
+      assert [:ok, :ok] = Task.await_many(quits)
+      assert_quit("a", pids)
+    end
+
+    test "the next launch boots the firmware as usual" do
+      start_instance()
+      await_state(running?("obervave"))
+      :ok = Instance.switch_firmware("a", "shineon")
+      await_state(running?("shineon"))
+      assert :ok = Instance.quit("a")
+
+      stop_supervised!({:instance, "a"})
+      start_instance()
+      view = await_state(running?("shineon"))
+      refute view.quarantined
+      assert view.restarts == 0
+    end
+  end
 end
