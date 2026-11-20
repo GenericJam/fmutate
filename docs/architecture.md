@@ -4,6 +4,9 @@ FMutate runs M-VAVE FM-1 community firmwares on Android with a customisable inst
 `docs/design/HANDOFF.md` (+ boards, layouts, `protocol.md`, `creature.md`, `style.ex`). Tech spec: this file
 and `docs/engine_protocol.md`; where they disagree with the design on *how*, the tech spec wins.
 
+The iOS port (in progress, branch `ios`): engines in the app process, the emulator interpreted, RemoteIO audio,
+a Swift surface; design and measurements in `docs/decisions/2026-11-13-ios-port.md`.
+
 ## Processes
 
 ```mermaid
@@ -81,10 +84,11 @@ flowchart LR
 
 | Path | What |
 |---|---|
-| `native/engine/fm1engine.c`, `live.c` | the engine executable and the cartridge harness (from `../fmutate_spike`) |
-| `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests) |
-| `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer |
-| `c_src/fm1audio.c` | AAudio mixer NIF (`FMutate.AudioNif`) |
+| `native/engine/fm1engine.c`, `fm1engine.h`, `live.c` | the engine (`fm1engine_run`, wrapped as an executable by `main`) and the cartridge harness (from `../fmutate_spike`) |
+| `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests; Linux or macOS) |
+| `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
+| `native/build_ios.sh`, `c_src/fm1host.c`, `ios/` | iOS: the engines linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
+| `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
 | `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/`, `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
@@ -138,14 +142,32 @@ flowchart LR
   opt-in, off by default since a note's velocity is fixed at note-on and the only after-strike control is global): sliding a held key front/back sends CC7 (the firmware's volume, so every
   sounding note swells together) on the same front = max, back = min scale; measured CC7 35 → 125 → 31 in one
   hold. The volume stays where the last finger left it until the next strike; leaving the layout sets 127.
-- **Note level** (`velocity.pressure`, opt-in, firmwares with `caps.note_pressure`): the held note's own level
+- **Note level** (`velocity.pressure`, firmwares with `caps.note_pressure`): the held note's own level
   follows the finger, MIDI polyphonic aftertouch `0xA0 note level`, level = 127 × where the finger is on the key
-  (front edge 127, back edge 0), sent at the strike and on every change; it takes precedence over swell. Only
+  (front edge 127, back edge 0), sent at the strike and on every change. Only
   FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
   amp every block on a square law, 127 = as played). Not in the Hub package of OberVave (it runs unpatched).
   Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
   change in most; Clipper and Frasil already take 0xA0.
+  **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
+  unless the strip has `swell: true` (swell and note level are exclusive: an explicit swell wins over the default,
+  an explicit `pressure: true` wins over swell); an explicit `false` is off. Edits write it explicitly, so a layout
+  that never touched it gets the default and one switched off stays off. On a firmware without the cap it is off
+  (swell applies if set). The surface never resolves this: `FMutate.Editor` hands it the layout with every strip's
+  `pressure` resolved for the running firmware (`LayoutEdit.surface/2`); saved files keep what the player set.
+  **Toggle on the surface**: a button or key bound to `{"action": "note_level"}` (binding sheet → Go to page →
+  "note level on/off", next to BEND, the other surface action). Each press (touch, or a MIDI-learned press) asks
+  the editor to switch it (`note_level` event, `LayoutEdit.toggle_note_level/2`): every strike-position strip of the
+  layout off if any has it on, else all on, written as explicit `pressure` and **saved like any edit**, so the
+  editor's "Note level follows the finger" and the surface agree and it survives a restart. Its mode is ignored
+  (the state is the layout's, not a toggle's: never re-sent to a new engine, never released with the layout). It
+  lights while any strike-position strip has note level on and is greyed out (and does nothing) on a firmware
+  without `note_pressure` or a layout without a strike-position strip. Held notes go with the new layout at once:
+  a held note whose strip stops following gets level 127 back (it is never left quiet), one whose strip starts
+  takes the finger's level; the surface reads a held finger's strip from the current layout, not the one it
+  grabbed. A swell leaves CC7 where the last finger put it, so when a new layout stops a held finger's strip
+  swelling, or leaves no strip swelling (note level switched on over a swell), CC7 goes back to 127.
 - **Sustain** (classic SUSTAIN toggle): CC64 would hold notes at the patch's sustain level forever (OberVave's
   factory patches sustain at 100), so the toggle is a long release instead: CC72 (the standard release time,
   OberVave's and ShineOn's amp RELEASE) to 108 (~2.3 s) while on, so let-go notes fall away on the firmware's own
@@ -200,8 +222,8 @@ flowchart LR
   channel filter applies first, so with a channel chosen, pads on channel 10 are left out unless learned.
 - **What MIDI-driven controls show** never goes through the instrument screen's process: `FMutate.MIDI` sends text
   lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
-  display frame. iOS has no such channel yet: there the inputs reach the firmware but the on-screen control
-  doesn't move; the Swift surface needs the same queue (`FMutate.MIDI`'s `:surface` option takes the function).
+  display frame. iOS has the same channel: `fm1surface`'s `surface/1` NIF (`FMutate.SurfaceNif`) into
+  `FMutateMidiSurface.swift`'s queue, drained on the main thread.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
@@ -244,6 +266,20 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | With Mob PR [#236](https://github.com/GenericJam/mob/pull/236) (no repaint when a component's render is unchanged), pinned to its commit for the test | 0.6 % / 0 % / 0 % janky, p90 7–8 ms, p99 8–10 ms; touch still reaches the firmware (peak 4975). Before it, each input event made Mob commit the screen twice (10–20 ms of UI-thread recomposition per commit). Released in mob 0.9.28; FMutate uses `~> 0.9.29` |
 | Classic rearranged, screen filled and sharp-scaled (310 px, ×2 prescale per frame) | 2.5 % / 0 % / 0 % janky, p90 10–11 ms, p99 13–19 ms |
 
+### Measured (iPhone SE 3rd generation, A15, iOS 27.0.1; engines in-process, `docs/decisions/2026-11-13-ios-port.md`)
+
+Over `tools/rpc.exs <udid>` (see its header), native OberVave, the built-in speaker, development build.
+
+| What | Value |
+|---|---|
+| Output (RemoteIO) | 48 kHz, 240-frame callbacks; IO buffer 5.0 ms + output latency 11.5 ms (`latency_ms` 16.5) |
+| Engine ring fill (Auto) | 550–1010 frames at 44.1 kHz (12–23 ms) while playing at the 1024 default; iOS's default is now ~700 (`Audio.engine_fill/0`): 330–700 |
+| Input → sound in the mixer (`tools/input_latency.exs`: `Instance.input` key down until the mixer's peak > 1000, the audio NIF polled in a loop; 12 notes + 2–3 after 2–10 s of silence) | fill 1024: 25–30 ms, median 27 ms; after silence 20–26 ms. Fill 704: 15.5–24.7 ms, median ~19 ms; after silence 16–26 ms (1 min of chords: 0 underruns). Tap to sound ≈ that + 16.5 ms output + the touch panel: ~35–45 ms |
+| (The first measurement, 59–75 ms and 97–120 ms after a pause, polled `Audio.stats/0`: a snapshot the Audio server takes every 100 ms, so it measured when the next snapshot came. Nothing was unexplained: no wake-up, scheduling or audio-session cost shows) | |
+| 2 min of chords (480 × 3–4 keys, 200 ms each) | 0 underruns, 0 xruns; again at iOS's new default fill 697 (input → mixer 15.2–23.6 ms, median ~17 ms; the fill stayed at 697) |
+| App CPU (Instruments Activity Monitor, % of one core) | idle with OberVave loaded 10.6–11.2 %; playing those chords 24.6–28.0 %; footprint 76–82 MiB |
+| Emulator, interpreted, `EngineNif.bench` | per package in the decision doc: 0.38–0.76x real time at 240 MHz (FMini 1.42x), 0.66–1.40x at 120 |
+
 ### Emulated CPU clock (emulator engine)
 
 | Where | What |
@@ -255,6 +291,7 @@ lists the last inputs, newest first, as `{ms, kind, event, :sent | :dropped | :n
 | Same, the slow ones at lower clocks | Melodee 0.76x / 0.86x / 0.96x at 180 / 120 / 80 (never real time: its second core's work isn't helped much); Clipper 1.10x / 1.22x / 1.24x; Skiff 1.20x / 1.66x / 2.35x, but **silent at 80 with no stale halves** (starving that the stale-half check misses; Auto only reaches 80 when 120 is too slow) |
 | Same phone, in the app, chord held, Auto | Skiff: 87 % at 240 → 180 MHz, 100 % from then on, no new underruns. Melodee: 75 % at 180 → 80 MHz, 83–95 %: "Too slow · 94 % speed / This phone can't run it in real time". OberVave's package: 101 % at 240, no change. (Melodee's "Setup unfinished / Factory sounds missing" is its own first-boot screen: its web installer adds the factory sounds; OCT+ continues without them.) |
 | Same phone, gfxinfo with native OberVave (6 × 300 ms key holds, 3 runs; the display runs at 120 Hz, so the budget is 8.3 ms) | mob 0.9.27: 8.0 % / 3.7 % / 3.7 % janky, p90 15–18 ms, p99 20–23 ms. mob 0.9.29 (with #236, no repaint on unchanged renders): 0.7 % / 0 % / 1.3 % janky, p90 13–14 ms, p99 15–17 ms |
+| Apple M4 Pro, macOS host build, `--bench` 8 s, keys 7 11 14 held, 15 Hub packages | JIT 2.87–7.61x real time at 240 MHz; interpreted 0.68–1.04x (FMini 2.37x), 1.18–2.78x at 120 MHz; per package in `docs/decisions/2026-11-13-ios-port.md` (the iOS build interprets) |
 
 ### Background (emulator-5560, Android 17 x86_64, OberVave)
 
@@ -318,7 +355,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
 | `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, the rule 7 arbiter, clock follow/send/off |
-| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` | what learned and automapped controls show on the surface, queued and applied once per frame |
+| `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface, queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps (`docs/design/protocol.md` §7) |
 

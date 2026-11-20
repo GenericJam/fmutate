@@ -200,6 +200,7 @@ private class SurfaceState {
     var noteOct by mutableIntStateOf(0)                    // velocity strips' own octave (MIDI notes skip the firmware's)
     var bendOn by mutableStateOf(false)                    // the surface's BEND toggle: keyboard strips bend
     val stayOn = mutableStateMapOf<String, Boolean>()      // motion tiles switched on with their corner box
+    var cc7 = -1                                           // the volume a swell last sent (-1: none since this state began)
 }
 
 /**
@@ -212,6 +213,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         layoutJson = props["layout"] as? String ?: return,
         fbPath = props["fb"] as? String,
         bendOk = props["bend"] == true,
+        notePressureOk = props["note_pressure"] == true,
         oct0 = props["oct0"] == true,
         phase = props["phase"] as? String ?: "",
         master = (props["master"] as? Number)?.toFloat() ?: -1f,
@@ -234,6 +236,7 @@ private fun InstrumentSurface(
     layoutJson: String,
     fbPath: String?,
     bendOk: Boolean,
+    notePressureOk: Boolean,
     oct0: Boolean,
     phase: String,
     master: Float,
@@ -336,6 +339,9 @@ private fun InstrumentSurface(
         if (wDp <= 0) null else if (editing) editFit(layout, page, wDp, hDp) else fit(layout, page, wDp, hDp)
     }
     val controls = remember(layout, page) { layout.dock + page.controls }
+    val allControls = remember(layout) { (layout.dock + layout.pages.flatMap { it.controls }).associateBy { it.id } }
+    /** A control as the current layout has it: a finger keeps the control it grabbed, a new layout may change it. */
+    fun live(c: Control): Control = allControls[c.id] ?: c
     // a button or knob bound to a firmware key lights with that key's LED: then the controls layer follows key LEDs too
     val restKeyLeds = remember(controls) {
         controls.any { c -> c.type !in PLAYING_TYPES && c.bindings.any { it.to is Target.Key } }
@@ -375,6 +381,12 @@ private fun InstrumentSurface(
     val fnButtons = remember(controls) {
         controls.filter { c -> c.type != "motion" && c.bindings.any { b -> b.to is Target.Button && b.to.id != "oct_down" && b.to.id != "oct_up" } }.map { it.id }
     }
+    // the note-level toggle (binding target NOTE_LEVEL): lit while any strike-position strip has note level on (as
+    // FMutate.LayoutEdit.surface/2 resolved it), greyed out on a firmware without per-note pressure or a layout
+    // without such a strip; a press asks FMutate.Editor to switch it, which saves it and sends the new layout
+    val noteLevelIds = remember(layout) { allControls.values.filter { c -> c.bindings.any { it.to == NOTE_LEVEL } }.map { it.id }.toSet() }
+    val noteLevelOn = remember(layout) { allControls.values.any { it.type == "keyboard" && it.strikeVelocity && it.velPressure } }
+    val noteLevelUsable = notePressureOk && hasVelocityStrip
 
     /** OCT presses move velocity strips' own octave too (they play MIDI notes, which skip the firmware's octave). */
     fun octaveFollows(t: Target.Button, down: Boolean) {
@@ -401,7 +413,10 @@ private fun InstrumentSurface(
                 }
                 else -> {}
             }
-            is Target.Action -> if (t.id == "bend") state.bendOn = down
+            is Target.Action -> when (t.id) {
+                "bend" -> state.bendOn = down
+                "note_level" -> if (down && noteLevelUsable) emit("note_level")
+            }
             is Target.Page -> if (down) goPage(t.ref)
             is Target.Encoder -> if (down) input(mapOf("t" to "encoder", "id" to t.id, "clicks" to if (t.invert) -1 else 1))
             Target.Pot -> {}
@@ -417,7 +432,8 @@ private fun InstrumentSurface(
     fun swellTo(g: Grab, v: Int) {
         if (v == g.cc7) return
         g.cc7 = v
-        input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, v.coerceIn(0, 127))))
+        state.cc7 = v.coerceIn(0, 127)
+        input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, state.cc7)))
     }
 
     /** Pressure: the held note's own level (MIDI polyphonic aftertouch), for firmwares that take it. */
@@ -437,7 +453,8 @@ private fun InstrumentSurface(
             g.note = (53 + k + 12 * state.noteOct).coerceIn(0, 127)
             g.at = -1
             input(mapOf("t" to "midi", "bytes" to listOf(0x90, g.note, g.vel.coerceIn(1, 127))))
-            if (c.velSwell && !c.velPressure && g.cc7 < 0) swellTo(g, g.vel)
+            val l = live(c)
+            if (l.velSwell && !l.velPressure && g.cc7 < 0) swellTo(g, g.vel)
         } else {
             g.note = -1
             fire(Target.Key(k), true)
@@ -458,13 +475,15 @@ private fun InstrumentSurface(
      */
     fun pressBindings(key: String, bindings: List<Binding>, down: Boolean) {
         val press = bindings.filter { it.on == "press" }
-        val on = if (down && press.any { it.mode == "toggle" }) !(state.toggles[key] ?: false) else null
+        val on = if (down && press.any { it.mode == "toggle" && it.to != NOTE_LEVEL }) !(state.toggles[key] ?: false) else null
         if (on != null) {
             state.toggles[key] = on
             emit("toggle", mapOf("k" to key, "on" to on))
         }
         for (b in press) {
-            if (b.mode == "toggle") { if (on != null) fire(b.to, on) } else fire(b.to, down)
+            // the note-level toggle switches on each press whatever the mode: its state is the layout's, not a toggle's
+            if (b.to == NOTE_LEVEL) fire(b.to, down)
+            else if (b.mode == "toggle") { if (on != null) fire(b.to, on) } else fire(b.to, down)
         }
         val map = if ('#' in key) state.held else state.pressed
         if (down) map[key] = true else map.remove(key)
@@ -569,7 +588,6 @@ private fun InstrumentSurface(
     // ── learned MIDI controls (MidiSurface.kt; FMutate.MIDI.Controls): the firmware already has their inputs,
     // the surface only shows them, drained once per frame; plus what only the surface does (page, BEND, the
     // velocity strips' octave) ──
-    val allControls = remember(layout) { (layout.dock + layout.pages.flatMap { it.controls }).associateBy { it.id } }
     fun pressBindingsOf(key: String): List<Binding> {
         val hash = key.indexOf('#')
         if (hash < 0) return allControls[key]?.bindings ?: emptyList()
@@ -603,7 +621,10 @@ private fun InstrumentSurface(
     fun showMidi(s: MidiShow) {
         when (s) {
             is MidiShow.Press -> {
-                for (b in pressBindingsOf(s.key)) if (b.on == "press" && b.mode != "toggle") showLocally(b.to, s.down)
+                for (b in pressBindingsOf(s.key)) if (b.on == "press") {
+                    if (b.to == NOTE_LEVEL) { if (s.down) fire(b.to, true) }
+                    else if (b.mode != "toggle") showLocally(b.to, s.down)
+                }
                 val map = if ('#' in s.key) state.held else state.pressed
                 if (s.down) map[s.key] = true else map.remove(s.key)
             }
@@ -796,7 +817,7 @@ private fun InstrumentSurface(
                     g.vel = strikeVelocity(c, r, k, p)
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
-                    if (c.velPressure) pressureTo(g, levelAt(c, r, k, p))
+                    if (live(c).velPressure) pressureTo(g, levelAt(c, r, k, p))
                 }
             }
             "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
@@ -863,8 +884,9 @@ private fun InstrumentSurface(
                 if (g.sub == RAIL_GRAB) { state.kbOffset[c.id] = railStart(r, p.y, c.toKey - c.fromKey) - c.fromKey; return }
                 if (g.sub < 0) return
                 if (g.note >= 0) {
-                    if (c.velPressure) pressureTo(g, levelAt(c, r, g.sub, p))
-                    else if (c.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
+                    val l = live(c)
+                    if (l.velPressure) pressureTo(g, levelAt(c, r, g.sub, p))
+                    else if (l.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
                 }
                 if (bends(c)) { bend(c, g, r, p); return }
                 val k = keyAt(c, r, p)
@@ -874,7 +896,7 @@ private fun InstrumentSurface(
                     g.sub = k
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
-                    if (c.velPressure) pressureTo(g, levelAt(c, r, k, p))
+                    if (live(c).velPressure) pressureTo(g, levelAt(c, r, k, p))
                 }
             }
             "strum" -> {
@@ -948,13 +970,33 @@ private fun InstrumentSurface(
     val onLetGo by rememberUpdatedState<(Long) -> Unit> { id -> letGo(id) }
     val onDiag by rememberUpdatedState<(Map<String, Any>) -> Unit> { p -> emit("diag", p) }
 
+    // a new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
+    // follows the finger gets its full level back, one whose strip now does takes the finger's level at once. A
+    // swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
+    // or no strip swells any more, it is full again
+    LaunchedEffect(layout) {
+        var full = allControls.values.none { it.type == "keyboard" && it.strikeVelocity && it.velSwell && !it.velPressure }
+        for (g in grabs.values) {
+            val c = g.control ?: continue
+            if (c.type != "keyboard" || g.note < 0 || g.sub < 0) continue
+            val l = live(c)
+            if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last)) }
+            else if (g.at >= 0) { pressureTo(g, 127); g.at = -1 }
+            if (g.cc7 >= 0 && !(l.velSwell && !l.velPressure)) { g.cc7 = -1; full = true }
+        }
+        if (full && state.cc7 in 0..126) {
+            state.cc7 = 127
+            input(mapOf("t" to "midi", "bytes" to listOf(0xB0, 7, 127)))
+        }
+    }
+
     // controls stop sending input in edit mode: lift whatever was held when it began
     LaunchedEffect(editing) { if (editing) { grabs.keys.toList().forEach { letGo(it) }; motionAllOff() } else edit.reset() }
 
     // toggled bindings (a sustain toggle, say) live in the firmware: a new engine (restart, firmware switch) starts
     // without them, so they're sent again once it runs; leaving this layout lets them go
     fun toggled(): List<Target> = controls.flatMap { c ->
-        if (state.toggles[c.id] == true) c.bindings.filter { it.mode == "toggle" }.map { it.to } else emptyList()
+        if (state.toggles[c.id] == true) c.bindings.filter { it.mode == "toggle" && it.to != NOTE_LEVEL }.map { it.to } else emptyList()
     }
     // once a new engine's firmware is up (its own boot takes ~1.5-2 s after the engine runs): toggles again, and
     // strike-velocity strips' octave and the firmware's put in step at 0 (OCT− and OCT+ together, where the
@@ -1043,7 +1085,7 @@ private fun InstrumentSurface(
             if (edit.hidden(c.id)) continue
             val r = rectOf(c) ?: continue
             when (c.type) {
-                "button", "key" -> dr.button(c, r, state, ledFor(c, state.leds))
+                "button", "key" -> dr.button(c, r, state, ledFor(c, state.leds), if (c.id in noteLevelIds) noteLevelOn else state.toggles[c.id] == true)
                 "knob" -> dr.knob(c, r, state)
                 "slider" -> dr.slider(c, r, state)
                 "xy_pad" -> dr.xy(c, r, state)
@@ -1053,7 +1095,7 @@ private fun InstrumentSurface(
                 "label" -> dr.label(c, r)
                 "page_switcher" -> dr.switcher(c, r, layout, state.page)
             }
-            if (rule7.stale(c)) dimOver(this, r, density)
+            if (rule7.stale(c) || (!noteLevelUsable && c.id in noteLevelIds)) dimOver(this, r, density)
         }
     }
     Canvas(modifier = Modifier.fillMaxSize().graphicsLayer()) {
@@ -1196,9 +1238,8 @@ private class Draw(val s: DrawScope, val d: Float, val ink: Ink) {
         s.drawContext.canvas.nativeCanvas.drawText(t, cx.px(), cy.px() + st.dy, st.paint)
     }
 
-    fun button(c: Control, r: Grid.Rect, st: SurfaceState, lit: Boolean) {
+    fun button(c: Control, r: Grid.Rect, st: SurfaceState, lit: Boolean, on: Boolean) {
         val pressed = st.pressed[c.id] == true
-        val on = st.toggles[c.id] == true
         val y = if (pressed) r.y + 2 else r.y
         val bg = when { pressed -> C.fm; on -> C.selected; c.color != "default" -> C.pad(c.color); else -> C.raised }
         rr(r.x, y, r.w, r.h, 10f, bg)
