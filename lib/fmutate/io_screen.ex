@@ -1247,7 +1247,6 @@ defmodule FMutate.IOScreen do
     """
   end
 
-
   defp line_up_chip(s, here) do
     {bg, fg} =
       cond do
@@ -1269,6 +1268,7 @@ defmodule FMutate.IOScreen do
     <Text text={line} text_size={13} text_color={color} font="monospace" />
     """
   end
+
   defp chip(label, selected, tag) do
     tap = {self(), tag}
     {bg, fg} = if selected, do: {c(:selected), c(:fm)}, else: {c(:raised), c(:text)}
