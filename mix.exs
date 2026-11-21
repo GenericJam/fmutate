@@ -35,10 +35,8 @@ defmodule FmutateApp.MixProject do
       # (FMutate.Background); 0.3.1 has the :media_playback mode
       {:mob_background, "~> 0.3.1"},
       # the audio output under the mixer (c_src/fm1audio.c's "fm1_mixer" processor): AAudio on Android, RemoteIO
-      # and the audio session on iOS. Main's commit until 0.1.0 is on Hex, then {:mob_audio_io, "~> 0.1"} (and its
-      # mob.exs entry moves from :acknowledge_unsafe_plugins to :trusted_plugins)
-      {:mob_audio_io,
-       github: "GenericJam/mob_audio_io", ref: "faf1de89b969f5d43a0bf43ff2740008cd35039b"},
+      # and the audio session on iOS, from the signed Hex release.
+      {:mob_audio_io, "~> 0.1"},
       # pairing sibling apps (Humdinger, Magpie) by QR code or typed code, and their TLS distribution
       # (FMutate.Pairing, the Pair screen); pure Elixir, no native code
       {:mob_pair, github: "GenericJam/mob_pair", ref: "c44aede8009c85c490caddf1972f456aff95c7ae"},

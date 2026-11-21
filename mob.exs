@@ -72,9 +72,9 @@ config :mob_dev,
 config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors, :mob_audio_io]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
-# Bluetooth central), and mob_audio_io until 0.1.0 is on Hex. A git checkout has no signature (CI signs
-# releases), so they are acknowledged here; a release moves to :trusted_plugins below.
-config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_audio_io]
+# Bluetooth central). A git checkout has no signature (CI signs releases), so it is acknowledged here;
+# signed Hex releases, including mob_audio_io, use :trusted_plugins below.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an
@@ -86,6 +86,7 @@ config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_audio_io]
 # [...]` for an unsigned prototype.
 config :mob, :trusted_plugins, %{
   mob_audio_capture: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
+  mob_audio_io: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_camera: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_location: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
   mob_biometric: "ed25519:nc56w+1Kx0gIt/4EkHxnMZCKHMzp4+S5kS/HoSzEZkg=",
