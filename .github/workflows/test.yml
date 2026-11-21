@@ -1,0 +1,128 @@
+# The tests (AGENTS.md "Build, test, run"), on every push to master and every pull request:
+#
+#   elixir (Linux, macOS)  mix compile --warnings-as-errors and the whole of mix test, with the engines the tests
+#                          run built first: native/build_host.sh (the engine executable and the built-in
+#                          cartridges), native/build_emu.sh (the emulator engine and the Hub packages it plays) and,
+#                          on macOS only, TARGETS=host native/build_ios.sh (fm1host.so: the engines in-process, as
+#                          iOS runs them; inproc_engine_test and the in-process half of aftertouch_test)
+#   android                the Kotlin compile and its JVM unit tests
+#   ios                    the Swift unit tests (ios/Tests: the pure Swift logic, no app build)
+#
+# Cached: deps and _build by mix.lock; the firmware and fm1-emu checkouts and the Hub packages by the commits and
+# package ids the native scripts pin; the emulator's Cargo build by those and native/emu.
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  RUST_TOOLCHAIN: 1.99.1   # .tool-versions
+
+jobs:
+  elixir:
+    name: elixir (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Rust
+        run: |
+          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
+          rustup default "$RUST_TOOLCHAIN"
+
+      # the commits and Hub package ids native/build_android.sh and native/build_emu.sh fetch
+      - name: Native pins
+        id: pins
+        run: |
+          pins=$(grep -hoE '[0-9a-f]{40}|^PACKAGES=.*' native/build_android.sh native/build_emu.sh | shasum -a 256 | cut -c1-16)
+          echo "hash=$pins" >> "$GITHUB_OUTPUT"
+
+      - name: Cache native fetches
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/build/fw
+            native/build/fm1-emu
+            native/build/packages
+          key: native-fetch-${{ runner.os }}-${{ steps.pins.outputs.hash }}
+
+      - name: Cache the emulator's Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            native/build/emu-target
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_TOOLCHAIN }}-${{ steps.pins.outputs.hash }}-${{ hashFiles('native/emu/**') }}
+          restore-keys: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_TOOLCHAIN }}-${{ steps.pins.outputs.hash }}-
+
+      - name: Cache deps and _build
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions') }}-${{ hashFiles('mix.lock') }}
+          restore-keys: mix-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.tool-versions') }}-
+
+      - name: Engine and cartridges for this computer
+        run: sh native/build_host.sh
+
+      - name: Emulator engine and test packages
+        run: ABIS="" sh native/build_emu.sh
+
+      - name: In-process engines (iOS host build)
+        if: runner.os == 'macOS'
+        run: TARGETS=host sh native/build_ios.sh
+
+      - run: mix deps.get
+
+      - run: mix compile --warnings-as-errors
+
+      - run: mix test
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Kotlin compile and unit tests
+        working-directory: android
+        run: ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Swift unit tests
+        run: swift test --package-path ios/Tests
