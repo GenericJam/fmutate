@@ -57,7 +57,7 @@ Tested on a Moto G Power 2021 (Android 11), a Moto G Power 5G 2024 and Android 1
 flowchart LR
   subgraph app["App process (BEAM, Mob)"]
     I["FMutate.Instance<br/>firmware, health, inputs"]
-    A["FMutate.Audio<br/>AAudio mixer NIF"]
+    A["FMutate.Audio<br/>mixer NIF on mob_audio_io"]
     V["Instrument view<br/>Kotlin / Compose"]
   end
   I -- "Port" --> E["Engine process<br/>libfm1engine.so + cartridge<br/>or libfm1emu.so + .fwsc"]
@@ -124,7 +124,7 @@ FMutate's patches from `native/patches/` applied.
 |---|---|
 | `lib/fmutate/` | the app: instances, engines, audio, library, layouts and editor, MIDI, distribution, screens |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | the native instrument surface (Compose), edit mode, the Opling, MIDI and I/O bridges |
-| `c_src/` | the AAudio mixer and I/O NIFs |
+| `c_src/` | the mixer (a mob_audio_io processor) and I/O NIFs |
 | `native/engine/` | the engine executable and cartridge harness (C) |
 | `native/emu/` | the emulator engine around fm1-emu (Rust) |
 | `native/patches/` | FMutate's patches to the firmwares it builds (OberVave) |

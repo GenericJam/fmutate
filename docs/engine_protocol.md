@@ -9,7 +9,7 @@ Elixir (BEAM, app process) ──Port──▶ libfm1engine.so <cart> <prefix> <
         │                                   ├─ libcart_<firmware>.so   the firmware, on its authors' fake FM-1
         │                                   ├─▶ <prefix>.ring          audio, int16 stereo, 44.1 kHz
         │                                   └─▶ <prefix>.fb            screen RGB565 + LEDs
-        ├── fm1audio NIF (AAudio stream, app process) ◀── reads rings, writes clock fields back
+        ├── fm1audio NIF (mob_audio_io's output stream, app process) ◀── reads rings, writes clock fields back
         └── instrument view (Kotlin) ◀── reads <prefix>.fb at display rate
 ```
 
@@ -164,7 +164,8 @@ interprets.
 
 ## The clock
 
-The mixer (`c_src/fm1audio.c`) counts `frame`: frames mixed at 44.1 kHz since the stream started. The
+The mixer (`c_src/fm1mix.c`) counts `frame`: frames mixed at 44.1 kHz since the app started (across the
+output stream's reopens). The
 device may run at another rate; the mixer resamples. Timed MIDI (`0x06`) and, later, sibling apps'
 `midi_at` use this clock; `FMutate.Audio.stats/0` reports it.
 

@@ -7,9 +7,10 @@
   default_font: nil,
   default_style: nil,
   lifecycle: [],
-  nifs: [:mob_midi_nif, :mob_background_nif, :mob_sensors_nif],
+  nifs: [:mob_midi_nif, :mob_background_nif, :mob_sensors_nif,
+   :mob_audio_io_nif],
   notification_handlers: [],
-  plugins: [:mob_midi, :mob_background, :mob_sensors],
+  plugins: [:mob_midi, :mob_background, :mob_sensors, :mob_audio_io],
   screens: [
     %{
       default_route: "/midi_keyboard",

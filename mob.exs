@@ -43,13 +43,12 @@ config :mob_dev,
   # iOS: Apple forbids "_" in a bundle id; the Android application id's form. Signing: Kevin's team.
   ios_bundle_id: "com.genericjam.fmutate",
   ios_team_id: "Q89CW299G8",
-  # iOS: FMutate's Swift (the audio session for fm1audio's RemoteIO output; the instrument surface, registered
-  # from ios/AppDelegate.m)
+  # iOS: FMutate's Swift (the instrument surface, registered from ios/AppDelegate.m; the route picker)
   project_swift_sources: Path.wildcard(Path.join(__DIR__, "ios/FMutate*.swift")),
-  # fm1audio: the audio output (AAudio on Android, RemoteIO on iOS). fm1io: the JNI bridge to
-  # fmutate/FMutateIO.kt (audio output devices, what learned MIDI controls show). fm1surface: the latter on iOS,
-  # into ios/FMutateMidiSurface.swift. fm1host: engines on threads of the app (iOS has no processes), linked
-  # with the engines native/build_ios.sh builds.
+  # fm1audio: the mixer, a mob_audio_io processor (c_src/fm1mix.c) under the plugin's output stream (AAudio on
+  # Android, RemoteIO on iOS). fm1io: the JNI bridge to fmutate/FMutateIO.kt (audio output devices, what learned
+  # MIDI controls show). fm1surface: the latter on iOS, into ios/FMutateMidiSurface.swift. fm1host: engines on
+  # threads of the app (iOS has no processes), linked with the engines native/build_ios.sh builds.
   static_nifs: [
     %{module: :fm1audio, archs: [:all]},
     %{module: :fm1io, archs: [:android]},
@@ -69,11 +68,13 @@ config :mob_dev,
 # here to deactivate a plugin without removing the dep; remove both to drop it
 # entirely (the native build shrinks and a clean rebuild prunes its artifacts).
 # mob_sensors (a signed Hex release): the editor's list of motion sensors on this phone (motion controls).
-config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors]
+# mob_audio_io: the audio output stream (and, on iOS, the audio session) under fm1audio's mixer.
+config :mob, :plugins, [:mob_midi, :mob_background, :mob_sensors, :mob_audio_io]
 
 # mob_midi is pinned by git ref until a release has what FMutate uses (ports, timestamps, virtual devices,
-# Bluetooth central). A git checkout has no signature (CI signs releases), so it is acknowledged here.
-config :mob, :acknowledge_unsafe_plugins, [:mob_midi]
+# Bluetooth central), and mob_audio_io until 0.1.0 is on Hex. A git checkout has no signature (CI signs
+# releases), so they are acknowledged here; a release moves to :trusted_plugins below.
+config :mob, :acknowledge_unsafe_plugins, [:mob_midi, :mob_audio_io]
 
 # Trust gate for the first-party plugins. Each is signed in CI with the shared
 # mob release key; this is that key's public fingerprint. The build refuses an

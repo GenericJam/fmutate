@@ -48,8 +48,8 @@ emulator engine's tests skip themselves until `native/build_emu.sh` has run.
 
 **CI** (`.github/workflows/test.yml`, every push to master and every pull request) runs the same: the Elixir
 tests on Linux and on macOS, each with the native scripts above run first (macOS adds `TARGETS=host
-native/build_ios.sh`, so the in-process engine tests run there and skip on Linux, as does `AudioNifTest`, which
-is macOS only), the Kotlin compile and unit tests, and the Swift tests. A test that depends on the host's speed
+native/build_ios.sh`, so the in-process engine tests run there and skip on Linux; `AudioMixerTest` builds the mixer
+processor with the host's `cc` on both), the Kotlin compile and unit tests, and the Swift tests. A test that depends on the host's speed
 must hold on a CI runner too (slower than an Apple-silicon Mac, on 3 or 4 cores) and on a busy Mac: where it can,
 measure what doesn't depend on the host (CPU time per firmware ms, the firmware's clock against its audio, STATUS
 stopping) rather than wall-clock speed.
