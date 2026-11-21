@@ -28,9 +28,10 @@ early: Android, as a sideloaded APK or built from source (an iOS port is in test
   jump, fine mode, a firmware screen drawn as large as it fits and kept sharp.
   - **Velocity** from where you strike a key (front loud, back soft), on by default; it plays the synth over MIDI
     channel 1, so keep the synth's MIDI channel on OMNI (its default) or 1. A strip can play the firmware's own
-    fixed-velocity key presses instead, on any channel.
+    fixed-velocity key presses instead, on any channel. With FMutate's OberVave each strike also sets its note's
+    level, so the back of a key is clearly quieter (about 20 dB) whatever the patch's own velocity depth.
   - **Note level**: with FMutate's OberVave, a held note's volume follows your finger: slide back from where you
-    struck to fade it, forward to bring it back. On by default; switch it from a button on the surface (bind it to
+    struck to fade it, forward to make it louder. On by default; switch it from a button on the surface (bind it to
     "note level on/off") or in the keyboard strip's settings.
   - **Bend** a held note by sliding sideways, and a long-release **sustain**.
 - **Your own layouts**, edited in place: drag, resize, add controls, pages, bindings to firmware inputs, MIDI notes

@@ -723,15 +723,25 @@ private fun InstrumentSurface(
 
     /** Velocity from where key [k] is struck: [Control.velMax] at its front edge, [Control.velMin] at its back. */
     fun strikeVelocity(c: Control, r: Grid.Rect, k: Int, p: Offset): Int =
-        (c.velMin + (c.velMax - c.velMin) * frontAt(c, r, k, p)).roundToInt().coerceIn(1, 127)
+        StrikeMath.velocity(frontAt(c, r, k, p), c.velMin, c.velMax)
 
     /**
-     * A held note's level from where the finger is now, relative to where it struck ([Grab.struck]): as struck (127)
-     * there and in front of it, fading to silent at the key's back edge. A tap plays at its strike velocity alone.
+     * A held note's level from where the finger is now, relative to where it struck ([Grab.struck], at its strike
+     * level): the strike's level there, louder toward the front edge, fading to silent at the back edge.
      */
-    fun levelAt(c: Control, r: Grid.Rect, k: Int, p: Offset, struck: Float): Int {
-        val f = frontAt(c, r, k, p)
-        return if (f >= struck) 127 else (127 * f / struck).roundToInt()
+    fun levelAt(c: Control, r: Grid.Rect, k: Int, p: Offset, g: Grab): Int =
+        StrikeMath.heldLevel(frontAt(c, r, k, p), g.struck, StrikeMath.strikeLevel(g.vel))
+
+    /**
+     * A struck note's level, on a firmware that takes per-note pressure ([StrikeMath.strikeLevel]: the strike
+     * position audible whatever the synth's own velocity response): where the finger is while note level follows it,
+     * else the strike's level. Not on a swell strip: its CC7 already plays the strike position and its slide.
+     */
+    fun levelTo(c: Control, g: Grab, r: Grid.Rect, k: Int, p: Offset) {
+        if (g.note < 0 || !notePressureOk) return
+        val l = live(c)
+        if (l.velPressure) pressureTo(g, levelAt(c, r, k, p, g))
+        else if (!l.velSwell) pressureTo(g, StrikeMath.strikeLevel(g.vel))
     }
 
     fun arrowAt(c: Control, r: Grid.Rect, p: Offset): Int {
@@ -832,7 +842,7 @@ private fun InstrumentSurface(
                     g.struck = frontAt(c, r, k, p)
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
-                    if (live(c).velPressure) pressureTo(g, levelAt(c, r, k, p, g.struck))
+                    levelTo(c, g, r, k, p)
                 }
             }
             "strum" -> stringAt(c, r, p)?.let { s -> g.sub = s; state.held["${c.id}#$s"] = true; fire(Target.Key(c.strings[s]), true) }
@@ -900,7 +910,7 @@ private fun InstrumentSurface(
                 if (g.sub < 0) return
                 if (g.note >= 0) {
                     val l = live(c)
-                    if (l.velPressure) pressureTo(g, levelAt(c, r, g.sub, p, g.struck))
+                    if (l.velPressure) pressureTo(g, levelAt(c, r, g.sub, p, g))
                     else if (l.velSwell) swellTo(g, strikeVelocity(c, r, g.sub, p))
                 }
                 if (bends(c)) { bend(c, g, r, p); return }
@@ -911,7 +921,7 @@ private fun InstrumentSurface(
                     g.sub = k
                     state.held["${c.id}#$k"] = true
                     keyOn(c, g, k)
-                    if (live(c).velPressure) pressureTo(g, levelAt(c, r, k, p, g.struck))
+                    levelTo(c, g, r, k, p)
                 }
             }
             "strum" -> {
@@ -986,8 +996,8 @@ private fun InstrumentSurface(
     val onDiag by rememberUpdatedState<(Map<String, Any>) -> Unit> { p -> emit("diag", p) }
 
     // a new layout while keys are held (the note-level toggle, or any edit): a held note whose strip no longer
-    // follows the finger gets its full level back, one whose strip now does takes the finger's level at once. A
-    // swell leaves the firmware's volume where the last finger put it: when a held finger's strip stops swelling,
+    // follows the finger goes back to its strike's level, one whose strip now does takes the finger's level at once. A
+    // swell leaves the firmware's volume where the last finger left it: when a held finger's strip stops swelling,
     // or no strip swells any more, it is full again
     LaunchedEffect(layout) {
         var full = allControls.values.none { it.type == "keyboard" && it.strikeVelocity && it.velSwell && !it.velPressure }
@@ -995,8 +1005,9 @@ private fun InstrumentSurface(
             val c = g.control ?: continue
             if (c.type != "keyboard" || g.note < 0 || g.sub < 0) continue
             val l = live(c)
-            if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last, g.struck)) }
-            else if (g.at >= 0) { pressureTo(g, 127); g.at = -1 }
+            if (l.velPressure) rectOf(l)?.let { r -> pressureTo(g, levelAt(l, r, g.sub, g.last, g)) }
+            else if (notePressureOk && l.strikeVelocity && !l.velSwell) pressureTo(g, StrikeMath.strikeLevel(g.vel))
+            else if (g.at >= 0) pressureTo(g, 127)
             if (g.cc7 >= 0 && !(l.velSwell && !l.velPressure)) { g.cc7 = -1; full = true }
         }
         if (full && state.cc7 in 0..126) {

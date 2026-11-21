@@ -110,24 +110,71 @@ defmodule FMutate.AftertouchTest do
         assert back > low * 3 and back > full * 0.45
       end
 
-      # what a strike at a key's front edge (velocity 127) and at its back edge (40, a strip's default softest)
-      # sends; factory program 01 (VEL>AMP 60, VEL>FLT 40)
-      test "a note struck at the front edge's velocity starts louder than one at the back edge's",
-           %{pid: pid, prefix: prefix} do
-        program(pid, 0)
+      # what a strip at its default range sends for a strike at the top of a key (its back edge), the middle and the
+      # bottom (the front edge): velocity 40, 84 and 127, each with its strike level (MIDI polyphonic aftertouch; 49,
+      # 79 and 127: StrikeMath.kt). OberVave's own velocity response at its default VEL>AMP 60 (INIT's and factory
+      # 01's) is about 2 dB from 40 to 127, which a player can't tell apart; the level makes the strike heard.
+      for {name, n} <- [{"INIT", 70}, {"factory 01", 0}] do
+        test "a strike at the top of a key plays clearly quieter than one in the middle, the middle than the bottom (#{name})",
+             %{pid: pid, prefix: prefix} do
+          program(pid, unquote(n))
 
-        strike = fn vel ->
-          Engine.commands(pid, [{:midi, 0x90, 60, vel}])
-          level = level_after(pid, prefix, 300, 600)
+          strike = fn vel, level ->
+            Engine.commands(pid, [{:midi, 0x90, 60, vel}, {:midi, 0xA0, 60, level}])
+            rms = level_after(pid, prefix, 250, 500)
+            Engine.commands(pid, [{:midi, 0x80, 60, 0}])
+            Rig.firmware_wait(pid, 1_500)
+            rms
+          end
+
+          bottom = strike.(127, 127)
+          middle = strike.(84, 79)
+          top = strike.(40, 49)
+          db = fn a, b -> 20 * :math.log10(a / b) end
+
+          assert bottom > 500
+          assert db.(top, bottom) <= -12
+          assert db.(middle, bottom) <= -4 and db.(top, middle) <= -4
+        end
+      end
+
+      # a held key's arp plays its steps in every octave at the key's level (factory 08 ARP SEQ: up, 2 octaves, so
+      # every other step is the key an octave up, another pitch); the quiet strike first, so the full one's echoes
+      # don't land in its window
+      test "an arp's octave steps play at their key's level", %{pid: pid, prefix: prefix} do
+        program(pid, 7)
+
+        hold = fn level ->
+          Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, level}])
+          rms = level_after(pid, prefix, 300, 1_200)
           Engine.commands(pid, [{:midi, 0x80, 60, 0}])
-          Rig.firmware_wait(pid, 1_200)
-          level
+          Rig.firmware_wait(pid, 2_500)
+          rms
         end
 
-        front = strike.(127)
-        back = strike.(40)
-        assert front > 500
-        assert back < front * 0.8
+        quiet = hold.(49)
+        full = hold.(127)
+        assert full > 300
+        assert 20 * :math.log10(quiet / full) <= -12
+      end
+
+      # MONO (factory 03 SYNC LEAD): a second key slides the voice over and letting it go hands the voice back to the
+      # first key, each at its own level, with no new note-on (or pressure) for the key taking over
+      test "a mono voice plays the level of the key it sounds", %{pid: pid, prefix: prefix} do
+        program(pid, 2)
+        db = fn a, b -> 20 * :math.log10(a / b) end
+
+        Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, 49}])
+        first = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x90, 62, 127}, {:midi, 0xA0, 62, 127}])
+        second = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x80, 62, 0}])
+        back = level_after(pid, prefix, 300, 500)
+        Engine.commands(pid, [{:midi, 0x80, 60, 0}])
+
+        assert second > 300
+        assert db.(first, second) <= -12
+        assert db.(back, second) <= -12
       end
     end
   end
