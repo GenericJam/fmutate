@@ -58,7 +58,7 @@ struct eng {
     uint32_t qn;
     uint8_t inbuf[65536 + 2];
     uint32_t in_n;
-    int gone;                                   /* the port's reader is gone, or it closed (EOF): stop */
+    int gone;                                   /* the port's reader is gone: stop, as on EOF */
 };
 
 static uint32_t clamp_fill(uint32_t f)
@@ -70,9 +70,11 @@ static uint32_t clamp_fill(uint32_t f)
 
 static void put32(uint8_t *p, uint32_t v) { p[0] = v >> 24; p[1] = v >> 16; p[2] = v >> 8; p[3] = v; }
 
+/* A send that fails means nobody listens: the port closed (its reader can go before the EOF on our input shows; the
+ * BEAM closes the two ends in no set order) or the BEAM is gone. Either way the engine ends as on EOF, flash saved. */
 static void send_msg(struct eng *e, const uint8_t *m, uint32_t n)
 {
-    if (!e->gone && e->io->send(e->io->ctx, m, n)) e->gone = 1;   /* (nobody listens: stop, as the BEAM is gone) */
+    if (!e->gone && e->io->send(e->io->ctx, m, n)) e->gone = 1;
 }
 
 static void *map_file(const char *path, size_t n)
@@ -243,7 +245,7 @@ static int run(struct eng *e, const char *prefix)
 
         if (abandoned(e)) return FM1ENGINE_EXIT_KILLED;
         if (cart_ended(e) == 2) return FM1ENGINE_EXIT_CRASHED;
-        if (e->gone) return FM1ENGINE_EXIT_OK;
+        if (e->gone) { flash_save(e); return FM1ENGINE_EXIT_OK; }
         if (fill + BLOCK <= e->target_fill) {   /* render a block straight into the ring */
             int16_t blk[BLOCK * 2u];
             uint32_t i, pos = (uint32_t)(w % RING_FRAMES);

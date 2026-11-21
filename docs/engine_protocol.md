@@ -25,7 +25,9 @@ Elixir (BEAM, app process) ──Port──▶ libfm1engine.so <cart> <prefix> <
 - Flash (the firmware's saved settings and patches): `$MOB_DATA_DIR/flash/<instance>/<firmware>.bin` for a
   native cartridge, `$MOB_DATA_DIR/flash/<instance>/emu/<firmware>.bin` for a package in the emulator engine
   (`FMutate.Paths.flash/3`; the two formats differ, so a firmware id never shares a file across backends).
-  Loaded before boot, rewritten atomically whenever the firmware saves.
+  Loaded before boot, rewritten atomically whenever the firmware saves, and when the port closes: on EOF, or on a
+  message the engine can't send (the BEAM closes the port's two pipes in no set order, so the engine can see its
+  output gone before its input's EOF; the same when the BEAM is gone).
 
 ## Port messages (`{:packet, 2}`, one opcode byte, big-endian fields)
 

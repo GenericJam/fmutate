@@ -37,12 +37,22 @@ The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`
 | Tests | `mise exec -- mix test` |
 | Compile check | `mise exec -- mix compile --warnings-as-errors` |
 | Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |
+| Kotlin unit tests | `cd android && ./gradlew :app:testDebugUnitTest` |
+| Swift tests (macOS, no app build: the UIKit-free `ios/*.swift`, symlinked into `ios/Tests`; `test/fixtures/strike_math.json` is shared with `StrikeMathTest.kt`) | `swift test --package-path ios/Tests` |
 | Install and start (after native, Kotlin or NIF changes) | `mise exec -- mix mob.deploy --native --android --device <serial>` |
 | Push Elixir only | `mise exec -- mix mob.deploy --android --device <serial>` |
 
 Native outputs and the fetched sources live in `native/build/` (git-ignored); run the native scripts once per
 checkout or worktree, and again after changing `native/`. The engine tests run real firmwares on the host; the
 emulator engine's tests skip themselves until `native/build_emu.sh` has run.
+
+**CI** (`.github/workflows/test.yml`, every push to master and every pull request) runs the same: the Elixir
+tests on Linux and on macOS, each with the native scripts above run first (macOS adds `TARGETS=host
+native/build_ios.sh`, so the in-process engine tests run there and skip on Linux, as does `AudioNifTest`, which
+is macOS only), the Kotlin compile and unit tests, and the Swift tests. A test that depends on the host's speed
+must hold on a CI runner too (slower than an Apple-silicon Mac, on 3 or 4 cores) and on a busy Mac: where it can,
+measure what doesn't depend on the host (CPU time per firmware ms, the firmware's clock against its audio, STATUS
+stopping) rather than wall-clock speed.
 
 **After every deploy, restart the app.** An Elixir-only deploy hot-loads modules and unloads the audio NIF:
 
