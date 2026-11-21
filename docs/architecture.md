@@ -35,8 +35,7 @@ flowchart LR
   stream is mob_audio_io's (AAudio on Android, RemoteIO and the audio session on iOS); the mixer is its
   processor `"fm1_mixer"`. The dependency uses the signed Hex release (`~> 0.1`, locked to 0.1.0),
   verified against the shared release key in `mob.exs`'s `:trusted_plugins`, without an unsafe
-  acknowledgement. This dependency/trust cutover does not establish FMutate device acceptance:
-  the migration PR's app-specific playback, routing, interruption and background checks remain outstanding.
+  acknowledgement.
 - **The firmware screen and LEDs** never pass through the BEAM either: the Kotlin view maps `<prefix>.fb`.
 - **Touch** is handled natively (per-pointer, glissando, knobs, fine mode); the view sends compact input events
   that `FMutate.InstrumentView` turns into `FMutate.Instance.input/2` calls — the same API sibling apps use
