@@ -1,0 +1,39 @@
+{
+  "about": "Strike position on a keyboard strip: inputs and the outputs both ports must give (StrikeMath.kt, ios/FMutateStrikeMath.swift). Read by android/app/src/test/.../StrikeMathTest.kt and ios/Tests. front: 1 at the key's front edge (bottom), 0 at its back edge (top). Fronts are exact binary fractions, so Float (Kotlin) and Double (Swift) agree; x.5 results check that both round half up.",
+  "velocity": [
+    {"case": "top (back edge) of a default strip", "front": 0, "min": 40, "max": 127, "vel": 40},
+    {"case": "a quarter down", "front": 0.25, "min": 40, "max": 127, "vel": 62},
+    {"case": "middle", "front": 0.5, "min": 40, "max": 127, "vel": 84},
+    {"case": "three quarters down", "front": 0.75, "min": 40, "max": 127, "vel": 105},
+    {"case": "bottom (front edge)", "front": 1, "min": 40, "max": 127, "vel": 127},
+    {"case": "95.5 rounds half up", "front": 0.5, "min": 64, "max": 127, "vel": 96},
+    {"case": "never below 1", "front": 0, "min": 0, "max": 127, "vel": 1},
+    {"case": "never above 127", "front": 1, "min": 40, "max": 200, "vel": 127}
+  ],
+  "strikeLevel": [
+    {"case": "velocity 1: 24 dB down, never silent", "vel": 1, "level": 32},
+    {"case": "below 1 plays as 1", "vel": 0, "level": 32},
+    {"case": "velocity 20", "vel": 20, "level": 39},
+    {"case": "top of a default strip: about 16.5 dB down", "vel": 40, "level": 49},
+    {"case": "a quarter down", "vel": 62, "level": 62},
+    {"case": "middle of a default strip: about 8 dB down", "vel": 84, "level": 79},
+    {"case": "velocity 106", "vel": 106, "level": 101},
+    {"case": "bottom: as played", "vel": 127, "level": 127},
+    {"case": "above 127 plays as 127", "vel": 200, "level": 127}
+  ],
+  "heldLevel": [
+    {"case": "where it struck: the strike", "front": 0.25, "struck": 0.25, "strike": 62, "level": 62},
+    {"case": "slid halfway to the back edge", "front": 0.125, "struck": 0.25, "strike": 62, "level": 31},
+    {"case": "at the back edge: silent", "front": 0, "struck": 0.25, "strike": 62, "level": 0},
+    {"case": "slid toward the front edge", "front": 0.5, "struck": 0.25, "strike": 62, "level": 84},
+    {"case": "slid further toward the front edge", "front": 0.625, "struck": 0.25, "strike": 62, "level": 95},
+    {"case": "at the front edge: full level", "front": 1, "struck": 0.25, "strike": 62, "level": 127},
+    {"case": "struck at the front edge, held there", "front": 1, "struck": 1, "strike": 127, "level": 127},
+    {"case": "struck at the front edge, slid to the middle (63.5 rounds up)", "front": 0.5, "struck": 1, "strike": 127, "level": 64},
+    {"case": "struck at the back edge, held there", "front": 0, "struck": 0, "strike": 62, "level": 62},
+    {"case": "struck at the back edge, slid to the middle (94.5 rounds up)", "front": 0.5, "struck": 0, "strike": 62, "level": 95},
+    {"case": "struck at the back edge, slid to the front edge", "front": 1, "struck": 0, "strike": 62, "level": 127},
+    {"case": "struck in the middle, slid forward", "front": 0.75, "struck": 0.5, "strike": 79, "level": 103},
+    {"case": "struck in the middle, slid back", "front": 0.25, "struck": 0.5, "strike": 79, "level": 40}
+  ]
+}

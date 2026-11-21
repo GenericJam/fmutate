@@ -1,11 +1,43 @@
 package com.example.fmutate_app.fmutate
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 import kotlin.math.log10
 
 class StrikeMathTest {
+    // the cases both ports must agree on, shared with ios/Tests: found from the working directory up (Gradle runs unit
+    // tests in android/app)
+    private val table: JSONObject by lazy {
+        val start = File("").absoluteFile
+        val file = generateSequence(start) { it.parentFile }.map { File(it, "test/fixtures/strike_math.json") }
+            .firstOrNull { it.isFile } ?: error("test/fixtures/strike_math.json not found above $start")
+        JSONObject(file.readText())
+    }
+
+    private fun rows(name: String) = table.getJSONArray(name).let { a -> (0 until a.length()).map { a.getJSONObject(it) } }
+
+    @Test
+    fun bothPortsGiveTheSharedTable() {
+        val velocity = rows("velocity")
+        val strike = rows("strikeLevel")
+        val held = rows("heldLevel")
+        assertTrue(velocity.isNotEmpty() && strike.isNotEmpty() && held.isNotEmpty())
+        for (r in velocity) {
+            val got = StrikeMath.velocity(r.getDouble("front").toFloat(), r.getInt("min"), r.getInt("max"))
+            assertEquals("velocity: ${r.getString("case")}", r.getInt("vel"), got)
+        }
+        for (r in strike) {
+            assertEquals("strikeLevel: ${r.getString("case")}", r.getInt("level"), StrikeMath.strikeLevel(r.getInt("vel")))
+        }
+        for (r in held) {
+            val got = StrikeMath.heldLevel(r.getDouble("front").toFloat(), r.getDouble("struck").toFloat(), r.getInt("strike"))
+            assertEquals("heldLevel: ${r.getString("case")}", r.getInt("level"), got)
+        }
+    }
+
     // a level's gain on FMutate's OberVave (native/patches/obervave/poly-aftertouch.patch: a square law), in dB
     private fun db(level: Int) = 40 * log10(level / 127.0)
 

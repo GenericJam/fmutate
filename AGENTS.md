@@ -37,6 +37,8 @@ The Android NDK is 27.2 (`~/Android/Sdk/ndk/27.2.12479018` or `ANDROID_NDK_HOME`
 | Tests | `mise exec -- mix test` |
 | Compile check | `mise exec -- mix compile --warnings-as-errors` |
 | Kotlin check | `cd android && ./gradlew -q :app:compileDebugKotlin` |
+| Kotlin unit tests | `cd android && ./gradlew :app:testDebugUnitTest` |
+| Swift tests (macOS, no app build: the UIKit-free `ios/*.swift`, symlinked into `ios/Tests`; `test/fixtures/strike_math.json` is shared with `StrikeMathTest.kt`) | `swift test --package-path ios/Tests` |
 | Install and start (after native, Kotlin or NIF changes) | `mise exec -- mix mob.deploy --native --android --device <serial>` |
 | Push Elixir only | `mise exec -- mix mob.deploy --android --device <serial>` |
 

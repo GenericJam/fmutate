@@ -26,6 +26,9 @@ android/app/.cxx/
 ios/zig-out/
 ios/.zig-cache/
 **/.zig-cache/
+# swift test --package-path ios/Tests
+ios/Tests/.build/
+ios/Tests/.swiftpm/
 _build/mob_release/
 # Swift module side outputs `mix mob.release` drops in the project root
 /*.swiftmodule
