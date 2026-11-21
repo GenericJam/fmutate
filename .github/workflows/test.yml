@@ -24,9 +24,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  RUST_TOOLCHAIN: 1.99.1   # .tool-versions
-
 jobs:
   elixir:
     name: elixir (${{ matrix.os }})
@@ -44,10 +41,13 @@ jobs:
           version-file: .tool-versions
           version-type: strict
 
-      - name: Rust
+      - name: Rust (.tool-versions)
+        id: rust
         run: |
-          rustup toolchain install "$RUST_TOOLCHAIN" --profile minimal
-          rustup default "$RUST_TOOLCHAIN"
+          v=$(awk '$1 == "rust" { print $2 }' .tool-versions)
+          rustup toolchain install "$v" --profile minimal
+          rustup default "$v"
+          echo "version=$v" >> "$GITHUB_OUTPUT"
 
       # the commits and Hub package ids native/build_android.sh and native/build_emu.sh fetch
       - name: Native pins
@@ -73,8 +73,8 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_TOOLCHAIN }}-${{ steps.pins.outputs.hash }}-${{ hashFiles('native/emu/**') }}
-          restore-keys: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ env.RUST_TOOLCHAIN }}-${{ steps.pins.outputs.hash }}-
+          key: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.pins.outputs.hash }}-${{ hashFiles('native/emu/**') }}
+          restore-keys: emu-target-${{ runner.os }}-${{ runner.arch }}-${{ steps.rust.outputs.version }}-${{ steps.pins.outputs.hash }}-
 
       - name: Cache deps and _build
         uses: actions/cache@v6
