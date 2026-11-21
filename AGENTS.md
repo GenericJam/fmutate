@@ -50,7 +50,9 @@ emulator engine's tests skip themselves until `native/build_emu.sh` has run.
 tests on Linux and on macOS, each with the native scripts above run first (macOS adds `TARGETS=host
 native/build_ios.sh`, so the in-process engine tests run there and skip on Linux, as does `AudioNifTest`, which
 is macOS only), the Kotlin compile and unit tests, and the Swift tests. A test that depends on the host's speed
-must hold on a CI runner too (about half as fast as an Apple-silicon Mac, on 3 or 4 cores).
+must hold on a CI runner too (slower than an Apple-silicon Mac, on 3 or 4 cores) and on a busy Mac: where it can,
+measure what doesn't depend on the host (CPU time per firmware ms, the firmware's clock against its audio, STATUS
+stopping) rather than wall-clock speed.
 
 **After every deploy, restart the app.** An Elixir-only deploy hot-loads modules and unloads the audio NIF:
 

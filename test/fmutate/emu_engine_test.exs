@@ -159,32 +159,55 @@ defmodule FMutate.EmuEngineTest do
     assert fill > 3072 and fill <= 3840
   end
 
-  # firmware ms per wall ms (%) over `ms` of wall time
-  defp speed(pid, ms) do
-    {t0, s0} = {System.monotonic_time(:millisecond), next_status(pid)}
+  # over `ms` of wall time, from one STATUS to another (each timed as it arrives, with the ring's write index then):
+  # firmware ms per wall ms (%), the engine's CPU ms per firmware ms (what a firmware millisecond costs this host)
+  # and audio frames per firmware ms (the firmware's own clock against its DAC's)
+  defp speed(pid, prefix, ms) do
+    s0 = next_status(pid)
+    {t0, w0} = {System.monotonic_time(:millisecond), ring_w(prefix)}
     s1 = status_after(pid, ms)
-    {round((s1.ms - s0.ms) * 100 / (System.monotonic_time(:millisecond) - t0)), s1}
+    {t1, w1} = {System.monotonic_time(:millisecond), ring_w(prefix)}
+    fw_ms = max(s1.ms - s0.ms, 1)
+
+    %{
+      pct: round(fw_ms * 100 / (t1 - t0)),
+      cost: Float.round((s1.cpu_ms - s0.cpu_ms) / fw_ms, 2),
+      frames: Float.round((w1 - w0) / fw_ms, 1),
+      mhz: s1.cpu_mhz
+    }
   end
 
-  test "the CPU clock (op 0x08): a firmware too slow at 240 MHz keeps up at 80, its time and sound still right",
+  defp ring_w(prefix) do
+    <<_::binary-16, w::little-64, _::binary>> = File.read!(Paths.ring(prefix))
+    w
+  end
+
+  test "the CPU clock (op 0x08): a third of the cycles per firmware millisecond at 80 MHz, its time and sound still right",
        ctx do
-    # (interpreted, Dinghy runs at ~0.65x real time on this computer at 240 MHz, ~1.8x at 80: a slow phone. A slower
-    # host, a CI runner, may not reach real time at 80, but a third of the cycles per firmware millisecond still runs
-    # it well over twice as fast; never faster than real time)
+    # (interpreted, Dinghy runs at ~0.65x real time at 240 MHz on an idle Apple-silicon Mac, and could run ~1.8x at
+    # 80: a slow phone.) How fast it runs depends on the host and its load (a CI runner, a busy Mac); what a firmware
+    # millisecond costs the host's CPU, and the firmware's clock against its DAC's, don't
     {pid, _} = start_engine(ctx, env: [{"FM1_NO_JIT", "1"}])
     Engine.commands(pid, [{:key, 7, true}, {:key, 11, true}, {:key, 14, true}])
     status_after(pid, 1_000)
-    {slow, s} = speed(pid, 2_000)
-    assert s.cpu_mhz == 240
-    assert slow < 90, "slower than real time at 240 MHz (#{slow} %)"
+    at_240 = speed(pid, ctx.prefix, 2_000)
+    assert at_240.mhz == 240
+    assert at_240.pct < 90, "slower than real time at 240 MHz (#{inspect(at_240)})"
 
     Engine.commands(pid, [{:cpu_mhz, 80}])
     status_after(pid, 1_000)
-    {fast, s} = speed(pid, 2_000)
-    assert s.cpu_mhz == 80
+    at_80 = speed(pid, ctx.prefix, 2_000)
+    assert at_80.mhz == 80
 
-    assert fast <= 105 and (fast >= 95 or fast >= 2 * slow),
-           "real time at 80 MHz, or over twice as fast where the host can't (#{slow} % → #{fast} %): the firmware's clock stays right"
+    assert at_80.cost < 0.6 * at_240.cost,
+           "a firmware ms costs the host far less at 80 MHz (#{inspect(at_240)} → #{inspect(at_80)})"
+
+    assert at_80.pct > at_240.pct and at_80.pct <= 105,
+           "faster, never faster than real time (#{inspect(at_240)} → #{inspect(at_80)})"
+
+    # (the DAC's 44117.6 Hz: 44.1 frames per firmware ms)
+    assert at_80.frames >= 43.7 and at_80.frames <= 44.5,
+           "the firmware's clock keeps time with its audio at 80 MHz (#{inspect(at_80)})"
 
     {_, loud} = ring_peak(ctx.prefix, 2048)
     assert loud > 2_000, "the chord still plays (peak #{loud})"
