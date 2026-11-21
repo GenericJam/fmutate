@@ -50,7 +50,8 @@ extern const size_t fm1native_ncarts;
 struct fm1engine_io {
     void *ctx;
     int in_fd;                            /* port messages in ({packet, 2}); EOF = closed: save the flash, end */
-    int (*send)(void *ctx, const uint8_t *msg, uint32_t n);   /* one message out; nonzero = nobody listens */
+    int (*send)(void *ctx, const uint8_t *msg, uint32_t n);   /* one message out; nonzero = nobody listens: save
+                                                                 the flash, end (as EOF) */
     const _Atomic int *abandoned;         /* the host gave up on this engine: end at once, save nothing (NULL:
                                              a process, killed from outside instead); read with acquire (Rust:
                                              AtomicI32, native/emu/src/engine.rs) */

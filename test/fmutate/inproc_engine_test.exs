@@ -112,13 +112,10 @@ defmodule FMutate.InprocEngineTest do
     drain(a, 200)
     flush(a.ref)
     :ok = EngineNif.command(a.handle, Wire.encode(:stall))
-    t0 = System.monotonic_time(:millisecond)
-    drain(a, 400)
 
-    # (the engine's thread waits for a pass that doesn't come back: STATUS stops, as the watchdog expects)
-    flush(a.ref)
-    drain(a, 300)
-    refute_received {_, {:data, <<0x82, _::binary>>}}
+    # (the engine's thread waits for a pass that doesn't come back: STATUS stops, as the watchdog expects. On a
+    # loaded host the stall can take a few hundred ms to begin: the 4 s it lasts count from the last STATUS)
+    t0 = statuses_stop(a, 500, 3_000)
 
     :ok = EngineNif.kill(a.handle)
     assert exit_status(a, 1_000) == 137
@@ -282,6 +279,39 @@ defmodule FMutate.InprocEngineTest do
       {^ref, _} -> flush(ref)
     after
       0 -> :ok
+    end
+  end
+
+  # drains the ring (as `drain/2`) until `eng` has sent no STATUS for `quiet` ms, within `limit` ms of the call; the
+  # time of its last STATUS
+  defp statuses_stop(eng, quiet, limit) do
+    {:ok, f} = :file.open(eng.prefix <> ".ring", [:read, :write, :binary, :raw])
+    now = System.monotonic_time(:millisecond)
+    last = statuses_stop(f, eng.ref, now, now + limit, quiet)
+    :file.close(f)
+    last
+  end
+
+  defp statuses_stop(f, ref, last, deadline, quiet) do
+    {:ok, <<w::little-64>>} = :file.pread(f, 16, 8)
+    :ok = :file.pwrite(f, 24, <<w::little-64>>)
+    now = System.monotonic_time(:millisecond)
+    last = if took_status?(ref), do: now, else: last
+
+    cond do
+      now - last >= quiet -> last
+      now >= deadline -> flunk("STATUS still comes after the stall (the last #{now - last} ms ago)")
+      true -> Process.sleep(10) && statuses_stop(f, ref, last, deadline, quiet)
+    end
+  end
+
+  # whether a STATUS was waiting (all those waiting taken, and anything else the engine sent)
+  defp took_status?(ref, took \\ false) do
+    receive do
+      {^ref, {:data, <<0x82, _::binary>>}} -> took_status?(ref, true)
+      {^ref, {:data, _}} -> took_status?(ref, took)
+    after
+      0 -> took
     end
   end
 

@@ -46,6 +46,12 @@ Native outputs and the fetched sources live in `native/build/` (git-ignored); ru
 checkout or worktree, and again after changing `native/`. The engine tests run real firmwares on the host; the
 emulator engine's tests skip themselves until `native/build_emu.sh` has run.
 
+**CI** (`.github/workflows/test.yml`, every push to master and every pull request) runs the same: the Elixir
+tests on Linux and on macOS, each with the native scripts above run first (macOS adds `TARGETS=host
+native/build_ios.sh`, so the in-process engine tests run there and skip on Linux, as does `AudioNifTest`, which
+is macOS only), the Kotlin compile and unit tests, and the Swift tests. A test that depends on the host's speed
+must hold on a CI runner too (about half as fast as an Apple-silicon Mac, on 3 or 4 cores).
+
 **After every deploy, restart the app.** An Elixir-only deploy hot-loads modules and unloads the audio NIF:
 
 ```sh

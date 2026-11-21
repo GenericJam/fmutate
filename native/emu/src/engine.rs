@@ -52,7 +52,7 @@ pub struct Io {
     pub ctx: *mut c_void,
     /// Port messages in ({packet, 2}); EOF = closed: save the flash, end.
     pub in_fd: c_int,
-    /// One message out; nonzero = nobody listens.
+    /// One message out; nonzero = nobody listens: save the flash, end (as EOF).
     pub send: unsafe extern "C" fn(ctx: *mut c_void, msg: *const u8, n: u32) -> c_int,
     /// The host gave up on this engine: end at once, save nothing. Null in a process (killed from outside).
     pub abandoned: *const AtomicI32,
@@ -102,7 +102,8 @@ struct Timed {
 struct Engine<'a> {
     m: Machine,
     io: &'a Io,
-    /// The host doesn't listen any more: end (as a process whose port's reader is gone).
+    /// The host doesn't listen any more: the port closed (its reader can go before the EOF on our input shows: the
+    /// BEAM closes the two ends in no set order) or the BEAM is gone. Ends as on EOF, the flash saved.
     gone: bool,
     flash_path: String,
     ring: &'a RingHdr,
@@ -134,7 +135,7 @@ impl Engine<'_> {
     fn send(&mut self, m: &[u8]) {
         // SAFETY: the host's callback, given a valid slice for its length.
         if !self.gone && unsafe { (self.io.send)(self.io.ctx, m.as_ptr(), m.len() as u32) } != 0 {
-            self.gone = true; // (nobody listens: stop, as when the BEAM is gone)
+            self.gone = true;
         }
     }
 
@@ -337,6 +338,7 @@ fn run_mapped(cfg: &Config, io: &Io, m: Machine, ring_p: *mut u8, fb: *mut u8) -
             return EXIT_KILLED;
         }
         if e.gone {
+            e.save_flash();
             return EXIT_OK;
         }
         let w = e.ring.w.load(Ordering::Relaxed);
