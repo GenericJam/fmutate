@@ -159,13 +159,13 @@ defmodule FMutate.EmuEngineTest do
     assert fill > 3072 and fill <= 3840
   end
 
-  # over `ms` of wall time, from one STATUS to another (each timed as it arrives, with the ring's write index then):
-  # firmware ms per wall ms (%), the engine's CPU ms per firmware ms (what a firmware millisecond costs this host)
-  # and audio frames per firmware ms (the firmware's own clock against its DAC's)
+  # over `ms` of wall time, from one STATUS to another (each the newest waiting, timed as it arrives, with the ring's
+  # write index then): firmware ms per wall ms (%), the engine's CPU ms per firmware ms (what a firmware millisecond
+  # costs this host) and audio frames per firmware ms (the firmware's own clock against its DAC's)
   defp speed(pid, prefix, ms) do
-    s0 = next_status(pid)
+    s0 = newest(pid, next_status(pid))
     {t0, w0} = {System.monotonic_time(:millisecond), ring_w(prefix)}
-    s1 = status_after(pid, ms)
+    s1 = newest(pid, status_after(pid, ms))
     {t1, w1} = {System.monotonic_time(:millisecond), ring_w(prefix)}
     fw_ms = max(s1.ms - s0.ms, 1)
 
@@ -175,6 +175,15 @@ defmodule FMutate.EmuEngineTest do
       frames: Float.round((w1 - w0) / fw_ms, 1),
       mhz: s1.cpu_mhz
     }
+  end
+
+  # `s`, or a newer STATUS already waiting
+  defp newest(pid, s) do
+    receive do
+      {:engine, ^pid, {:status, newer}} -> newest(pid, newer)
+    after
+      0 -> s
+    end
   end
 
   defp ring_w(prefix) do
@@ -205,8 +214,9 @@ defmodule FMutate.EmuEngineTest do
     assert at_80.pct > at_240.pct and at_80.pct <= 105,
            "faster, never faster than real time (#{inspect(at_240)} → #{inspect(at_80)})"
 
-    # (the DAC's 44117.6 Hz: 44.1 frames per firmware ms)
-    assert at_80.frames >= 43.7 and at_80.frames <= 44.5,
+    # (the DAC's 44117.6 Hz: 44.1 frames per firmware ms; ±5 %: the ring is written in blocks and read as a STATUS
+    # arrives, a clock off by the change of cycles is 3x off)
+    assert at_80.frames >= 42.0 and at_80.frames <= 46.3,
            "the firmware's clock keeps time with its audio at 80 MHz (#{inspect(at_80)})"
 
     {_, loud} = ring_peak(ctx.prefix, 2048)
