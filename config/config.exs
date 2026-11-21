@@ -16,8 +16,10 @@ config :fmutate_app, :cartridges,
   index_url: "https://genericjam.github.io/fmutate-cartridges/index.json",
   public_key: "PlTQbGPmAqukMY78jvsMLR6BBxPQAa2E3T77ofuv8h8="
 
-# tests serve their own index and READMEs (FMutate.Library.Description); none comes from the network
+# tests serve their own index and READMEs (FMutate.Library.Description); none comes from the network. The audio
+# output's tests (FMutate.Audio with a mixer double) run on mob_audio_io's fake streams.
 if config_env() == :test do
   config :fmutate_app, :cartridges, index_url: nil
   config :fmutate_app, :readme_base, "http://127.0.0.1:9/"
+  config :mob_audio_io, backend: MobAudioIo.Fake
 end

@@ -1,597 +1,52 @@
 /*
- * c_src/fm1audio.c — the audio output: a stream in the app process that mixes the firmware engines' rings
- * (shared memory files written by the engines, see docs/engine_protocol.md). AAudio on Android, a RemoteIO audio
- * unit on iOS.
+ * c_src/fm1audio.c — the mixer NIF (FMutate.AudioNif): FMutate's mixer (c_src/fm1mix.c) as the mob_audio_io
+ * processor "fm1_mixer", and its slots. The output stream itself (AAudio on Android, a RemoteIO unit and the
+ * audio session on iOS) is mob_audio_io's: FMutate.Audio opens it with MobAudioIo.open/3.
  *
- * Statically linked into the app binary as the NIF `fm1audio` (mob.exs :static_nifs); Elixir side:
+ * Statically linked into the app binary as the NIF `fm1audio` (mob.exs :static_nifs, beside the plugin's
+ * mob_audio_io_nif, whose C ABI fm1mix.c calls); its load registers the processor. Elixir side:
  * FMutate.AudioNif / FMutate.Audio.
- *
- * - Up to NSLOT rings, each with a gain ramp (crossfades when switching firmware).
- * - The mixer's clock counts frames at the firmwares' rate (44.1 kHz). After every callback it writes into
- *   each ring the mixer frame at which the ring's next frame will play (`mix_minus_r`), so an engine can turn
- *   "MIDI at mixer frame M" into its own sample index.
- * - The device may run at another rate (48 kHz is common): the mix is made at 44.1 kHz and resampled
- *   linearly to the stream's rate.
- * - It never waits for an engine: a ring without enough frames plays silence for the rest and counts an
- *   underrun.
- * - Android: AAudio is loaded with dlopen (libaaudio.so, API 26+), so the app binary needs no extra link flag.
- *   When the stream disconnects (headphones in or out, a USB device), it is reopened from a helper thread.
- * - iOS: the audio session (AVAudioSession, an Objective-C API) is set up by ios/FMutateAudioSession.swift's C
- *   functions: playback, mixing with other apps, a 5 ms IO buffer. It reports interruptions, route changes
- *   that change the rate, and media-services resets; the unit is reopened from a helper thread after them.
  */
 #include <erl_nif.h>
 
-#include <fcntl.h>
-#include <math.h>
-#include <pthread.h>
-#include <stdatomic.h>
-#include <stdint.h>
-#include <string.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <time.h>
-#include <unistd.h>
-
-/* The backend: RemoteIO on Apple, AAudio elsewhere. FM1AUDIO_AAUDIO builds the AAudio side on a Mac (the tests:
- * test/fmutate/audio_nif_test.exs). */
-#if defined(__APPLE__) && !defined(FM1AUDIO_AAUDIO)
-#define FM1AUDIO_REMOTEIO 1
-#include <AudioToolbox/AudioToolbox.h>
-#else
-#include <aaudio/AAudio.h>
-#include <dlfcn.h>
-#endif
-
-#define NSLOT 4
-#define SRC_RATE 44100.0
-#define MAX_SRC 4096                          /* source frames per callback, at most */
-#define RING_MAGIC 0x464D3152u
-#define SOFT_KNEE 0.75f
-
-typedef struct {
-    uint32_t magic, capacity, rate, pad0;
-    volatile uint64_t w, r;
-    volatile int64_t mix_minus_r;
-    volatile uint32_t mix_valid;
-    uint8_t pad1[20];
-} ring_hdr;
-
-struct slot {
-    ring_hdr *_Atomic ring;                   /* read by the audio callback */
-    size_t map_len;
-    float gain, target, step;                 /* step per source frame while ramping */
-    _Atomic uint32_t underruns;
-};
-
-static struct slot slots[NSLOT];
-static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   /* open/close/attach/detach, never the callback */
-static _Atomic int want_running;
-static _Atomic uint64_t frame;                /* mixer clock: source (44.1 kHz) frames mixed so far */
-static _Atomic uint64_t callbacks;
-static _Atomic uint32_t peak;
-static int32_t dev_rate = 44100;
-static double rs_pos;                         /* resampler: position in the current source block */
-static float rs_prev[2];                      /* the last source frame of the previous block */
-
-/* ---- mixing (audio thread) */
-
-static void mix_source(float *acc, uint32_t n)     /* n source frames into acc (stereo, -1..1) */
-{
-    uint64_t f0 = atomic_load(&frame);
-    memset(acc, 0, n * 2 * sizeof(float));
-    for (int s = 0; s < NSLOT; s++) {
-        struct slot *sl = &slots[s];
-        ring_hdr *rg = atomic_load(&sl->ring);
-        uint64_t w, r;
-        uint32_t avail, take, i;
-        const int16_t *d;
-        if (!rg) continue;
-        w = __atomic_load_n(&rg->w, __ATOMIC_ACQUIRE);
-        r = rg->r;
-        avail = (uint32_t)(w - r);
-        if (avail > rg->capacity) {           /* the engine restarted its ring under us: catch up */
-            r = w;
-            avail = 0;
-        }
-        take = avail < n ? avail : n;
-        if (take < n && (sl->gain > 0 || sl->target > 0)) atomic_fetch_add(&sl->underruns, 1);
-        d = (const int16_t *)(rg + 1);
-        for (i = 0; i < n; i++) {
-            if (sl->step != 0) {
-                sl->gain += sl->step;
-                if ((sl->step > 0 && sl->gain >= sl->target) || (sl->step < 0 && sl->gain <= sl->target)) {
-                    sl->gain = sl->target;
-                    sl->step = 0;
-                }
-            }
-            if (i < take && sl->gain > 0) {
-                uint32_t pos = (uint32_t)((r + i) % rg->capacity);
-                acc[2 * i] += d[2 * pos] * (sl->gain / 32768.0f);
-                acc[2 * i + 1] += d[2 * pos + 1] * (sl->gain / 32768.0f);
-            }
-        }
-        /* the ring's next frame (r + take) plays at mixer frame (f0 + n) */
-        rg->mix_minus_r = (int64_t)(f0 + n) - (int64_t)(r + take);
-        __atomic_store_n(&rg->mix_valid, 1u, __ATOMIC_RELEASE);
-        __atomic_store_n(&rg->r, r + take, __ATOMIC_RELEASE);
-    }
-    atomic_store(&frame, f0 + n);
-}
-
-static int16_t out_sample(float x, uint32_t *pk)
-{
-    float ax = fabsf(x);
-    uint32_t a;
-    if (ax > SOFT_KNEE) x = copysignf(SOFT_KNEE + (1 - SOFT_KNEE) * tanhf((ax - SOFT_KNEE) / (1 - SOFT_KNEE)), x);
-    a = (uint32_t)(fabsf(x) * 32767.0f);
-    if (a > *pk) *pk = a;
-    return (int16_t)(x * 32767.0f);
-}
-
-/* n device frames of interleaved stereo int16, at dev_rate */
-static void render_out(int16_t *out, int32_t n)
-{
-    static float src[(MAX_SRC + 2) * 2];
-    uint32_t pk = atomic_load(&peak);
-    if (dev_rate == 44100) {
-        for (int32_t done = 0; done < n;) {
-            uint32_t k = (uint32_t)(n - done) > MAX_SRC ? MAX_SRC : (uint32_t)(n - done);
-            mix_source(src, k);
-            for (uint32_t i = 0; i < 2 * k; i++) out[2 * done + i] = out_sample(src[i], &pk);
-            done += (int32_t)k;
-        }
-    } else {
-        /* linear resampling. src[0] is the previous block's last source frame, src[k] the k-th new one;
-           device frame i sits at source position rs_pos + i * step (rs_pos in [0, 1) from src[0]). Taking
-           floor(rs_pos + n * step) new frames keeps every interpolation inside the block and leaves the
-           next block's rs_pos in [0, 1). */
-        double step = SRC_RATE / dev_rate;
-        uint32_t need = (uint32_t)floor(rs_pos + n * step);
-        if (need > MAX_SRC) need = MAX_SRC;
-        if (need < 1) need = 1;
-        mix_source(src + 2, need);
-        src[0] = rs_prev[0];
-        src[1] = rs_prev[1];
-        for (int32_t i = 0; i < n; i++) {
-            double p = rs_pos + i * step;
-            uint32_t j = (uint32_t)p;
-            float fr = (float)(p - j);
-            if (j + 1 > need) { j = need - 1; fr = 1; }   /* (only when MAX_SRC capped the block) */
-            for (int c = 0; c < 2; c++)
-                out[2 * i + c] = out_sample(src[2 * j + c] + fr * (src[2 * (j + 1) + c] - src[2 * j + c]), &pk);
-        }
-        rs_pos = rs_pos + n * step - need;
-        rs_prev[0] = src[2 * need];
-        rs_prev[1] = src[2 * need + 1];
-    }
-    atomic_store(&peak, pk);
-    atomic_fetch_add(&callbacks, 1);
-}
-
-/* ---- the platform's output stream: open (lock held), close (lock held), and what stats reports */
-struct out_info { int running, exclusive, burst, buffer, device_id, xruns; double latency_ms; /* < 0: unknown */ };
-static int open_stream_locked(void);
-static void close_stream_locked(void);
-static int stream_open(void);
-static void stream_info_locked(struct out_info *o);
-static const char *result_text(int res);
-static int load_backend(void);
-
-/* Close the stream and, for a reopen, open it again if wanted, 100 ms later, on one helper thread that runs for
- * the app's life (started at the first request, tried again at the next if it couldn't start). Requests don't
- * queue: the latest one replaces any not yet done, so an interruption's close never lands after its end's reopen.
- * nif_start does a request still waiting (close, then open) before it opens. */
-enum { REQ_NONE, REQ_CLOSE, REQ_REOPEN };
-static _Atomic int pending_req;               /* set under helper_lock; taken (exchanged) under lock */
-static pthread_mutex_t helper_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t helper_cond = PTHREAD_COND_INITIALIZER;
-static int helper_up;                         /* (helper_lock) */
-
-static void *helper_main(void *arg)
-{
-    (void)arg;
-    for (;;) {
-        int req;
-        pthread_mutex_lock(&helper_lock);
-        while (atomic_load(&pending_req) == REQ_NONE) pthread_cond_wait(&helper_cond, &helper_lock);
-        pthread_mutex_unlock(&helper_lock);
-        usleep(100000);                       /* (a burst of events settles: the latest acts) */
-        pthread_mutex_lock(&lock);
-        req = atomic_exchange(&pending_req, REQ_NONE);
-        if (req != REQ_NONE) close_stream_locked();
-        if (req == REQ_REOPEN && atomic_load(&want_running)) open_stream_locked();
-        pthread_mutex_unlock(&lock);
-    }
-    return NULL;
-}
-
-static void request(int req)
-{
-    pthread_mutex_lock(&helper_lock);
-    atomic_store(&pending_req, req);
-    if (!helper_up) {
-        pthread_t t;
-        helper_up = pthread_create(&t, NULL, helper_main, NULL) == 0;
-        if (helper_up) pthread_detach(t);
-    }
-    pthread_cond_signal(&helper_cond);
-    pthread_mutex_unlock(&helper_lock);
-}
-
-static void reopen_later(void) { request(REQ_REOPEN); }
-
-#ifdef FM1AUDIO_REMOTEIO
-/* ---- iOS: RemoteIO, the session in ios/FMutateAudioSession.swift */
-
-/* event kinds the session reports: 1 an interruption began, 2 it ended, 3 the route changed the rate, 4 the media
- * services were reset */
-typedef void (*fm1_session_event_fn)(int32_t kind);
-extern int32_t fm1_session_activate(double *rate, double *io_buffer_s, fm1_session_event_fn on_event);
-extern void fm1_session_deactivate(void);
-extern double fm1_session_latency(void);      /* output latency + IO buffer, seconds */
-
-static AudioUnit unit;
-static _Atomic int burst_frames;
-static _Atomic int xrun_count;
-static double last_sample_time = -1, last_frames;
-
-static void on_session_event(int32_t kind)
-{
-    /* An interruption stops the unit: close it, so that a later start (FMutate.Background when the app comes back,
-     * since iOS doesn't always report an interruption's end) opens it again. Its end, a new rate, a reset reopen
-     * it. want_running stays as it is. */
-    request(kind == 1 ? REQ_CLOSE : REQ_REOPEN);
-}
-
-static OSStatus on_render(void *ref, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus,
-                          UInt32 n, AudioBufferList *io)
-{
-    (void)ref; (void)flags; (void)bus;
-    if (ts && (ts->mFlags & kAudioTimeStampSampleTimeValid)) {   /* a gap in the device's time: frames lost */
-        if (last_sample_time >= 0 && fabs(ts->mSampleTime - (last_sample_time + last_frames)) > 0.5)
-            atomic_fetch_add(&xrun_count, 1);
-        last_sample_time = ts->mSampleTime;
-        last_frames = n;
-    }
-    atomic_store(&burst_frames, (int)n);
-    render_out((int16_t *)io->mBuffers[0].mData, (int32_t)n);
-    return noErr;
-}
-
-static int load_backend(void) { return 0; }
-
-static int stream_open(void) { return unit != NULL; }
-
-/* (any failure once the session is active undoes all of it: nothing plays, so other apps' audio gets it back) */
-static int open_stream_locked(void)
-{
-    AudioComponentDescription d = {kAudioUnitType_Output, kAudioUnitSubType_RemoteIO, kAudioUnitManufacturer_Apple, 0, 0};
-    AudioComponent comp;
-    AudioStreamBasicDescription f;
-    AURenderCallbackStruct cb = {on_render, NULL};
-    UInt32 max_frames = 4096;                 /* (iOS renders 4096 frames at a time with the screen locked) */
-    double rate = 48000, io_s = 0;
-    OSStatus res;
-    int initialized = 0;
-    if (fm1_session_activate(&rate, &io_s, on_session_event)) return -1;
-    if (!(comp = AudioComponentFindNext(NULL, &d))) { res = -2; goto fail; }
-    if ((res = AudioComponentInstanceNew(comp, &unit))) { unit = NULL; goto fail; }
-    memset(&f, 0, sizeof f);
-    f.mSampleRate = rate;                     /* the hardware's own rate: no resampling in the unit */
-    f.mFormatID = kAudioFormatLinearPCM;
-    f.mFormatFlags = kAudioFormatFlagIsSignedInteger | kAudioFormatFlagIsPacked;
-    f.mChannelsPerFrame = 2;
-    f.mBitsPerChannel = 16;
-    f.mBytesPerFrame = 4;
-    f.mFramesPerPacket = 1;
-    f.mBytesPerPacket = 4;
-    if ((res = AudioUnitSetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &f, sizeof f)) ||
-        (res = AudioUnitSetProperty(unit, kAudioUnitProperty_MaximumFramesPerSlice, kAudioUnitScope_Global, 0,
-                                    &max_frames, sizeof max_frames)) ||
-        (res = AudioUnitSetProperty(unit, kAudioUnitProperty_SetRenderCallback, kAudioUnitScope_Input, 0, &cb,
-                                    sizeof cb)) ||
-        (res = AudioUnitInitialize(unit)))
-        goto fail;
-    initialized = 1;
-    dev_rate = (int32_t)lround(rate);
-    rs_pos = 0;
-    rs_prev[0] = rs_prev[1] = 0;
-    last_sample_time = -1;
-    atomic_store(&burst_frames, (int)lround(io_s * rate));
-    if ((res = AudioOutputUnitStart(unit))) goto fail;
-    return 0;
-
-fail:
-    if (unit) {
-        if (initialized) AudioUnitUninitialize(unit);
-        AudioComponentInstanceDispose(unit);
-        unit = NULL;
-    }
-    fm1_session_deactivate();
-    return (int)res;
-}
-
-static void close_stream_locked(void)
-{
-    if (!unit) return;
-    AudioOutputUnitStop(unit);
-    AudioUnitUninitialize(unit);
-    AudioComponentInstanceDispose(unit);
-    unit = NULL;
-}
-
-static void stream_info_locked(struct out_info *o)
-{
-    memset(o, 0, sizeof *o);
-    o->latency_ms = -1;
-    if (!unit) return;
-    o->running = 1;
-    o->burst = o->buffer = atomic_load(&burst_frames);
-    o->xruns = atomic_load(&xrun_count);
-    o->latency_ms = fm1_session_latency() * 1000.0;
-}
-
-static const char *result_text(int res)
-{
-    return res == -1 ? "audio session not activated" : res == -2 ? "no RemoteIO unit" : "audio unit failed";
-}
-
-#else
-/* ---- Android: AAudio, loaded at runtime */
-static struct aaudio_api {
-    void *h;                                  /* (set only with every function below: the API is all there) */
-    aaudio_result_t (*createStreamBuilder)(AAudioStreamBuilder **);
-    void (*setFormat)(AAudioStreamBuilder *, aaudio_format_t);
-    void (*setChannelCount)(AAudioStreamBuilder *, int32_t);
-    void (*setSampleRate)(AAudioStreamBuilder *, int32_t);
-    void (*setPerformanceMode)(AAudioStreamBuilder *, aaudio_performance_mode_t);
-    void (*setSharingMode)(AAudioStreamBuilder *, aaudio_sharing_mode_t);
-    void (*setUsage)(AAudioStreamBuilder *, aaudio_usage_t);
-    void (*setContentType)(AAudioStreamBuilder *, aaudio_content_type_t);
-    void (*setDataCallback)(AAudioStreamBuilder *, AAudioStream_dataCallback, void *);
-    void (*setErrorCallback)(AAudioStreamBuilder *, AAudioStream_errorCallback, void *);
-    aaudio_result_t (*openStream)(AAudioStreamBuilder *, AAudioStream **);
-    aaudio_result_t (*builderDelete)(AAudioStreamBuilder *);
-    aaudio_result_t (*requestStart)(AAudioStream *);
-    aaudio_result_t (*close)(AAudioStream *);
-    int32_t (*getSampleRate)(AAudioStream *);
-    int32_t (*getFramesPerBurst)(AAudioStream *);
-    aaudio_result_t (*setBufferSizeInFrames)(AAudioStream *, int32_t);
-    int32_t (*getBufferSizeInFrames)(AAudioStream *);
-    aaudio_sharing_mode_t (*getSharingMode)(AAudioStream *);
-    aaudio_performance_mode_t (*getPerformanceMode)(AAudioStream *);
-    int32_t (*getXRunCount)(AAudioStream *);
-    int64_t (*getFramesWritten)(AAudioStream *);
-    aaudio_result_t (*getTimestamp)(AAudioStream *, clockid_t, int64_t *, int64_t *);
-    int32_t (*getDeviceId)(AAudioStream *);
-    const char *(*convertResultToText)(aaudio_result_t);
-} A;
-
-static AAudioStream *stream;
-
-/* (lock held) */
-static int load_backend(void)
-{
-    struct aaudio_api a;
-    if (A.h) return 0;
-    if (!(a.h = dlopen("libaaudio.so", RTLD_NOW))) return -1;
-#define S(f, n) if (!(*(void **)&a.f = dlsym(a.h, n))) goto fail
-    S(createStreamBuilder, "AAudio_createStreamBuilder");
-    S(setFormat, "AAudioStreamBuilder_setFormat");
-    S(setChannelCount, "AAudioStreamBuilder_setChannelCount");
-    S(setSampleRate, "AAudioStreamBuilder_setSampleRate");
-    S(setPerformanceMode, "AAudioStreamBuilder_setPerformanceMode");
-    S(setSharingMode, "AAudioStreamBuilder_setSharingMode");
-    S(setUsage, "AAudioStreamBuilder_setUsage");
-    S(setContentType, "AAudioStreamBuilder_setContentType");
-    S(setDataCallback, "AAudioStreamBuilder_setDataCallback");
-    S(setErrorCallback, "AAudioStreamBuilder_setErrorCallback");
-    S(openStream, "AAudioStreamBuilder_openStream");
-    S(builderDelete, "AAudioStreamBuilder_delete");
-    S(requestStart, "AAudioStream_requestStart");
-    S(close, "AAudioStream_close");
-    S(getSampleRate, "AAudioStream_getSampleRate");
-    S(getFramesPerBurst, "AAudioStream_getFramesPerBurst");
-    S(setBufferSizeInFrames, "AAudioStream_setBufferSizeInFrames");
-    S(getBufferSizeInFrames, "AAudioStream_getBufferSizeInFrames");
-    S(getSharingMode, "AAudioStream_getSharingMode");
-    S(getPerformanceMode, "AAudioStream_getPerformanceMode");
-    S(getXRunCount, "AAudioStream_getXRunCount");
-    S(getFramesWritten, "AAudioStream_getFramesWritten");
-    S(getTimestamp, "AAudioStream_getTimestamp");
-    S(getDeviceId, "AAudioStream_getDeviceId");
-    S(convertResultToText, "AAudio_convertResultToText");
-#undef S
-    A = a;
-    return 0;
-fail:                                         /* (a library without one of them: as if there were none) */
-    dlclose(a.h);
-    return -1;
-}
-
-static aaudio_data_callback_result_t on_data(AAudioStream *st, void *user, void *audio, int32_t n)
-{
-    (void)st; (void)user;
-    render_out(audio, n);
-    return AAUDIO_CALLBACK_RESULT_CONTINUE;
-}
-
-static void on_error(AAudioStream *st, void *user, aaudio_result_t err)
-{
-    (void)st; (void)user;
-    if (err == AAUDIO_ERROR_DISCONNECTED) reopen_later();
-}
-
-static int stream_open(void) { return stream != NULL; }
-
-static int open_stream_locked(void)
-{
-    AAudioStreamBuilder *b;
-    aaudio_result_t res;
-    if (A.createStreamBuilder(&b) != AAUDIO_OK) return -1;
-    A.setFormat(b, AAUDIO_FORMAT_PCM_I16);
-    A.setChannelCount(b, 2);
-    /* the device's own rate (usually 48 kHz) and an exclusive stream give the lowest latency; asking for
-       44.1 kHz pushes AAudio into a slower resampling path. render_out resamples instead. */
-    A.setSampleRate(b, AAUDIO_UNSPECIFIED);
-    A.setPerformanceMode(b, AAUDIO_PERFORMANCE_MODE_LOW_LATENCY);
-    A.setSharingMode(b, AAUDIO_SHARING_MODE_EXCLUSIVE);
-    A.setUsage(b, AAUDIO_USAGE_MEDIA);
-    A.setContentType(b, AAUDIO_CONTENT_TYPE_MUSIC);
-    A.setDataCallback(b, on_data, NULL);
-    A.setErrorCallback(b, on_error, NULL);
-    res = A.openStream(b, &stream);
-    if (res != AAUDIO_OK) {                  /* no exclusive stream: shared */
-        A.setSharingMode(b, AAUDIO_SHARING_MODE_SHARED);
-        res = A.openStream(b, &stream);
-    }
-    A.builderDelete(b);
-    if (res != AAUDIO_OK) { stream = NULL; return res; }
-    dev_rate = A.getSampleRate(stream);
-    rs_pos = 0;
-    rs_prev[0] = rs_prev[1] = 0;
-    A.setBufferSizeInFrames(stream, A.getFramesPerBurst(stream) * 2);   /* double buffering */
-    res = A.requestStart(stream);
-    if (res != AAUDIO_OK) { A.close(stream); stream = NULL; }
-    return res;
-}
-
-static void close_stream_locked(void)
-{
-    if (stream) { A.close(stream); stream = NULL; }
-}
-
-static void stream_info_locked(struct out_info *o)
-{
-    int64_t pos, ns;
-    memset(o, 0, sizeof *o);
-    o->latency_ms = -1;
-    if (!stream) return;
-    o->running = 1;
-    o->xruns = A.getXRunCount(stream);
-    o->exclusive = A.getSharingMode(stream) == AAUDIO_SHARING_MODE_EXCLUSIVE;
-    o->burst = A.getFramesPerBurst(stream);
-    o->buffer = A.getBufferSizeInFrames(stream);
-    o->device_id = A.getDeviceId(stream);
-    if (A.getTimestamp(stream, CLOCK_MONOTONIC, &pos, &ns) == AAUDIO_OK) {
-        /* frames written but not yet presented, plus the time since that frame was presented */
-        struct timespec now;
-        int64_t written = A.getFramesWritten(stream);
-        clock_gettime(CLOCK_MONOTONIC, &now);
-        double since = ((now.tv_sec * 1000000000LL + now.tv_nsec) - ns) / 1e9;
-        o->latency_ms = ((written - pos) / (double)dev_rate - since) * 1000.0;
-    }
-}
-
-static const char *result_text(int res)
-{
-    return (A.convertResultToText && res < 0) ? A.convertResultToText(res) : NULL;
-}
-#endif
-
-/* ---- NIFs */
+#include "fm1mix.c"
 
 static ERL_NIF_TERM atom(ErlNifEnv *env, const char *a) { return enif_make_atom(env, a); }
 
-static ERL_NIF_TERM error_text(ErlNifEnv *env, const char *what, int res)
+static ERL_NIF_TERM error_text(ErlNifEnv *env, const char *t)
 {
-    const char *t = res ? result_text(res) : NULL;
-    if (!t) t = what;
     return enif_make_tuple2(env, atom(env, "error"), enif_make_string(env, t, ERL_NIF_LATIN1));
 }
 
-/* start() -> :ok | {:error, reason} */
-static ERL_NIF_TERM nif_start(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+static int get_slot(ErlNifEnv *env, ERL_NIF_TERM t, int *s)
 {
-    int res = 0;
-    (void)argc; (void)argv;
-    pthread_mutex_lock(&lock);
-    if (load_backend()) {
-        pthread_mutex_unlock(&lock);
-        return error_text(env, "libaaudio.so not available", 0);
-    }
-    atomic_store(&want_running, 1);
-    if (atomic_exchange(&pending_req, REQ_NONE) != REQ_NONE)   /* (a request still waiting: its close now, then open) */
-        close_stream_locked();
-    if (!stream_open()) res = open_stream_locked();
-    pthread_mutex_unlock(&lock);
-    return res == 0 ? atom(env, "ok") : error_text(env, "open failed", res);
-}
-
-static ERL_NIF_TERM nif_stop(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
-{
-    (void)argc; (void)argv;
-    pthread_mutex_lock(&lock);
-    atomic_store(&want_running, 0);
-    close_stream_locked();
-#ifdef FM1AUDIO_REMOTEIO
-    fm1_session_deactivate();                 /* (nothing plays: other apps' audio gets the session back) */
-#endif
-    pthread_mutex_unlock(&lock);
-    return atom(env, "ok");
-}
-
-/* Wait until the audio callback has run once more, so it no longer holds a ring we are unmapping. */
-static void wait_callback(void)
-{
-    uint64_t c = atomic_load(&callbacks);
-    for (int i = 0; i < 100 && stream_open() && atomic_load(&callbacks) == c; i++) usleep(1000);
-}
-
-static void detach_locked(int s)
-{
-    ring_hdr *rg = atomic_exchange(&slots[s].ring, NULL);
-    if (!rg) return;
-    wait_callback();
-    munmap(rg, slots[s].map_len);
-    slots[s].map_len = 0;
+    return enif_get_int(env, t, s) && *s >= 0 && *s < NSLOT;
 }
 
 /* attach(slot, path) -> :ok | {:error, reason}; the slot starts silent (gain 0) */
 static ERL_NIF_TERM nif_attach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    int s, fd;
+    int s;
     char path[1024];
-    struct stat st;
-    void *p;
+    const char *err;
     (void)argc;
-    if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT) return enif_make_badarg(env);
+    if (!get_slot(env, argv[0], &s)) return enif_make_badarg(env);
     if (enif_get_string(env, argv[1], path, sizeof path, ERL_NIF_LATIN1) <= 0) {
         ErlNifBinary bin;
         if (!enif_inspect_binary(env, argv[1], &bin) || bin.size >= sizeof path) return enif_make_badarg(env);
         memcpy(path, bin.data, bin.size);
         path[bin.size] = 0;
     }
-    fd = open(path, O_RDWR);
-    if (fd < 0 || fstat(fd, &st) || (size_t)st.st_size < sizeof(ring_hdr)) {
-        if (fd >= 0) close(fd);
-        return error_text(env, "cannot open ring", 0);
-    }
-    p = mmap(NULL, (size_t)st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    close(fd);
-    if (p == MAP_FAILED) return error_text(env, "mmap failed", 0);
-    if (((ring_hdr *)p)->magic != RING_MAGIC) { munmap(p, (size_t)st.st_size); return error_text(env, "not a ring", 0); }
-    pthread_mutex_lock(&lock);
-    detach_locked(s);
-    slots[s].gain = slots[s].target = slots[s].step = 0;
-    atomic_store(&slots[s].underruns, 0);
-    slots[s].map_len = (size_t)st.st_size;
-    /* start at the engine's write position: what it queued before we listened is stale */
-    __atomic_store_n(&((ring_hdr *)p)->r, ((ring_hdr *)p)->w, __ATOMIC_RELEASE);
-    atomic_store(&slots[s].ring, (ring_hdr *)p);
-    pthread_mutex_unlock(&lock);
-    return atom(env, "ok");
+    err = fm1mix_attach(s, path);
+    return err ? error_text(env, err) : atom(env, "ok");
 }
 
 static ERL_NIF_TERM nif_detach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int s;
     (void)argc;
-    if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT) return enif_make_badarg(env);
-    pthread_mutex_lock(&lock);
-    detach_locked(s);
-    pthread_mutex_unlock(&lock);
+    if (!get_slot(env, argv[0], &s)) return enif_make_badarg(env);
+    fm1mix_detach(s);
     return atom(env, "ok");
 }
 
@@ -599,58 +54,48 @@ static ERL_NIF_TERM nif_detach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
 static ERL_NIF_TERM nif_gain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int s, g, ramp;
-    struct slot *sl;
     (void)argc;
-    if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT || !enif_get_int(env, argv[1], &g) ||
-        !enif_get_int(env, argv[2], &ramp))
+    if (!get_slot(env, argv[0], &s) || !enif_get_int(env, argv[1], &g) || !enif_get_int(env, argv[2], &ramp))
         return enif_make_badarg(env);
-    sl = &slots[s];
-    /* (benign race with the callback: a ramp starting a period late is inaudible) */
-    sl->target = g / 1000.0f;
-    sl->step = ramp > 0 ? (sl->target - sl->gain) / (float)(ramp * SRC_RATE / 1000) : 0;
-    if (ramp <= 0) sl->gain = sl->target;
+    fm1mix_gain(s, g, ramp);
     return atom(env, "ok");
 }
 
-/* stats() -> %{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst, buffer, device_id}
- * (device_id: the AudioDeviceInfo id the stream plays to, 0 when unknown or on iOS; xruns on iOS: gaps in the
- * device's sample time; latency_ms on iOS: the session's output latency and IO buffer) */
+/* stats() -> %{frame, rate, peak, running, callbacks, fills, underruns}
+ * (rate: the stream's at its last start, 44100 before any; running: between the stream's start and stop) */
 static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    ERL_NIF_TERM keys[12], vals[12], fills[NSLOT], unders[NSLOT], map;
-    struct out_info o;
+    ERL_NIF_TERM keys[7], vals[7], fills[NSLOT], unders[NSLOT], map;
+    struct fm1mix_stats o;
     (void)argc; (void)argv;
-    pthread_mutex_lock(&lock);
-    stream_info_locked(&o);
-    pthread_mutex_unlock(&lock);
+    fm1mix_stats(&o);
     for (int s = 0; s < NSLOT; s++) {
-        ring_hdr *rg = atomic_load(&slots[s].ring);
-        fills[s] = enif_make_uint(env, rg ? (unsigned)(rg->w - rg->r) : 0);
-        unders[s] = enif_make_uint(env, atomic_load(&slots[s].underruns));
+        fills[s] = enif_make_uint(env, o.fills[s]);
+        unders[s] = enif_make_uint(env, o.underruns[s]);
     }
-    keys[0] = atom(env, "frame");      vals[0] = enif_make_uint64(env, atomic_load(&frame));
-    keys[1] = atom(env, "rate");       vals[1] = enif_make_int(env, dev_rate);
-    keys[2] = atom(env, "peak");       vals[2] = enif_make_uint(env, atomic_exchange(&peak, 0));
-    keys[3] = atom(env, "latency_ms"); vals[3] = o.latency_ms >= 0 ? enif_make_double(env, o.latency_ms) : atom(env, "nil");
-    keys[4] = atom(env, "xruns");      vals[4] = enif_make_int(env, o.xruns);
-    keys[5] = atom(env, "running");    vals[5] = atom(env, o.running ? "true" : "false");
-    keys[6] = atom(env, "sharing");    vals[6] = atom(env, o.exclusive ? "exclusive" : "shared");
-    keys[7] = atom(env, "fills");      vals[7] = enif_make_list_from_array(env, fills, NSLOT);
-    keys[8] = atom(env, "underruns");  vals[8] = enif_make_list_from_array(env, unders, NSLOT);
-    keys[9] = atom(env, "burst");      vals[9] = enif_make_int(env, o.burst);
-    keys[10] = atom(env, "buffer");    vals[10] = enif_make_int(env, o.buffer);
-    keys[11] = atom(env, "device_id"); vals[11] = enif_make_int(env, o.device_id);
-    enif_make_map_from_arrays(env, keys, vals, 12, &map);
+    keys[0] = atom(env, "frame");     vals[0] = enif_make_uint64(env, o.frame);
+    keys[1] = atom(env, "rate");      vals[1] = enif_make_int(env, o.rate);
+    keys[2] = atom(env, "peak");      vals[2] = enif_make_uint(env, o.peak);
+    keys[3] = atom(env, "running");   vals[3] = atom(env, o.running ? "true" : "false");
+    keys[4] = atom(env, "callbacks"); vals[4] = enif_make_uint64(env, o.callbacks);
+    keys[5] = atom(env, "fills");     vals[5] = enif_make_list_from_array(env, fills, NSLOT);
+    keys[6] = atom(env, "underruns"); vals[6] = enif_make_list_from_array(env, unders, NSLOT);
+    enif_make_map_from_arrays(env, keys, vals, 7, &map);
     return map;
 }
 
+/* the processor is registered once, at load: a failed registration fails the load (FMutate.AudioNif.loaded?/0) */
+static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
+{
+    (void)env; (void)priv; (void)info;
+    return fm1mix_register() == MAI_OK ? 0 : 1;
+}
+
 static ErlNifFunc nif_funcs[] = {
-    {"start", 0, nif_start, ERL_NIF_DIRTY_JOB_IO_BOUND},
-    {"stop", 0, nif_stop, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"attach", 2, nif_attach, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"detach", 1, nif_detach, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"gain", 3, nif_gain, 0},
     {"stats", 0, nif_stats, ERL_NIF_DIRTY_JOB_IO_BOUND},
 };
 
-ERL_NIF_INIT(Elixir.FMutate.AudioNif, nif_funcs, NULL, NULL, NULL, NULL)
+ERL_NIF_INIT(Elixir.FMutate.AudioNif, nif_funcs, load, NULL, NULL, NULL)

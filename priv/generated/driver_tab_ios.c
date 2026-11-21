@@ -56,6 +56,7 @@ void *fm1host_nif_init(void);
 void *mob_midi_nif_nif_init(void);
 void *mob_background_nif_nif_init(void);
 void *mob_sensors_nif_nif_init(void);
+void *mob_audio_io_nif_nif_init(void);
 
 ErtsStaticNif erts_static_nif_tab[] = {
     {prim_tty_nif_init,     0, THE_NON_VALUE, NULL},
@@ -87,5 +88,6 @@ ErtsStaticNif erts_static_nif_tab[] = {
     {mob_midi_nif_nif_init, 0, THE_NON_VALUE, NULL},
     {mob_background_nif_nif_init,0, THE_NON_VALUE, NULL},
     {mob_sensors_nif_nif_init,0, THE_NON_VALUE, NULL},
+    {mob_audio_io_nif_nif_init,0, THE_NON_VALUE, NULL},
     {NULL,                  0, THE_NON_VALUE, NULL}
 };
