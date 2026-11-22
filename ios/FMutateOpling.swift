@@ -480,8 +480,9 @@ final class FMOplingView: UIView {
             g.setLineWidth(1.5)
             g.strokePath()
         case .breath:
-            // out of breath (Creature board "breath"): mouth open on the head op, a sweat drop beside it, two puffs
-            rr(headX + OP_W / 2 - 2.25, headTop + OP_H - 3 - 1.6, 4.5, 3, 1.5, OP_PUPIL)
+            // out of breath (Creature board "breath"): mouth open on the head op (the twins' to the right of the
+            // bigger eye), a sweat drop beside it, two puffs
+            rr(headX + OP_W * (form.split ? 0.8 : 0.5) - 2.25, headTop + OP_H - 3 - 1.6, 4.5, 3, 1.5, OP_PUPIL)
             rr(headX + OP_W + 1.5, headTop + 0.5, 3, 4.4, 1.5, OP_SWEAT)
             dot(headX - 4, headTop + 9, 2.4, OP_TICK_60)
             dot(headX - 7.5, headTop + 7, 1.8, OP_TICK_40)

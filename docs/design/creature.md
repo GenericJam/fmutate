@@ -23,6 +23,7 @@ maths, not the HTML). Mascot sheet: `boards/Mascots.dc.html`.
 
 "Twins" puts one eye on each of the two top ops instead of two on one, each twice the size
 (Ø 16, pupil Ø 7.6, same centre: it pokes 6 above the op), so the eyes read on a 48 pt button.
+Its mouth sits at 80 % of the head op's width instead of the centre, clear of the bigger eye.
 Pixel variant: same geometry, radius 0, square caps.
 
 ## Colours (flat)

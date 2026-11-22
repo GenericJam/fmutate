@@ -103,7 +103,7 @@ class Component extends DCLogic {
       return { ops: ops };
     });
     var mw = mood === 'sing' ? R(6) : R(4.5), mh = mood === 'sing' ? R(5) : R(3);
-    var mouth = { l: Math.round(w / 2 - mw / 2), t: Math.round(h - mh - R(1.6)), w: mw, h: mh, r: pixel ? 0 : Math.round(Math.min(mw, mh) / 2), c: pupilC };
+    var mouth = { l: Math.round((f.split ? w * 0.8 : w / 2) - mw / 2), t: Math.round(h - mh - R(1.6)), w: mw, h: mh, r: pixel ? 0 : Math.round(Math.min(mw, mh) / 2), c: pupilC };
     var ant = { l: Math.round(w * 0.56), t: -R(10.5), w: R(9), h: R(11), c: antC, cap: pixel ? 'square' : 'round', join: pixel ? 'miter' : 'round' };
     var ax = hx + ant.l + 5.5 * ant.w / 9, ay = hy + ant.t + 3.5 * ant.h / 11;
     var circ = function (cx, cy, d, bg, o) { return { l: Math.round(cx - d / 2), t: Math.round(cy - d / 2), w: d, h: d, r: pixel ? 0 : Math.round(d / 2), bg: bg, o: o }; };

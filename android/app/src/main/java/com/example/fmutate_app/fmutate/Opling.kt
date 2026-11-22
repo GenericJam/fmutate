@@ -416,8 +416,9 @@ private class OplingPainter {
                 drawPath(shell, SHELL_EDGE, style = Stroke(1.5f * density))
             }
             OplingMood.Breath -> {
-                // out of breath (Creature board "breath"): mouth open on the head op, a sweat drop beside it, two puffs
-                rr(headX + OP_W / 2 - 2.25f, headTop + OP_H - 3f - 1.6f, 4.5f, 3f, 1.5f, PUPIL)
+                // out of breath (Creature board "breath"): mouth open on the head op (the twins' to the right of the
+                // bigger eye), a sweat drop beside it, two puffs
+                rr(headX + OP_W * (if (form.split) 0.8f else 0.5f) - 2.25f, headTop + OP_H - 3f - 1.6f, 4.5f, 3f, 1.5f, PUPIL)
                 rr(headX + OP_W + 1.5f, headTop + 0.5f, 3f, 4.4f, 1.5f, SWEAT)
                 dot(headX - 4f, headTop + 9f, 2.4f, TICK.copy(alpha = 0.6f))
                 dot(headX - 7.5f, headTop + 7f, 1.8f, TICK.copy(alpha = 0.4f))
