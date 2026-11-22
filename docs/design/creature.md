@@ -21,7 +21,9 @@ maths, not the HTML). Mascot sheet: `boards/Mascots.dc.html`.
 | Antenna (feedback loop, on the head op) | one stroked curl, 1.7 wide, round caps | 9 × 11 box at x = 56 % of op, y = −10.5 |
 | Mouth (sing/breath/wave moods) | dark rounded rect | 6 × 5 (sing), 4.5 × 3 (others), centred, 1.6 above the op's bottom |
 
-"Twins" puts one eye on each of the two top ops instead of two on one.
+"Twins" puts one eye on each of the two top ops instead of two on one, each twice the size
+(Ø 16, pupil Ø 7.6, same centre: it pokes 6 above the op), so the eyes read on a 48 pt button.
+Its mouth sits at 80 % of the head op's width instead of the centre, clear of the bigger eye.
 Pixel variant: same geometry, radius 0, square caps.
 
 ## Colours (flat)

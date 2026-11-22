@@ -72,7 +72,8 @@ class Component extends DCLogic {
     var hc = f.head;
     var hx = hc * (w + colGap);
     var hy = padTop + (maxOps - f.cols[hc]) * (h + gap);
-    var ed = R(8), pd = R(3.8);
+    var ek = f.split ? 2 : 1;  // twins: one eye per op, twice the size
+    var ed = R(8 * ek), pd = R(3.8 * ek);
     var closed = mood === 'sleep' || mood === 'blink';
     var LOOK = { center: [0, 0], left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1], upright: [0.8, -0.8] };
     var lk = LOOK[P.look] || LOOK.center;
@@ -83,7 +84,7 @@ class Component extends DCLogic {
       var lx = lk[0], ly = lk[1];
       if (mood === 'dizzy') { lx = side === 'L' ? 1 : -1; ly = 0.4; }
       return {
-        x: Math.round(x), y: closed ? R(2) : -R(2), d: ed, eh: closed ? R(1.6) : ed,
+        x: Math.round(x), y: closed ? R(2) : R(2) - Math.round(ed / 2), d: ed, eh: closed ? R(1.6) : ed,
         r: pixel ? 0 : (closed ? R(1) : Math.round(ed / 2)), bg: closed ? pupilC : eyeBg,
         pd: pd, px: Math.round(room + lx * room * 0.85), py: Math.round(room + ly * room * 0.85),
         pr: pixel ? 0 : Math.round(pd / 2), pc: pupilC, pdisp: closed ? 'none' : 'block'
@@ -102,7 +103,9 @@ class Component extends DCLogic {
       return { ops: ops };
     });
     var mw = mood === 'sing' ? R(6) : R(4.5), mh = mood === 'sing' ? R(5) : R(3);
-    var mouth = { l: Math.round(w / 2 - mw / 2), t: Math.round(h - mh - R(1.6)), w: mw, h: mh, r: pixel ? 0 : Math.round(Math.min(mw, mh) / 2), c: pupilC };
+    // twins: right of the bigger eye (after rounding) and inside the head op
+    var ml = f.split ? Math.min(w - mw, Math.max(Math.round(w * 0.8 - mw / 2), Math.round(xL) + ed)) : Math.round(w / 2 - mw / 2);
+    var mouth = { l: ml, t: Math.round(h - mh - R(1.6)), w: mw, h: mh, r: pixel ? 0 : Math.round(Math.min(mw, mh) / 2), c: pupilC };
     var ant = { l: Math.round(w * 0.56), t: -R(10.5), w: R(9), h: R(11), c: antC, cap: pixel ? 'square' : 'round', join: pixel ? 'miter' : 'round' };
     var ax = hx + ant.l + 5.5 * ant.w / 9, ay = hy + ant.t + 3.5 * ant.h / 11;
     var circ = function (cx, cy, d, bg, o) { return { l: Math.round(cx - d / 2), t: Math.round(cy - d / 2), w: d, h: d, r: pixel ? 0 : Math.round(d / 2), bg: bg, o: o }; };

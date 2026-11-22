@@ -94,7 +94,7 @@ private const val FOOT_H = 3.2f
 private const val FOOT_R = 1.6f
 private const val EYE_D = 8f
 private const val PUPIL_D = 3.8f
-private const val EYE_ROOM = (EYE_D - PUPIL_D) / 2
+private const val TWIN_EYE = 2f                // twins have one eye per op, so each can be twice the size
 
 // lime tint
 private val BODY = Color(0xFFC6F24E)
@@ -361,10 +361,10 @@ private class OplingPainter {
             rr(x + 3f, fy, FOOT_W, FOOT_H, FOOT_R, FEET)
             rr(x + OP_W - 3f - FOOT_W, fy, FOOT_W, FOOT_H, FOOT_R, FEET)
             // eyes on the head op, or one on each of the first two columns (twins)
-            if (form.split && ci < 2) eye(ds, a, left, top, s, x + if (ci == 0) OP_W * 0.3f else OP_W * 0.7f, y0, ci == 0)
+            if (form.split && ci < 2) eye(ds, a, left, top, s, x + if (ci == 0) OP_W * 0.3f else OP_W * 0.7f, y0, ci == 0, TWIN_EYE)
             else if (!form.split && ci == form.head) {
-                eye(ds, a, left, top, s, x + OP_W * 0.3f, y0, true)
-                eye(ds, a, left, top, s, x + OP_W * 0.7f, y0, false)
+                eye(ds, a, left, top, s, x + OP_W * 0.3f, y0, true, 1f)
+                eye(ds, a, left, top, s, x + OP_W * 0.7f, y0, false, 1f)
             }
         }
         // antenna: the feedback loop, on the head op
@@ -416,8 +416,9 @@ private class OplingPainter {
                 drawPath(shell, SHELL_EDGE, style = Stroke(1.5f * density))
             }
             OplingMood.Breath -> {
-                // out of breath (Creature board "breath"): mouth open on the head op, a sweat drop beside it, two puffs
-                rr(headX + OP_W / 2 - 2.25f, headTop + OP_H - 3f - 1.6f, 4.5f, 3f, 1.5f, PUPIL)
+                // out of breath (Creature board "breath"): mouth open on the head op (the twins' to the right of the
+                // bigger eye), a sweat drop beside it, two puffs
+                rr(headX + OP_W * (if (form.split) 0.8f else 0.5f) - 2.25f, headTop + OP_H - 3f - 1.6f, 4.5f, 3f, 1.5f, PUPIL)
                 rr(headX + OP_W + 1.5f, headTop + 0.5f, 3f, 4.4f, 1.5f, SWEAT)
                 dot(headX - 4f, headTop + 9f, 2.4f, TICK.copy(alpha = 0.6f))
                 dot(headX - 7.5f, headTop + 7f, 1.8f, TICK.copy(alpha = 0.4f))
@@ -426,24 +427,30 @@ private class OplingPainter {
         }
     }
 
-    /** One eye centred at (cx, opTop + 2): white, pokes 2 above the op; pupil sprung inside it. */
-    private fun eye(ds: DrawScope, a: OplingAnim, left: Float, top: Float, s: Float, cx: Float, opTop: Float, isLeft: Boolean) = with(ds) {
-        val ex = left + (cx - EYE_D / 2) * s
+    /**
+     * One eye centred at (cx, opTop + 2), [k] × the anatomy's size: white, poking above the op (2 at k = 1, 6 at the
+     * twins' k = 2); pupil sprung inside it.
+     */
+    private fun eye(ds: DrawScope, a: OplingAnim, left: Float, top: Float, s: Float, cx: Float, opTop: Float, isLeft: Boolean, k: Float) = with(ds) {
+        val ed = EYE_D * k
+        val pd = PUPIL_D * k
+        val room = (ed - pd) / 2
+        val ex = left + (cx - ed / 2) * s
         if (a.mood == OplingMood.Sleep) {
             // closed: a thin dark bar
-            drawRoundRect(PUPIL, Offset(ex, top + (opTop + 2f) * s), Size(EYE_D * s, 1.6f * s), CornerRadius(1f * s))
+            drawRoundRect(PUPIL, Offset(ex, top + (opTop + 2f) * s), Size(ed * s, 1.6f * s), CornerRadius(1f * s))
             return@with
         }
-        val eh = EYE_D * a.blink
+        val eh = ed * a.blink
         val ecy = opTop + 2f
-        drawRoundRect(EYE, Offset(ex, top + (ecy - eh / 2) * s), Size(EYE_D * s, eh * s), CornerRadius(EYE_D / 2 * s, eh / 2 * s))
+        drawRoundRect(EYE, Offset(ex, top + (ecy - eh / 2) * s), Size(ed * s, eh * s), CornerRadius(ed / 2 * s, eh / 2 * s))
         // crashed: pupils crossed inward
         val dizzy = a.mood == OplingMood.Dizzy
         val lx = if (dizzy) (if (isLeft) 1f else -1f) else a.lookX
         val ly = if (dizzy) 0.4f else a.lookY
-        val px = cx + lx * EYE_ROOM * 0.85f
-        val py = ecy + ly * EYE_ROOM * 0.85f * a.blink
-        val ph = PUPIL_D * a.blink
-        drawOval(PUPIL, Offset(left + (px - PUPIL_D / 2) * s, top + (py - ph / 2) * s), Size(PUPIL_D * s, ph * s))
+        val px = cx + lx * room * 0.85f
+        val py = ecy + ly * room * 0.85f * a.blink
+        val ph = pd * a.blink
+        drawOval(PUPIL, Offset(left + (px - pd / 2) * s, top + (py - ph / 2) * s), Size(pd * s, ph * s))
     }
 }
