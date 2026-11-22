@@ -59,7 +59,7 @@ private let OP_FOOT_H: CGFloat = 3.2
 private let OP_FOOT_R: CGFloat = 1.6
 private let OP_EYE_D: CGFloat = 8
 private let OP_PUPIL_D: CGFloat = 3.8
-private let OP_EYE_ROOM = (OP_EYE_D - OP_PUPIL_D) / 2
+private let OP_TWIN_EYE: CGFloat = 2             // twins have one eye per op, so each can be twice the size
 
 // lime tint
 private let OP_BODY = fmColor(0xFFC6F24E)
@@ -418,10 +418,10 @@ final class FMOplingView: UIView {
             rr(x + OP_W - 3 - OP_FOOT_W, fy, OP_FOOT_W, OP_FOOT_H, OP_FOOT_R, OP_FEET)
             // eyes on the head op, or one on each of the first two columns (twins)
             if form.split && ci < 2 {
-                eye(g, left, top, s, x + (ci == 0 ? OP_W * 0.3 : OP_W * 0.7), y0, ci == 0)
+                eye(g, left, top, s, x + (ci == 0 ? OP_W * 0.3 : OP_W * 0.7), y0, ci == 0, OP_TWIN_EYE)
             } else if !form.split && ci == form.head {
-                eye(g, left, top, s, x + OP_W * 0.3, y0, true)
-                eye(g, left, top, s, x + OP_W * 0.7, y0, false)
+                eye(g, left, top, s, x + OP_W * 0.3, y0, true, 1)
+                eye(g, left, top, s, x + OP_W * 0.7, y0, false, 1)
             }
         }
         // antenna: the feedback loop, on the head op
@@ -490,29 +490,33 @@ final class FMOplingView: UIView {
         }
     }
 
-    /// One eye centred at (cx, opTop + 2): white, pokes 2 above the op; pupil sprung inside it.
+    /// One eye centred at (cx, opTop + 2), `k` × the anatomy's size: white, poking above the op (2 at k = 1, 6 at the
+    /// twins' k = 2); pupil sprung inside it.
     private func eye(_ g: CGContext, _ left: CGFloat, _ top: CGFloat, _ s: CGFloat, _ cx: CGFloat, _ opTop: CGFloat,
-                     _ isLeft: Bool) {
-        let ex = left + (cx - OP_EYE_D / 2) * s
+                     _ isLeft: Bool, _ k: CGFloat) {
+        let ed = OP_EYE_D * k
+        let pd = OP_PUPIL_D * k
+        let room = (ed - pd) / 2
+        let ex = left + (cx - ed / 2) * s
         if mood == .sleep {
             // closed: a thin dark bar
-            fmFillRoundRect(g, ex, top + (opTop + 2) * s, OP_EYE_D * s, 1.6 * s, 1 * s, OP_PUPIL)
+            fmFillRoundRect(g, ex, top + (opTop + 2) * s, ed * s, 1.6 * s, 1 * s, OP_PUPIL)
             return
         }
-        let eh = OP_EYE_D * blink
+        let eh = ed * blink
         let ecy = opTop + 2
         // Kotlin's round rect with half-width × half-height corners: an ellipse
         g.setFillColor(OP_EYE)
-        g.fillEllipse(in: CGRect(x: ex, y: top + (ecy - eh / 2) * s, width: OP_EYE_D * s, height: eh * s))
+        g.fillEllipse(in: CGRect(x: ex, y: top + (ecy - eh / 2) * s, width: ed * s, height: eh * s))
         // crashed: pupils crossed inward
         let dizzy = mood == .dizzy
         let lx: CGFloat = dizzy ? (isLeft ? 1 : -1) : lookX
         let ly: CGFloat = dizzy ? 0.4 : lookY
-        let px = cx + lx * OP_EYE_ROOM * 0.85
-        let py = ecy + ly * OP_EYE_ROOM * 0.85 * blink
-        let ph = OP_PUPIL_D * blink
+        let px = cx + lx * room * 0.85
+        let py = ecy + ly * room * 0.85 * blink
+        let ph = pd * blink
         g.setFillColor(OP_PUPIL)
-        g.fillEllipse(in: CGRect(x: left + (px - OP_PUPIL_D / 2) * s, y: top + (py - ph / 2) * s,
-                                 width: OP_PUPIL_D * s, height: ph * s))
+        g.fillEllipse(in: CGRect(x: left + (px - pd / 2) * s, y: top + (py - ph / 2) * s,
+                                 width: pd * s, height: ph * s))
     }
 }
