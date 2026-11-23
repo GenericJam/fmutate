@@ -583,6 +583,7 @@ defmodule FMutate.IOScreen do
 
   defp output_status(%{status: :off}), do: "off"
   defp output_status(%{status: :opening}), do: "opening…"
+  defp output_status(%{status: {:error, :no_input_port}}), do: "didn't open: another app is using it · close it, then switch off and on"
   defp output_status(%{status: {:error, reason}}), do: "didn't open (#{reason}) · switch off and on to try again"
   defp output_status(%{error: reason} = o) when reason != nil, do: "send failed (#{reason})" <> sent_line(o)
   defp output_status(o), do: "on" <> sent_line(o)

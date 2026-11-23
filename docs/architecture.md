@@ -466,7 +466,13 @@ flowchart LR
   switches, crashes and sound loads: the instance never had them, and the surface's toggles re-sent to a new
   engine go to the synth only (`synthSide` in `Layout.kt` / `FMutateLayout.swift`). The rate stays the surface's
   (a value only when it moves by 1/128). Not in scope: the firmware's own MIDI out, MIDI thru, clock to devices
-  (the clock goes out of `FMutate A` only). **iOS**: the same code paths (`FMutate A` is a CoreMIDI source; opened
+  (the clock goes out of `FMutate A` only). **To a computer** (checked on a moto e, Android 10, against a Mac):
+  Settings › Connected devices › USB (listed under Currently connected; its page is "USB Preferences", Use USB for:
+  MIDI), or `adb shell svc usb setFunctions midi` (adb stays: `sys.usb.config` becomes `midi,adb`; `midi,adb` as
+  the argument changes nothing). The phone then lists "Android USB Peripheral Port" (one input port) and the Mac a
+  "USB MIDI Device"; an XY pad's X on CC 74 Out and Y on CC 71 Both reached the Mac as 20 CCs (both axes) while
+  the engine got only CC 71. Android lets one app at a time write to that port: another app holding it gives
+  `no_input_port` on the row. **iOS**: the same code paths (`FMutate A` is a CoreMIDI source; opened
   outputs), but no computer link is set up or checked there yet.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
