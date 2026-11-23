@@ -9,15 +9,16 @@
 #   elixir native/ios_cartridges.exs fetch <lock> <platform> <cache dir>
 #       The lock's cartridges for `platform` (ios-device, ios-sim) in `<cache dir>/<sha256>.a`: downloaded when
 #       not there, kept only when size, SHA-256 and the asset's own signature (the app's key) check, and checked
-#       again when already there. Prints `<id> <version> <file>` per cartridge. Fails on any download or check:
-#       a build links exactly the pinned set.
+#       again when already there. Prints `<id> <version> <file> <commit> <sha256> <caps_bits>` per cartridge.
+#       Fails on any download or check: a build links exactly the pinned set.
 #   elixir native/ios_cartridges.exs layout <link map>
 #       Check a link (ld -map) of the published cartridges after native/build_ios.sh moved their data and BSS into
 #       the shared sections __DATA,__fm1c_d / __fm1c_b between markers (section$start/end$__DATA$<its section>):
 #       each cartridge's symbols there lie between its own markers, and no two cartridges' spans overlap. Fails
 #       otherwise: the host would restore or zero another cartridge's globals.
 #
-# A lock line: `<id> <version> <platform> <sha256> <size> <sig> <url> <commit>` (`#` starts a comment).
+# A lock line: `<id> <version> <platform> <sha256> <size> <sig> <url> <commit> [<caps-json>]`.
+# The optional last field pins per-asset capabilities; absent means none. `#` starts a comment.
 
 defmodule IosCartridges do
   @schema 1
@@ -77,11 +78,11 @@ defmodule IosCartridges do
     # native/build_ios.sh links into the app, pinned from the signed index of github.com/GenericJam/fmutate-cartridges
     # so a build is reproducible and a later index can't change it. Refresh: IOS_CARTRIDGES_REFRESH=1 sh
     # native/build_ios.sh. The built-ins (build_ios.sh CARTRIDGES, built from source) aren't listed.
-    # <id> <version> <platform> <sha256> <size> <sig> <url> <commit>
+    # <id> <version> <platform> <sha256> <size> <sig> <url> <commit> [<caps-json>]
     """
   end
 
-  defp line!(f, platform, %{"url" => url, "sha256" => sha, "size" => size, "sig" => sig}) do
+  defp line!(f, platform, %{"url" => url, "sha256" => sha, "size" => size, "sig" => sig} = asset) do
     fields = [
       f["id"],
       f["version"],
@@ -90,7 +91,8 @@ defmodule IosCartridges do
       to_string(size),
       sig,
       url,
-      f["commit"] || "-"
+      f["commit"] || "-",
+      JSON.encode!(capabilities(asset["caps"]))
     ]
 
     unless safe?(f["id"]) and safe?(f["version"]) and is_integer(size) and
@@ -109,6 +111,17 @@ defmodule IosCartridges do
 
   # ids and versions become file and C names (as FMutate.Cartridges)
   defp safe?(s), do: is_binary(s) and s =~ ~r/\A[A-Za-z0-9][\w.+-]*\z/
+
+  defp capabilities(caps) when is_map(caps) do
+    for key <- ["pitch_bend", "note_pressure"], is_boolean(caps[key]), into: %{}, do: {key, caps[key]}
+  end
+
+  defp capabilities(_), do: %{}
+
+  defp caps_bits(caps) do
+    (if caps["pitch_bend"] == true, do: 1, else: 0) +
+      (if caps["note_pressure"] == true, do: 2, else: 0)
+  end
 
   defp verify_index!(body, sig, key) do
     sig = Base.decode64!(String.trim(sig))
@@ -156,7 +169,9 @@ defmodule IosCartridges do
       ordered: true
     )
     |> Enum.zip(entries)
-    |> Enum.each(fn {{:ok, path}, e} -> IO.puts("#{e.id} #{e.version} #{path}") end)
+    |> Enum.each(fn {{:ok, path}, e} ->
+      IO.puts("#{e.id} #{e.version} #{path} #{e.commit} #{e.sha256} #{caps_bits(e.caps)}")
+    end)
   end
 
   defp cached!(e, cache, key) do
@@ -203,7 +218,11 @@ defmodule IosCartridges do
     entries =
       for l <- lines, not match?(["generated", _], l) do
         case l do
-          [id, version, platform, sha, size, sig, url, commit] ->
+          [id, version, platform, sha, size, sig, url, commit | caps] when length(caps) <= 1 ->
+            unless safe?(id) and safe?(version) and sha =~ ~r/\A[0-9a-f]{64}\z/ and
+                     (commit == "-" or commit =~ ~r/\A[0-9a-fA-F]{40}\z/),
+              do: fail!("#{lock}: invalid cartridge identity #{inspect(id)}")
+
             %{
               id: id,
               version: version,
@@ -212,7 +231,8 @@ defmodule IosCartridges do
               size: String.to_integer(size),
               sig: sig,
               url: url,
-              commit: commit
+              commit: commit,
+              caps: capabilities(if caps == [], do: %{}, else: JSON.decode!(hd(caps)))
             }
 
           _ ->

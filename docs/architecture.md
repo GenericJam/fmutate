@@ -82,7 +82,12 @@ flowchart LR
   `@` is in no id or version, so a file reads back to one id, and a cartridge of another engine ABI is never
   run), cut off past its listed size, kept only when size, SHA-256 and its own signature check out, so the engine
   never loads a file that didn't verify; the id's other versions and ABIs are deleted then; until
-  then it is "Available". A newer build than the downloaded one shows Update while the old one keeps running.
+  then it is "Available". A different asset SHA shows Update even at the same firmware version, while the old
+  cartridge keeps running. Resolving the catalogue hashes each selected downloaded file; only an exact match
+  with that platform's signed asset grants its boolean `caps.pitch_bend` / `caps.note_pressure`. Missing,
+  malformed or unknown caps grant nothing; neither older cached native code nor the Hub's stock emulator
+  package borrows the latest asset's capabilities. The running engine captures its caps, so downloading an
+  update does not unlock controls on the code still running.
   An instance starting such a firmware without its cartridge (at boot, e.g. the player's emulated Hub firmware
   that has since gone native; after a crash; a switch to it) downloads it first ("Downloading…"); if
   that fails, the Hub package runs in the emulator when it is on the phone (when it is quarantined: its safe
@@ -90,15 +95,22 @@ flowchart LR
   native id stays the saved choice for the next start (`FMutate.Instance` "Native builds not on the phone yet").
   A cartridge of the build (`libcart_<id>.so` in the native lib dir) wins and needs no download. iOS runs no
   downloaded native code: the app build links every published iOS cartridge pinned in `native/ios_cartridges.lock`
-  (`native/build_ios.sh`; `EngineNif.cartridges/0` lists them with their versions), and an entry with an iOS
+  (`native/build_ios.sh`; `EngineNif.cartridges/0` lists versions, pinned commit/SHA and expression bits), and an entry with an iOS
   asset runs natively only when linked, otherwise emulated with "Plays emulated on iPhone until the next app
   update". A linked cartridge of another version than the index's plays at its linked version, which its card
   shows ("Plays vX, built into this app; vY plays natively after the next app update";
-  `docs/decisions/2026-11-14-native-catalog.md` "Packaging"). When an id turns native, its emulator
+  `docs/decisions/2026-11-14-native-catalog.md` "Packaging"). The lock's optional ninth field is compact
+  per-asset caps JSON; existing eight-field rows mean no expression support and need no manual migration.
+  Refresh pins caps from the signed index alongside the archive SHA. Fetch emits the commit, SHA and
+  capability bits (bend=1, note pressure=2), and the generated native cartridge table embeds them in the same
+  `libfm1native.a` as the code. `Paths.bundled/1` returns that pinned metadata, so a newer live index or an
+  Elixir-only update cannot grant newer capabilities to an older linked asset. Built-in OberVave and Shine On
+  keep their source-built declarations; bare bundled cartridges never inherit signed-index capabilities.
+  When an id turns native, its emulator
   flash `emu/<id>.bin` moves to `emu/hub:<id>.bin` (once, never over an existing file; at the next start for
   an instance that was running it), so the emulated saves stay with the Hub package and the native one starts
-  fresh. Builds new or updated since the player last opened the library are "New" (`cartridges/seen.term`;
-  nothing is new on the first index ever loaded); a fetch that finds some sends `{:library, {:new_natives,
+  fresh. Builds new or updated since the player last opened the library are "New" (`cartridges/seen.term`
+  records `{version, asset_sha256}` by id; nothing is new on the first index ever loaded); a fetch that finds some sends `{:library, {:new_natives,
   ids}}`, and with the persisted opt-in `Library.set_notify/1` calls `Library.notify_new_natives/1`, which
   only logs: mob_notify isn't a dependency (its local notifications need a screen's socket; on Android it
   brings Firebase, which needs host Gradle wiring).
@@ -302,8 +314,8 @@ flowchart LR
   127 × front from the strike on: a quarter in from the back edge was 28 dB down and the back edge silent. #13 made
   the strike 127, so a tap played at its velocity alone and the strike position wasn't heard. The strike level sits
   between the two: never silent, 20 dB from bottom to top at the default range. Strike-position strips became the
-  default with #13; until then no bundled layout had one, so note level never played.) Only
-  FMutate's OberVave takes it: `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
+  default with #13; until then no bundled layout had one, so note level never played.)
+  FMutate's built-in OberVave implements it in `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
   firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
   amp every block on a square law, 127 = as played). The level belongs to the key while it is held or latched: the
   voices it starts later take it, its arp's steps in every octave too (an octave step is another pitch, so the arp
@@ -319,14 +331,18 @@ flowchart LR
   surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01, and factory 08's arp octaves at
   their key's level, and a MONO voice handed back to a quiet key quiet again (it stayed at the other key's level,
   −0.6 dB, before).
-  Survey of 24 other firmwares (most are Felucca forks with the same per-block `env × v->vel` amp): a ~10-line
-  change in most; Clipper and Frasil already take 0xA0.
+  The cartridge pipeline's Dinghy pilot adds the same square-law note gain (and ±2-semitone bend), guarded by
+  offline rendered-audio checks; Skiff and Caravel are pending a port (fmutate-cartridges README). The capabilities
+  arrive only with the exact signed native asset (above), never with the stock emulator package, and every
+  consumer (instrument view, editor, MIDI bend routing) reads them from the running engine's view (`view.caps`,
+  captured at start), never the catalogue: `Editor.running/3` re-resolves the surface when the same firmware
+  restarts into a build with other caps.
   **On by default** for a strike-position strip (`FMutate.LayoutEdit.note_level?/2`): an absent `pressure` is on,
   unless the strip has `swell: true` (swell and note level are exclusive: an explicit swell wins over the default,
   an explicit `pressure: true` wins over swell); an explicit `false` is off. Edits write it explicitly, so a layout
   that never touched it gets the default and one switched off stays off. On a firmware without the cap it is off
   (swell applies if set). So every bundled layout with a keyboard strip (classic, portrait-groove, sound-designer)
-  plays with velocity and, on FMutate's OberVave, note level, unedited. The surface never resolves these:
+  plays with velocity and, on a native cartridge advertising `note_pressure`, note level, unedited. The surface never resolves these:
   `FMutate.Editor` hands it the layout with every strip's `source` and `pressure` resolved for the running firmware
   (`LayoutEdit.surface/2`); saved files keep what the player set. (`Layout.kt` and `FMutateLayout.swift` fall back
   to `position` too, for a layout that didn't come through it.)

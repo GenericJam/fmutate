@@ -1291,6 +1291,7 @@ defmodule FMutate.Instance do
       %{
         id: state.id,
         firmware: state.firmware,
+        caps: if(state.live, do: state.live.run.caps, else: %{}),
         phase: state.phase,
         fb: state.live && state.live.ready && Paths.fb(state.live.prefix),
         quarantined: MapSet.member?(state.quarantined, state.firmware),

@@ -119,7 +119,7 @@ defmodule FMutate.InprocEngineTest do
 
     :ok = EngineNif.kill(a.handle)
     assert exit_status(a, 1_000) == 137
-    assert eventually(fn -> {"shineon", "3.0.1", :hung} in EngineNif.cartridges() end, 2_000)
+    assert eventually(fn -> Enum.any?(EngineNif.cartridges(), &match?({"shineon", _, :hung, _, _, _}, &1)) end, 2_000)
 
     assert {:error, :hung} =
              EngineNif.start(
@@ -139,7 +139,7 @@ defmodule FMutate.InprocEngineTest do
 
     # the stall (4 s of firmware code) ends: its loop parks, sees the stop and leaves; the cartridge is free
     Process.sleep(max(0, t0 + 4_200 - System.monotonic_time(:millisecond)))
-    assert eventually(fn -> {"shineon", "3.0.1", :ok} in EngineNif.cartridges() end, 2_000)
+    assert eventually(fn -> Enum.any?(EngineNif.cartridges(), &match?({"shineon", _, :ok, _, _, _}, &1)) end, 2_000)
     b = start(ctx, "b", :native, "shineon")
     assert drain(b, 300) > 0
     EngineNif.close(b.handle)
@@ -203,7 +203,7 @@ defmodule FMutate.InprocEngineTest do
     assert_receive {:engine, ^b, {:exit, {:start_failed, :hung}}}, 3_000
 
     # (and the cartridge is free again once the 4 s stall is over)
-    assert eventually(fn -> {"shineon", "3.0.1", :ok} in EngineNif.cartridges() end, 4_000)
+    assert eventually(fn -> Enum.any?(EngineNif.cartridges(), &match?({"shineon", _, :ok, _, _, _}, &1)) end, 4_000)
   end
 
   test "a real crash in a firmware's loop ends the app, leaving that cartridge's id in the crash marker",
@@ -248,7 +248,7 @@ defmodule FMutate.InprocEngineTest do
 
     # (the debug hang let go when killed: the thread ends and gives the cartridge back)
     Process.sleep(300)
-    assert {"shineon", "3.0.1", :ok} in EngineNif.cartridges()
+    assert Enum.any?(EngineNif.cartridges(), &match?({"shineon", _, :ok, _, _, _}, &1))
     b = start(ctx, "b", :native, "shineon")
     :ok = EngineNif.close(b.handle)
     assert exit_status(b) == 0

@@ -262,7 +262,7 @@ defmodule FMutate.MIDI do
       clock: saved[:clock] || :follow,
       bpm: saved[:bpm] || 120,
       prefs: saved[:sources] || %{},
-      bend: bends?(view.firmware),
+      bend: Map.get(view.caps, :pitch_bend, false),
       names: device_names(io),
       devices: Map.get(io, :midi, []),
       virtual: nil,
@@ -579,7 +579,7 @@ defmodule FMutate.MIDI do
   end
 
   def handle_info({:instance, id, {:state, view}}, %{id: id} = state) do
-    bend = bends?(view.firmware)
+    bend = Map.get(view.caps, :pitch_bend, false)
 
     state =
       if view.firmware == state.firmware,
@@ -973,13 +973,6 @@ defmodule FMutate.MIDI do
 
   defp device_names(%{midi: devices}), do: Map.new(devices, &{&1.id, &1.name})
   defp device_names(_), do: %{}
-
-  defp bends?(firmware_id) do
-    case firmware_id && Firmware.get(firmware_id) do
-      %{caps: caps} -> Map.get(caps, :pitch_bend, false)
-      _ -> false
-    end
-  end
 
   ## Clock out
 

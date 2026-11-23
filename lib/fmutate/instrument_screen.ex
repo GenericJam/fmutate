@@ -28,7 +28,7 @@ defmodule FMutate.InstrumentScreen do
       socket
       |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false, layouts: nil, sounds: nil)
       # layout editing: the layout for the running firmware, pages, sheets (FMutate.Editor)
-      |> Editor.load(@instance, view.firmware)
+      |> Editor.load(@instance, view.firmware, view.caps)
 
     {:ok, socket}
   end
@@ -91,7 +91,7 @@ defmodule FMutate.InstrumentScreen do
   end
 
   def handle_info({:instance, @instance, {:state, view}}, socket),
-    do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> Editor.firmware(view.firmware)}
+    do: {:noreply, socket |> Mob.Socket.assign(:view, view) |> Editor.running(view.firmware, view.caps)}
 
   def handle_info({:instance, _id, _event}, socket), do: {:noreply, socket}
 
@@ -173,6 +173,7 @@ defmodule FMutate.InstrumentScreen do
     %{
       id: @instance,
       firmware: nil,
+      caps: %{},
       phase: :stopped,
       fb: nil,
       quarantined: false,

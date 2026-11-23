@@ -186,7 +186,8 @@ defmodule FMutate.Library.Catalog do
         ref: ref,
         native: n,
         cart: n.bundled || n.cart,
-        new: n[:new] == true
+        new: n[:new] == true,
+        caps: n.selected_caps
     }
   end
 
@@ -221,12 +222,12 @@ defmodule FMutate.Library.Catalog do
   end
 
   @doc """
-  Whether a native firmware's downloaded cartridge is older than the index's build: Download again offers the
-  update while the old one keeps running.
+  Whether a native firmware's downloaded cartridge differs from the index's asset (including a rebuild of the
+  same version): Download again offers the update while the old one keeps running.
   """
   @spec update?(Firmware.t()) :: boolean
-  def update?(%{backend: :native, native: %{bundled: nil, cart_version: v, version: latest}}) when is_binary(v),
-    do: v != latest
+  def update?(%{backend: :native, native: %{bundled: nil, cart: cart} = n}) when is_binary(cart),
+    do: n.cart_version != n.version or n.cart_sha256 != n.sha256
 
   def update?(_fw), do: false
 

@@ -42,11 +42,11 @@ defmodule FMutate.InstrumentView do
       master: view.master,
       # FMutate's mixer balance (0 left, 0.5 centre, 1 right): seeds controls bound to {"mixer": "balance"}
       balance: view.balance,
-      bend: cap?(view.firmware, :pitch_bend),
+      bend: cap?(view, :pitch_bend),
       # per-note pressure: a note-level toggle on the layout is greyed out without it
-      note_pressure: cap?(view.firmware, :note_pressure),
+      note_pressure: cap?(view, :note_pressure),
       # pressing OCT− and OCT+ together sets the firmware's octave to 0 (strike-velocity strips start in step)
-      oct0: cap?(view.firmware, :octave_reset_both),
+      oct0: cap?(view, :octave_reset_both),
       # the Opling's mood (docs/design/creature.md) and the message in the screen area
       quarantined: view.quarantined,
       restarts: view.restarts,
@@ -175,10 +175,5 @@ defmodule FMutate.InstrumentView do
   defp dir(true), do: :down
   defp dir(false), do: :up
 
-  defp cap?(firmware_id, cap) do
-    case FMutate.Firmware.get(firmware_id) do
-      %{caps: caps} -> Map.get(caps, cap, false)
-      nil -> false
-    end
-  end
+  defp cap?(%{caps: caps}, cap), do: Map.get(caps, cap, false)
 end

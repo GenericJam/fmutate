@@ -28,7 +28,7 @@ defmodule FMutate.LayoutLibraryTest do
   defp socket(firmware) do
     Mob.Socket.new(FMutate.InstrumentScreen)
     |> Mob.Socket.assign(:editing, true)
-    |> Editor.load("a", firmware)
+    |> Editor.load("a", firmware, FMutate.Firmware.get(firmware).caps)
   end
 
   defp write_file(dir, name, content) do

@@ -42,6 +42,8 @@ void fm1host_set_marker(const void *marker);
 struct fm1native_cart {
     const char *id, *version;
     const struct fm1c_api *api;
+    const char *commit, *sha256;          /* pinned published asset; empty strings for source-built cartridges */
+    unsigned caps;                      /* bit 0: pitch bend, bit 1: per-note pressure */
 };
 extern const struct fm1native_cart fm1native_carts[];
 extern const size_t fm1native_ncarts;
