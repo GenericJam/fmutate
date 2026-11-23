@@ -493,11 +493,40 @@ defmodule FMutate.LayoutEdit do
       for {{id, sub, on}, n} <- Enum.frequencies(for {c, s, m} <- ins, do: {c["id"], s, m["on"]}), n > 1,
           do: "#{id}#{if sub, do: " pad #{sub}"} has two MIDI inputs for #{on}"
 
-    shared =
-      for {{a, sa, ma}, i} <- Enum.with_index(ins), {b, sb, mb} <- Enum.drop(ins, i + 1), Learn.overlap?(ma, mb),
-          do: "#{Learn.message(ma)} drives both #{a["id"]}#{if sa, do: " pad #{sa}"} and #{b["id"]}#{if sb, do: " pad #{sb}"}"
+    wrong ++ twice ++ shared_errors(ins)
+  end
 
-    wrong ++ twice ++ shared
+  # each learned input that a hardware message already drives through an earlier one (`Learn.overlap?/2`: same
+  # type, channel and number, and the same device or either one any device): one message per input, found by
+  # grouping on the message, so the work is linear however many inputs a file has
+  defp shared_errors(ins) do
+    {errors, _seen} =
+      Enum.reduce(ins, {[], %{}}, fn {c, s, m} = e, {errors, seen} ->
+        key = {m["type"], m["channel"], m["number"]}
+        g = Map.get(seen, key, %{first: nil, any: nil, devices: %{}})
+
+        earlier =
+          case m["device"] do
+            nil -> g.first
+            device -> g.any || Map.get(g.devices, device)
+          end
+
+        errors =
+          case earlier do
+            nil -> errors
+            {a, sa, _} -> ["#{Learn.message(m)} drives both #{a["id"]}#{if sa, do: " pad #{sa}"} and #{c["id"]}#{if s, do: " pad #{s}"}" | errors]
+          end
+
+        g = %{
+          first: g.first || e,
+          any: g.any || if(m["device"] == nil, do: e),
+          devices: if(m["device"], do: Map.put_new(g.devices, m["device"], e), else: g.devices)
+        }
+
+        {errors, Map.put(seen, key, g)}
+      end)
+
+    Enum.reverse(errors)
   end
 
   ## Pages

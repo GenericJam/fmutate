@@ -290,5 +290,75 @@ defmodule FMutate.LayoutLibraryTest do
       assert {:error, msgs} = Layouts.import_file(write_file(dir, "stacked.json", JSON.encode!(stacked.(80))))
       assert length(msgs) < 100 and Enum.all?(msgs, &(&1 =~ "overlaps"))
     end
+
+    test "learned inputs and bindings are bounded per control, before the editing rules", %{dir: dir} do
+      cc = %{"on" => "press", "type" => "cc", "channel" => 1, "number" => 1}
+      {:ok, many_in} = LayoutEdit.put(Layouts.classic(), "fx", %{"midi_in" => List.duplicate(cc, 10_000)})
+      {t, result} = :timer.tc(fn -> Layouts.import_file(write_file(dir, "in.json", JSON.encode!(many_in))) end)
+      assert {:error, msgs} = result
+      assert Enum.any?(msgs, &(&1 =~ "fx has 10000 learned MIDI inputs"))
+      assert t < 2_000_000
+
+      {:ok, many_b} = LayoutEdit.put(Layouts.classic(), "fx", %{"bindings" => List.duplicate(%{"to" => %{"key" => 1}}, 500)})
+      assert {:error, [msg]} = Layouts.validate(many_b)
+      assert msg =~ "fx has 500 bindings"
+    end
+
+    test "a hardware control learned by many controls: one message per control, devices kept apart" do
+      cc = fn device -> Map.merge(%{"on" => "press", "type" => "cc", "channel" => 1, "number" => 1}, device) end
+      cells = for row <- 0..5, col <- 0..13, {col, row} != {0, 0}, do: {col, row}
+
+      page = fn learned ->
+        controls =
+          for {{col, row}, i} <- Enum.with_index(cells),
+              do: %{"id" => "k#{i}", "type" => "key", "at" => LayoutEdit.cell(col, row, 1, 1), "midi_in" => [learned.(i)]}
+
+        put_in(Layouts.classic(), ["pages", Access.at(0), "controls"], controls)
+      end
+
+      assert {:error, msgs} = Layouts.validate(page.(fn _ -> cc.(%{}) end))
+      assert length(msgs) == length(cells) - 1
+      assert hd(msgs) =~ "CC 1 ch 1 drives both k0 and k1"
+
+      # every key on its own device: no conflict; then one more on any device conflicts with the first
+      assert Layouts.validate(page.(fn i -> cc.(%{"device" => "D#{i}"}) end)) == :ok
+      assert {:error, [msg]} = Layouts.validate(page.(fn i -> cc.(if i == 82, do: %{}, else: %{"device" => "D#{i}"}) end))
+      assert msg =~ "drives both k0 and k82"
+    end
+
+    test "a file that only grows past 1 MB when it is stamped is refused, not lost", %{dir: dir} do
+      base = Map.put(Layouts.classic(), "meta", %{"author" => ""})
+      pad = 1_000_000 - byte_size(JSON.encode!(base)) - 10
+      near = put_in(base, ["meta", "author"], String.duplicate("x", pad))
+      path = write_file(dir, "near.json", JSON.encode!(near))
+      assert File.stat!(path).size <= 1_000_000
+
+      assert {:error, [msg]} = Layouts.import_file(path)
+      assert msg =~ "1 MB"
+      assert Layouts.library() == []
+    end
+  end
+
+  describe "a change a crash cut short" do
+    test "is finished and FMutate.MIDI is told the layout it routes by" do
+      # stand in for instance z's FMutate.MIDI
+      start_supervised!({Registry, keys: :unique, name: FMutate.Registry})
+      {:ok, _} = Registry.register(FMutate.Registry, {:midi, "z"}, nil)
+      moved = custom("obervave")
+
+      journal = %{
+        "format" => "fmutate.layout-journal/1",
+        "working" => moved,
+        "slot" => %{"format" => "fmutate.layout-undo/1", "redo" => false, "layout" => nil}
+      }
+
+      File.write!(FMutate.Paths.layout_journal("z", "obervave"), JSON.encode!(journal))
+
+      assert fx_col(Layouts.current("z", "obervave")) == 11
+      assert_receive {:"$gen_cast", {:layout, "obervave", told, _}}
+      assert fx_col(told) == 11
+      refute File.exists?(FMutate.Paths.layout_journal("z", "obervave"))
+      assert Layouts.undo_state("z", "obervave") == :undo
+    end
   end
 end

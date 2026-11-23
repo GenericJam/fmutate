@@ -149,10 +149,14 @@ flowchart LR
   (`Mob.Socket.start_async/3`, never on the screen's process), validates it as `fmutate.layout/1` (schema, then
   the editing rules; the first message is shown when refused), keeps its `saved_at` (normalised to UTC) or stamps
   the import time, and adds it to the library without loading it. **Limits** (so a file can't make the app do
-  unbounded work): at most 1 MB is read; `Layouts.validate/1` refuses more than 64 pages and any page whose
-  controls (with the dock) outnumber, or cover more cells than, its grid has cells (no valid layout does either:
-  controls are inside the grid and don't overlap) before the editing rules run; and the overlap rule is found
-  through the cells each control takes, one message per control, not per pair.
+  unbounded work): at most 1 MB is read, and an entry that would pass 1 MB once stamped is refused rather than
+  written (the library reads at most 1 MB of each entry); `Layouts.validate/1` refuses more than 64 pages and any
+  page whose controls (with the dock) outnumber, or cover more cells than, its grid has cells (no valid layout
+  does either: controls are inside the grid and don't overlap), then every array inside a control: at most 4
+  learned MIDI inputs (one per gesture) and 64 bindings per control or pad, 64 pads, 27 strum keys, and per layout
+  1,024 learned inputs and 4,096 bindings, all before the editing rules run. The editing rules are linear: the
+  overlap rule goes through the cells each control takes, the shared-MIDI rule groups learned inputs by message
+  (type, channel, number) and device; each gives one message per control, not per pair.
   **Original layout** (the sheet's first row) and Layout settings' "Reset to classic" are one path
   (`Editor.original/1`, `Layouts.reset/2`: the working file is deleted). **Undo**: before every change to the
   working layout (each edit-mode commit, Original layout, a load, a new layout from a preset, a note-level toggle)
@@ -160,10 +164,12 @@ flowchart LR
   "fmutate.layout-undo/1", "redo": bool, "layout": layout | null}`, null = there was no working file, so undoing
   back to it deletes the file again). Undo swaps the working layout with the slot and flips `redo`, so the next
   press redoes; the slot survives a restart. **The pair changes as one**: a change to both is written whole to
-  `<firmware>.journal.json` (atomically) before either file, and the next reader or writer finishes a journal a
-  crash left behind, so a restart never sees a new layout with an old slot (or Original layout's deleted file
-  without its slot). Every reader and writer of the pair holds a lock per `{instance, firmware}`
-  (`:global.trans/3` on this node only), `FMutate.MIDI` included: it clears learned controls with
+  `<firmware>.journal.json` (atomically) before either file; then both files, then `FMutate.MIDI` is told the new
+  layout, then the journal goes. The next reader or writer replays a journal a crash left behind the same way
+  (files, MIDI told, journal removed), so a restart never sees a new layout with an old slot (or Original layout's
+  deleted file without its slot), and MIDI never keeps routing by the layout a replay replaced. Every reader and
+  writer of the pair holds a lock per `{instance, firmware}` (`:global.trans/3` on this node only), `FMutate.MIDI`
+  included: it clears learned controls with
   `Layouts.update/3`, an edit of the layout as saved at that moment, so it can't write back a copy an undo has
   replaced. Typing into a text field commits per keystroke, so consecutive commits from the same field (layout
   name, page name, a control's label) keep the slot as it was: one step, which ends with anything that isn't more

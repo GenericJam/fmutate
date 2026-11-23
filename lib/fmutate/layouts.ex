@@ -196,7 +196,8 @@ defmodule FMutate.Layouts do
     end
   end
 
-  # one change to the pair: `working` {:put, layout} | :delete, `slot` {:put, slot} | :keep. Under the lock.
+  # one change to the pair: `working` {:put, layout} | :delete, `slot` {:put, slot} | :keep. Under the lock. The
+  # journal goes only after FMutate.MIDI has been told, so a crash in between replays (and tells) it again.
   defp commit(instance, firmware_id, working, slot) do
     journal = Paths.layout_journal(instance, firmware_id)
 
@@ -206,11 +207,14 @@ defmodule FMutate.Layouts do
     end
 
     apply_change(instance, firmware_id, working, slot)
-    _ = File.rm(journal)
-
-    now = with {:put, layout} <- working, do: layout
-    FMutate.MIDI.layout_saved(instance, firmware_id, if(now == :delete, do: for_this(classic(), firmware_id), else: now))
+    notify(instance, firmware_id, working)
+    if slot != :keep, do: _ = File.rm(journal)
+    :ok
   end
+
+  # the instance's FMutate.MIDI routes learned controls by the current layout
+  defp notify(instance, firmware_id, {:put, layout}), do: FMutate.MIDI.layout_saved(instance, firmware_id, layout)
+  defp notify(instance, firmware_id, :delete), do: FMutate.MIDI.layout_saved(instance, firmware_id, for_this(classic(), firmware_id))
 
   defp put_or_nil({:put, layout}), do: layout
   defp put_or_nil(:delete), do: nil
@@ -224,14 +228,17 @@ defmodule FMutate.Layouts do
     with {:put, s} <- slot, do: write_atomic(Paths.layout_undo(instance, firmware_id), JSON.encode!(s))
   end
 
-  # a journal left by a crash: finish what it says (or drop it if it isn't one)
+  # a journal left by a crash: finish what it says, as a commit would (files, then FMutate.MIDI told, then the
+  # journal goes), or drop it if it isn't one
   defp recover(instance, firmware_id) do
     journal = Paths.layout_journal(instance, firmware_id)
 
     with {:ok, json} <- File.read(journal) do
       case JSON.decode(json) do
         {:ok, %{"format" => "fmutate.layout-journal/1", "working" => w, "slot" => %{} = s}} when is_map(w) or is_nil(w) ->
-          apply_change(instance, firmware_id, if(w, do: {:put, w}, else: :delete), {:put, s})
+          working = if w, do: {:put, w}, else: :delete
+          apply_change(instance, firmware_id, working, {:put, s})
+          notify(instance, firmware_id, working)
 
         _ ->
           :ok
@@ -314,6 +321,12 @@ defmodule FMutate.Layouts do
 
   @max_bytes 1_000_000
   @max_pages 64
+  @max_midi_in 4
+  @max_bindings 64
+  @max_pads 64
+  @max_strum_keys 27
+  @max_layout_midi_in 1024
+  @max_layout_bindings 4096
 
   @doc """
   Import a layout file into the library (it isn't loaded): it must be a valid `fmutate.layout/1` of at most
@@ -386,9 +399,16 @@ defmodule FMutate.Layouts do
 
   defp add_to_library(layout) do
     with :ok <- validate(layout) do
-      stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%dT%H%M%S%fZ")
-      file = new_file(Paths.saved_layouts(), "#{stamp}-#{slug(layout["name"])}", encode(layout), 1)
-      {:ok, %{file: file, name: layout["name"], saved_at: layout["meta"]["saved_at"], firmware: layout["firmware"]["id"]}}
+      data = encode(layout)
+
+      # the library reads at most @max_bytes of an entry: one that only grew past it when stamped would vanish
+      if byte_size(data) > @max_bytes do
+        {:error, ["it's too big: a layout file is at most 1 MB"]}
+      else
+        stamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%dT%H%M%S%fZ")
+        file = new_file(Paths.saved_layouts(), "#{stamp}-#{slug(layout["name"])}", data, 1)
+        {:ok, %{file: file, name: layout["name"], saved_at: layout["meta"]["saved_at"], firmware: layout["firmware"]["id"]}}
+      end
     end
   end
 
@@ -432,9 +452,12 @@ defmodule FMutate.Layouts do
   defp for_this(layout, firmware_id), do: Map.put(layout, "firmware", %{"id" => firmware_id})
 
   @doc """
-  `:ok`, or `{:error, messages}`: the schema first, then the size (at most #{@max_pages} pages, no page with more
-  controls, or more cells of them, than its grid has cells: so the editing rules' work stays bounded for any
-  file), then the editing rules.
+  `:ok`, or `{:error, messages}`: the schema first, then the size (so the editing rules' work stays bounded for
+  any file), then the editing rules. Size: at most #{@max_pages} pages; no page with more controls, or more cells
+  of them, than its grid has cells; per control (and per pad) at most #{@max_midi_in} learned MIDI inputs (one per
+  gesture) and #{@max_bindings} bindings, at most #{@max_pads} pads, #{@max_strum_keys} strum keys; per layout at
+  most #{@max_layout_midi_in} learned inputs and #{@max_layout_bindings} bindings. No layout the editor makes
+  comes near any of them.
   """
   @spec validate(term()) :: :ok | {:error, [String.t()]}
   def validate(layout) do
@@ -455,14 +478,53 @@ defmodule FMutate.Layouts do
     cells = cols * rows
     dock = layout["dock"] || []
 
-    if length(pages) > @max_pages do
-      ["it has #{length(pages)} pages; a layout has at most #{@max_pages}"]
-    else
+    page_errors =
       for p <- pages,
           all = dock ++ (p["controls"] || []),
           length(all) > cells or Enum.sum_by(all, &(&1["at"]["w"] * &1["at"]["h"])) > cells,
           do: "page #{p["name"]} has more controls than its #{cols}×#{rows} grid has room for"
+
+    cond do
+      length(pages) > @max_pages -> ["it has #{length(pages)} pages; a layout has at most #{@max_pages}"]
+      page_errors != [] -> page_errors
+      true -> nested_errors(dock ++ Enum.flat_map(pages, &(&1["controls"] || [])))
     end
+  end
+
+  # the arrays inside controls (learned inputs, bindings, pads, strum keys), per control and for the layout
+  defp nested_errors(controls) do
+    {errors, ins, binds} =
+      Enum.reduce(controls, {[], 0, 0}, fn c, {errors, ins, binds} ->
+        pads = get_in(c, ["pad_grid", "pads"]) || []
+        holders = [{c["id"], c} | Enum.map(Enum.with_index(pads), fn {p, i} -> {"#{c["id"]} pad #{i}", p} end)]
+
+        own =
+          [
+            length(pads) > @max_pads && "#{c["id"]} has #{length(pads)} pads; a pad grid has at most #{@max_pads}",
+            length(get_in(c, ["strum", "keys"]) || []) > @max_strum_keys && "#{c["id"]} lists more than #{@max_strum_keys} strum keys"
+          ] ++
+            Enum.flat_map(holders, fn {name, h} ->
+              [
+                length(h["midi_in"] || []) > @max_midi_in && "#{name} has #{length(h["midi_in"])} learned MIDI inputs; at most #{@max_midi_in}",
+                length(h["bindings"] || []) > @max_bindings && "#{name} has #{length(h["bindings"])} bindings; at most #{@max_bindings}"
+              ]
+            end)
+
+        n_in = Enum.sum_by(holders, fn {_, h} -> length(h["midi_in"] || []) end)
+        n_b = Enum.sum_by(holders, fn {_, h} -> length(h["bindings"] || []) end)
+        {Enum.filter(own, & &1) ++ errors, ins + n_in, binds + n_b}
+      end)
+
+    totals =
+      Enum.filter(
+        [
+          ins > @max_layout_midi_in && "it has #{ins} learned MIDI inputs; a layout has at most #{@max_layout_midi_in}",
+          binds > @max_layout_bindings && "it has #{binds} bindings; a layout has at most #{@max_layout_bindings}"
+        ],
+        & &1
+      )
+
+    Enum.take(totals ++ Enum.reverse(errors), 10)
   end
 
   # at most @max_bytes of a file, else a refusal that says so
