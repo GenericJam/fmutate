@@ -649,7 +649,7 @@ defmodule FMutate.Instance do
 
       MapSet.member?(state.quarantined, hub) and role == :live ->
         Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
-        %{state | firmware: hub, wanted: fw, phase: :safe_mode}
+        %{state | firmware: hub, caps: %{}, wanted: fw, phase: :safe_mode}
 
       MapSet.member?(state.quarantined, hub) ->
         Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
@@ -657,7 +657,7 @@ defmodule FMutate.Instance do
 
       true ->
         Logger.warning("instance #{state.id}: #{why}; running #{hub} in the emulator")
-        start_engine(%{state | firmware: hub, wanted: fw}, role, hub)
+        start_engine(%{state | firmware: hub, caps: %{}, wanted: fw}, role, hub)
     end
   end
 
