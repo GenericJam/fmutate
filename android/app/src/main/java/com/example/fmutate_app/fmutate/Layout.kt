@@ -18,7 +18,34 @@ sealed class Target {
     /** FMutate's mixer balance (`{"mixer": "balance"}`): a value, not a firmware input; 0.5 is the centre. */
     object Balance : Target()
     data class Button(val id: String) : Target()
-    data class Midi(val type: String, val channel: Int, val number: Int, val jump: Boolean, val on: Int = 127, val off: Int = 0) : Target()
+    /** A MIDI message; [to] where it goes: "synth" (the firmware's MIDI in), "out" (only MIDI out) or "both". */
+    data class Midi(
+        val type: String, val channel: Int, val number: Int, val jump: Boolean, val on: Int = 127, val off: Int = 0,
+        val to: String = "synth",
+    ) : Target() {
+        /** Out-only messages have their own rule 7 values ("out:cc:1:74"): a DAW's CC 74 isn't the synth's. */
+        private val keyPrefix get() = if (to == "out") "out:" else ""
+
+        /** The surface's payload for it: its bytes, [extra] fields, and where it goes unless that is the synth. */
+        fun payload(bytes: List<Int>, vararg extra: Pair<String, Any>): Map<String, Any> {
+            val m = HashMap<String, Any>(extra.size + 3)
+            m["t"] = "midi"
+            m["bytes"] = bytes
+            if (to != "synth") m["to"] = to
+            for ((k, v) in extra) m[k] = v
+            return m
+        }
+
+        /** The same message to the synth only (or nothing, when it goes only out). */
+        fun synthSide(): Midi? = when (to) { "out" -> null; "both" -> copy(to = "synth"); else -> this }
+
+        internal fun key(): String? = when (type) {
+            "cc" -> "${keyPrefix}cc:$channel:$number"
+            // a motion control's axis: one bend value per channel, shared like a CC
+            "pitch_bend" -> "${keyPrefix}bend:$channel"
+            else -> null
+        }
+    }
     data class Page(val ref: String) : Target()
     /**
      * App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending;
@@ -31,12 +58,7 @@ sealed class Target {
         get() = when (this) {
             is Pot -> "pot:master"
             is Balance -> "mixer:balance"
-            is Midi -> when (type) {
-                "cc" -> "cc:$channel:$number"
-                // a motion control's axis: one bend value per channel, shared like a CC
-                "pitch_bend" -> "bend:$channel"
-                else -> null
-            }
+            is Midi -> key()
             else -> null
         }
 }
@@ -202,7 +224,7 @@ data class Layout(
             t.has("midi") -> t.getJSONObject("midi").let {
                 Target.Midi(
                     it.getString("type"), it.optInt("channel", 1), it.optInt("number", 0), it.optBoolean("jump", false),
-                    it.optInt("on", 127), it.optInt("off", 0),
+                    it.optInt("on", 127), it.optInt("off", 0), it.optString("to", "synth"),
                 )
             }
             t.has("page") -> Target.Page(t.getString("page"))

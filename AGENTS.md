@@ -85,6 +85,8 @@ JNI symbols in Mob's generated code follow it.)
   emulator engine interprets and runs slower than real time, so the instance lowers its emulated CPU clock
   (`docs/engine_protocol.md` "Speed and fill"). `Application.delete_env(:fmutate_app, :emu_env)` undoes it.
 - **From outside**: `tools/android_probe` is a second app (same debug key) that plays MIDI into `FMutate A`,
+  listens to what comes out of it (`--es do listen`), has its own device `FMutate Probe` (an input for FMutate,
+  and a MIDI out device that logs every message FMutate sends it as `in: b0 4a 40`, logcat tag `FMutateProbe`),
   reads the sibling cookie, registers a sibling node name (`--es do register`) and floods the distribution port
   with unknown names (`--es do atoms`: FMutate should refuse every one); `tools/sibling_probe.exs` is a sibling
   node (register its name first); `tools/midi_latency.exs` measures MIDI

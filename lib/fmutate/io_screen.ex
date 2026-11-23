@@ -1,7 +1,8 @@
 defmodule FMutate.IOScreen do
   @moduledoc """
   I/O and the instance (HANDOFF §10, board `IO.dc.html`): the instance card, audio out (where the sound
-  goes, level, the whole latency), MIDI (the instance's virtual port, devices to play it from, clock), each
+  goes, level, the whole latency), MIDI (the instance's virtual port, devices to play it from, clock), MIDI out
+  (where bindings sent out go: the virtual port and the devices switched on, `FMutate.MIDI.set_output/3`), each
   controller that plays it (what each of its knobs and pads drives, lit as it moves; line up its knobs; a
   knob on a panel knob or pinned to a synth parameter; what its unmapped knobs do), apps on this phone
   (Erlang distribution, Allow / Disconnect), and a developer section with the engine's test actions.
@@ -45,6 +46,7 @@ defmodule FMutate.IOScreen do
        dist: subscribed(:dist, Dist, &Dist.subscribe/0),
        midi_firmware: view.firmware,
        midi: MIDI.settings(@instance),
+       outputs: MIDI.outputs(@instance),
        latency: nil,
        sheet: nil,
        # a controller's line-up while its sheet is open (FMutate.MIDI.line_up/2), the hardware controls that
@@ -94,6 +96,7 @@ defmodule FMutate.IOScreen do
         {instance_card(assigns)}
         {audio_section(assigns)}
         {midi_section(assigns)}
+        {midi_out_section(assigns)}
         {controllers_section(assigns)}
         {apps_section(assigns)}
         {developer_section(assigns)}
@@ -492,16 +495,7 @@ defmodule FMutate.IOScreen do
           sub = if dev.open, do: source_line(m, dev.name), else: "not playing · tap to use"
           midi_row("IN", name, sub, dev.open, {:source, dev.name, dev.id})
         end ++
-        bluetooth_rows(io.bluetooth, io.midi) ++
-        [
-          midi_row(
-            "OUT",
-            port <> " out",
-            out_line(m, virtual.listeners),
-            virtual.listeners > 0,
-            :clock
-          )
-        ]
+        bluetooth_rows(io.bluetooth, io.midi)
 
     scan = {self(), :scan}
     clock = {self(), {:sheet, :clock}}
@@ -539,6 +533,73 @@ defmodule FMutate.IOScreen do
         ]
     )
   end
+
+  ## MIDI out: the virtual port (always) and the devices FMutate can write to, each switched on or off
+
+  defp midi_out_section(assigns) do
+    io = assigns.io || %{virtual: []}
+    m = assigns.midi
+    [port | devices] = assigns.outputs
+
+    virtual =
+      Enum.find(io.virtual, %{senders: 0, listeners: 0}, &(&1.instance == MIDI.index(@instance)))
+
+    port_row = midi_row("OUT", port.name, out_line(m, virtual.listeners) <> sent_line(port), virtual.listeners > 0, :clock)
+
+    device_rows =
+      case devices do
+        [] -> [hint_text("No device to send to: plug in a USB MIDI device, or connect a Bluetooth one above.")]
+        list -> Enum.map(list, &output_row/1)
+      end
+
+    # the computer link is Android's USB MIDI mode; an iPhone has none (its outputs are other apps and devices)
+    computer =
+      cond do
+        FMutate.IONif.loaded?() ->
+          [
+            hint_text(
+              "To a computer: connect a USB cable and set the phone's USB to MIDI (Android: Settings › Connected devices › USB › MIDI). It then shows up in FL Studio, Ableton and others as a MIDI input."
+            )
+          ]
+
+        assigns.route_picker ->
+          [hint_text("iPhone: other apps on this phone listen to FMutate A; a computer link isn't available here yet.")]
+
+        true ->
+          []
+      end
+
+    card(
+      [section_label("MIDI OUT"), port_row] ++
+        device_rows ++
+        [hint_text("Bindings set to Out or Both in Edit layout send here; Out never reaches the synth.")] ++ computer
+    )
+  end
+
+  defp output_row(o) do
+    change = {self(), {:output, o.name}}
+    label = "#{o.name} · #{type_label(o.type)}"
+    color = if match?({:error, _}, o.status) or (o.on and o.error != nil), do: c(:warn), else: c(:muted)
+
+    ~MOB"""
+    <Column gap={2}>
+      <Toggle label={label} value={o.on} on_change={change} color={c(:fm)} />
+      <Text text={output_status(o)} text_size={11} text_color={color} font="monospace" />
+    </Column>
+    """
+  end
+
+  defp output_status(%{status: :off}), do: "off"
+  defp output_status(%{status: :opening}), do: "opening…"
+  defp output_status(%{status: {:error, :no_input_port}}), do: "didn't open: another app is using it · close it, then switch off and on"
+  defp output_status(%{status: {:error, reason}}), do: "didn't open (#{reason}) · switch off and on to try again"
+  defp output_status(%{error: reason} = o) when reason != nil, do: "send failed (#{reason})" <> sent_line(o)
+  defp output_status(o), do: "on" <> sent_line(o)
+
+  defp sent_line(%{sent: 0}), do: ""
+  defp sent_line(%{sent: n, last: last}), do: " · sent #{n} · last #{hex_bytes(last)}"
+
+  defp hex_bytes(bytes), do: bytes |> :binary.bin_to_list() |> Enum.map_join(" ", &(&1 |> Integer.to_string(16) |> String.pad_leading(2, "0")))
 
   defp midi_row(dir, name, sub, live, tag) do
     tap = {self(), {:sheet, tag}}
@@ -1322,6 +1383,7 @@ defmodule FMutate.IOScreen do
      Mob.Socket.assign(socket,
        audio: Audio.stats(),
        latency: MIDI.latency(@instance),
+       outputs: MIDI.outputs(@instance),
        held: Instance.held(@instance),
        surface_notes: surface
      )}
@@ -1488,6 +1550,12 @@ defmodule FMutate.IOScreen do
     {:noreply, Mob.Socket.assign(socket, :midi, MIDI.settings(@instance))}
   end
 
+  # a MIDI output switched on or off (FMutate.MIDI keeps it per instance, by name)
+  def handle_info({:change, {:output, name}, on}, socket) do
+    :ok = MIDI.set_output(@instance, name, on == true)
+    {:noreply, Mob.Socket.assign(socket, :outputs, MIDI.outputs(@instance))}
+  end
+
   # a hardware control moved: its row is lit for a moment
   def handle_info({:midi, @instance, {:touched, name, key}}, socket) do
     ref = make_ref()
@@ -1509,7 +1577,7 @@ defmodule FMutate.IOScreen do
   def handle_info(msg, socket) when Subscription.message?(msg) do
     case Subscription.handle(msg) do
       {:subscribed, :instance, view} -> {:noreply, Mob.Socket.assign(socket, :view, view)}
-      {:subscribed, :midi_watch, _} -> {:noreply, Mob.Socket.assign(socket, :midi, MIDI.settings(@instance))}
+      {:subscribed, :midi_watch, _} -> {:noreply, Mob.Socket.assign(socket, midi: MIDI.settings(@instance), outputs: MIDI.outputs(@instance))}
       {:subscribed, key, value} -> {:noreply, Mob.Socket.assign(socket, key, value)}
       _ -> {:noreply, socket}
     end

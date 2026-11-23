@@ -18,7 +18,8 @@ enum FMTarget: Equatable {
     /// FMutate's mixer balance (`{"mixer": "balance"}`): a value, not a firmware input; 0.5 is the centre.
     case balance
     case button(String)
-    case midi(type: String, channel: Int, number: Int, jump: Bool, on: Int, off: Int)
+    /// A MIDI message; `to` where it goes: "synth" (the firmware's MIDI in), "out" (only MIDI out) or "both".
+    case midi(type: String, channel: Int, number: Int, jump: Bool, on: Int, off: Int, to: String)
     case page(String)
     /// App actions on the surface itself (no firmware input): "bend" switches the keyboard strips to bending;
     /// "note_level" (`isNoteLevel`) switches note level on the layout's strike-position strips on each press.
@@ -29,11 +30,13 @@ enum FMTarget: Equatable {
         switch self {
         case .pot: return "pot:master"
         case .balance: return "mixer:balance"
-        case let .midi(type, channel, number, _, _, _):
+        case let .midi(type, channel, number, _, _, _, to):
+            // Out-only messages have their own rule 7 values ("out:cc:1:74"): a DAW's CC 74 isn't the synth's
+            let prefix = to == "out" ? "out:" : ""
             switch type {
-            case "cc": return "cc:\(channel):\(number)"
+            case "cc": return "\(prefix)cc:\(channel):\(number)"
             // a motion control's axis: one bend value per channel, shared like a CC
-            case "pitch_bend": return "bend:\(channel)"
+            case "pitch_bend": return "\(prefix)bend:\(channel)"
             default: return nil
             }
         default: return nil
@@ -42,8 +45,27 @@ enum FMTarget: Equatable {
 
     /// `b.to is Target.Midi && b.to.jump` (jump-to-position MIDI sliders, rule 5).
     var isJumpMidi: Bool {
-        if case let .midi(_, _, _, jump, _, _) = self { return jump }
+        if case let .midi(_, _, _, jump, _, _, _) = self { return jump }
         return false
+    }
+
+    /// The surface's payload for a MIDI message: its bytes, `extra` fields, and where it goes unless that is the synth.
+    func midiPayload(_ bytes: [Int], _ extra: [String: Any] = [:]) -> [String: Any] {
+        var m = extra
+        m["t"] = "midi"
+        m["bytes"] = bytes
+        if case let .midi(_, _, _, _, _, _, to) = self, to != "synth" { m["to"] = to }
+        return m
+    }
+
+    /// The same target as the synth gets it (nil for a message that goes only out).
+    var synthSide: FMTarget? {
+        guard case let .midi(type, channel, number, jump, on, off, to) = self else { return self }
+        switch to {
+        case "out": return nil
+        case "both": return .midi(type: type, channel: channel, number: number, jump: jump, on: on, off: off, to: "synth")
+        default: return self
+        }
     }
 
     var isKey: Bool { if case .key = self { return true }; return false }
@@ -300,7 +322,8 @@ struct FMLayout: Equatable {
         if t.has("midi") {
             let m = try t.getObj("midi")
             return .midi(type: try m.getString("type"), channel: m.optInt("channel", 1), number: m.optInt("number", 0),
-                         jump: m.optBool("jump", false), on: m.optInt("on", 127), off: m.optInt("off", 0))
+                         jump: m.optBool("jump", false), on: m.optInt("on", 127), off: m.optInt("off", 0),
+                         to: m.optString("to", "synth"))
         }
         if t.has("page") { return .page(try t.getString("page")) }
         if t.has("action") { return .action(try t.getString("action")) }

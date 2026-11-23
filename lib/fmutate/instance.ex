@@ -187,9 +187,12 @@ defmodule FMutate.Instance do
 
   @doc """
   Let go of everything: up for every held key and button, MIDI all notes off, pitch bend centred, volume full.
-  The way out when something is stuck.
+  The way out when something is stuck. What the surface holds out of MIDI out goes too (`FMutate.MIDI.release_out/1`).
   """
-  def release_all(id), do: GenServer.cast(via(id), :release_all)
+  def release_all(id) do
+    FMutate.MIDI.release_out(id)
+    GenServer.cast(via(id), :release_all)
+  end
 
   @doc """
   The engine buffer: `:auto` (the computed fill, raised while the engine underruns) or a fixed ring fill in

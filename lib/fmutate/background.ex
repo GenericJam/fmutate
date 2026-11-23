@@ -203,8 +203,10 @@ defmodule FMutate.Background do
   # (a second Quit while quitting, an action FMutate doesn't show)
   def handle_info(_msg, state), do: {:noreply, state}
 
-  # (an instance that is down, restarting under its supervisor, has no engine to stop; the app ends regardless)
+  # (an instance that is down, restarting under its supervisor, has no engine to stop; the app ends regardless.
+  # What it held out of MIDI out goes first: the app's process is killed after quit, with no terminate)
   defp quit_instance(id) do
+    FMutate.MIDI.release_out(id)
     Instance.quit(id)
   catch
     :exit, reason -> Logger.warning("background: instance #{id} didn't quit: #{inspect(reason)}")

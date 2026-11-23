@@ -418,12 +418,12 @@ private fun InstrumentSurface(
                 octaveFollows(t, down)
             }
             is Target.Midi -> when (t.type) {
-                "note" -> input(mapOf("t" to "midi", "bytes" to listOf((if (down) 0x90 else 0x80) or (t.channel - 1), t.number, if (down) 100 else 0)))
+                "note" -> input(t.payload(listOf((if (down) 0x90 else 0x80) or (t.channel - 1), t.number, if (down) 100 else 0)))
                 // a CC on a button: its `on` value while pressed (or toggled on); on release its `off` value, or the
                 // value a knob/slider of this layout last set for that CC (so a long-release toggle gives it back)
                 "cc" -> {
                     val v = if (down) t.on else t.absoluteKey?.let { state.values[it] }?.let { (it * 127).roundToInt() } ?: t.off
-                    input(mapOf("t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, v.coerceIn(0, 127))))
+                    input(t.payload(listOf(0xB0 or (t.channel - 1), t.number, v.coerceIn(0, 127))))
                 }
                 else -> {}
             }
@@ -1038,7 +1038,8 @@ private fun InstrumentSurface(
     LaunchedEffect(phase) {
         if (phase != "running") return@LaunchedEffect
         delay(FIRMWARE_BOOT_MS)
-        toggled().forEach { fire(it, true) }
+        // (a new engine only: what a toggle sends out was never lost, so it isn't sent out again)
+        toggled().forEach { t -> (if (t is Target.Midi) t.synthSide() else t)?.let { fire(it, true) } }
         if (hasVelocityStrip && oct0) {
             input(mapOf("t" to "button", "id" to "oct_down", "d" to true))
             input(mapOf("t" to "button", "id" to "oct_up", "d" to true))
@@ -1225,12 +1226,12 @@ private fun ledFor(c: Control, leds: Triple<Int, Int, Int>): Boolean {
 private fun sendValueBytes(t: Target, v: Float, control: String): Map<String, Any>? = when (t) {
     Target.Pot -> mapOf("t" to "pot", "v" to v.toDouble(), "c" to control)
     Target.Balance -> mapOf("t" to "balance", "v" to v.toDouble(), "c" to control)
-    is Target.Midi -> if (t.type == "cc") mapOf(
-        "t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt()),
+    is Target.Midi -> if (t.type == "cc") t.payload(
+        listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt()),
         "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),
     ) else if (t.type == "pitch_bend") MotionMath.bendRaw(v).let { raw ->
-        mapOf(
-            "t" to "midi", "bytes" to listOf(0xE0 or (t.channel - 1), raw and 0x7F, raw shr 7),
+        t.payload(
+            listOf(0xE0 or (t.channel - 1), raw and 0x7F, raw shr 7),
             "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),
         )
     } else null

@@ -46,6 +46,19 @@ defmodule FMutate.LayoutsTest do
       {:ok, l} = LayoutEdit.set_bindings(l, "fx", nil, two)
       assert {:error, _} = Schema.validate(l)
     end
+
+    test "a MIDI target's destination is synth, out or both; absent (every layout before MIDI out) is fine" do
+      l = Layouts.classic()
+      cc = fn extra -> [%{"to" => %{"midi" => Map.merge(%{"type" => "cc", "channel" => 1, "number" => 74}, extra)}}] end
+
+      for extra <- [%{}, %{"to" => "synth"}, %{"to" => "out"}, %{"to" => "both"}] do
+        {:ok, l} = LayoutEdit.set_bindings(l, "fx", nil, cc.(extra))
+        assert Layouts.validate(l) == :ok, inspect(extra)
+      end
+
+      {:ok, l} = LayoutEdit.set_bindings(l, "fx", nil, cc.(%{"to" => "daw"}))
+      assert {:error, _} = Schema.validate(l)
+    end
   end
 
   describe "per instance and firmware" do

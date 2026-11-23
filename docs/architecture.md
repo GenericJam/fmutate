@@ -439,6 +439,43 @@ flowchart LR
   lines (`MidiSurface.kt` lists them) through `fm1io`'s `surface/1` NIF into a queue the surface drains once per
   display frame. iOS has the same channel: `fm1surface`'s `surface/1` NIF (`FMutate.SurfaceNif`) into
   `FMutateMidiSurface.swift`'s queue, drained on the main thread.
+- **MIDI out from the surface** (Kevin, 2026-11-23: FMutate's XY pads, motion tiles and other controls as a MIDI
+  controller for a DAW while the phone keeps playing). **Per binding**: a binding to a MIDI message (note, CC,
+  pitch bend) has a destination, `"to"` on its `midi` target: `"synth"` (absent: every layout made before keeps
+  today's behaviour, into the firmware's MIDI in), `"out"` (only MIDI out) or `"both"`; the binding sheet's
+  **Synth · Out · Both** under MIDI note / CC. **Routing** (`FMutate.MIDI.Out`, pure): the surface sends a
+  non-synth message with its `"to"`, so it goes through `FMutate.MIDI` (`surface_in/2`) like an absolute move;
+  learned hardware controls give `{:out, bytes}` beside their instance inputs (`FMutate.MIDI.Controls`); either way
+  `FMutate.MIDI` sends it to every output and Out never reaches `FMutate.Instance`. **Outputs**: the instance's
+  virtual port `FMutate A` (always) and the devices switched on in I/O › MIDI OUT (any listed device with a port
+  FMutate can write to; on Android that includes the USB peripheral port a phone in USB MIDI mode exposes to a
+  computer), kept per instance by name in its MIDI settings and opened again (`MobMidi.open_output/3`) whenever
+  they are listed. Only port 0 of a device is opened for now (Android's USB peripheral port has one; a device with
+  more ports gets the first). Sends with `MobMidi.send_raw/4`, stamped with the hardware message's timestamp when a
+  learned control made them (surface events carry none: now). A port that didn't open, or a send that failed, is
+  said on its row. Closing a device is per device in mob_midi, so switching an output off closes it only when it
+  doesn't play the instance and isn't Bluetooth (that would disconnect it), and `FMutate.IO.close/1` tells
+  `FMutate.MIDI`, which opens its output again. **Rule 7**: an Out CC or pitch bend has its own key
+  (`out:cc:<ch>:<n>`, `out:bend:<ch>`: a DAW's CC 74 isn't the synth's, so neither picks up from the other and
+  seeding never reads the synth's value for it); Both keeps the synth's key, since it moves the synth's value too.
+  **Stuck notes**: `FMutate.MIDI` tracks the notes held out; release-all (I/O), leaving the instrument for another
+  screen, quit (before the instance stops) and the process stopping send a note off for each, sustain (CC 64) off
+  on the channels a sustain went out on (a held pedal would keep released notes sounding) and CC 123 on the
+  channels notes went out on (nothing when nothing went out since). A page change lets go only of what the page
+  takes off screen: the dock stays, so the notes the dock's controls send out stay held (as a motion tile's stay
+  on does in the dock), and CC 64 / CC 123 skip their channels. Pitch bend Out can be bound on a firmware without
+  pitch bend (its receiver is the DAW). **Unaffected by** firmware
+  switches, crashes and sound loads: the instance never had them, and the surface's toggles re-sent to a new
+  engine go to the synth only (`synthSide` in `Layout.kt` / `FMutateLayout.swift`). The rate stays the surface's
+  (a value only when it moves by 1/128). Not in scope: the firmware's own MIDI out, MIDI thru, clock to devices
+  (the clock goes out of `FMutate A` only). **To a computer** (checked on a moto e, Android 10, against a Mac):
+  Settings › Connected devices › USB (listed under Currently connected; its page is "USB Preferences", Use USB for:
+  MIDI), or `adb shell svc usb setFunctions midi` (adb stays: `sys.usb.config` becomes `midi,adb`; `midi,adb` as
+  the argument changes nothing). The phone then lists "Android USB Peripheral Port" (one input port) and the Mac a
+  "USB MIDI Device"; an XY pad's X on CC 74 Out and Y on CC 71 Both reached the Mac as 20 CCs (both axes) while
+  the engine got only CC 71. Android lets one app at a time write to that port: another app holding it gives
+  `no_input_port` on the row. **iOS**: the same code paths (`FMutate A` is a CoreMIDI source; opened
+  outputs), but no computer link is set up or checked there yet.
 - **Octave in step**: with a strike-velocity strip, 2 s after a new engine runs (its firmware's own boot) the surface
   presses OCT− and OCT+ together and sets the strip's octave to 0, where the firmware sets its octave to 0 that way
   (`caps.octave_reset_both`: OberVave, ShineOn). Toggles (SUSTAIN, BEND) are sent again at the same moment.
@@ -626,7 +663,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.IO` | MIDI devices (list, hot-plug, open/close, reopen by name), Bluetooth MIDI scan/connect, the virtual ports' clients, audio outputs (one per app) |
 | mob_midi plugin (`MobMidi`, `mob.exs` `:plugins`) | Android MIDI: devices, ports, timestamped bytes in by `enif_send` to the process that opened the port, timestamped sends, hot-plug, BLE-MIDI central, the virtual port's service (`io.mob.midi.MobMidiDeviceService`) |
 | `fmutate/FMutateIO.kt` + `c_src/fm1io.c` (`FMutate.IONif`) | audio output devices as JSON events (mob core has no audio-device list) |
-| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`, `.Mapping`, `.Params`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, pins, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, a controller's line-up, the rule 7 arbiter, clock follow/send/off, which hardware control moved (for I/O) |
+| `FMutate.MIDI` (+ `.Map`, `.Learn`, `.Controls`, `.Automap`, `.Mapping`, `.Params`, `.Out`) | per instance: opens its virtual port and (instance `"a"`, IO's player) the devices IO asks for; MIDI in → instance inputs (channel filter, learned controls, pins, automap, notes → keys, bend if `caps.pitch_bend`), MIDI learn for the editor, a controller's line-up, the rule 7 arbiter, clock follow/send/off, which hardware control moved (for I/O); MIDI out from the surface to its virtual port and the outputs switched on (`outputs/1`: what each was sent) |
 | `fmutate/MidiSurface.kt` + `fm1io` `surface/1` (iOS: `FMutateMidiSurface.swift` + `fm1surface`) | what learned and automapped controls show on the surface (and the hardware control's tag in a knob's bubble), queued and applied once per frame |
 | `AndroidManifest.xml` service + `res/xml/fmutate_midi_a.xml` | the virtual port `FMutate A` (in + out): Android reads a MIDI service's name and ports from the app's manifest, so it is declared here, with mob_midi's class |
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate_tcp_dist`, `fmutate/DistInitArgs.kt`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps; the custom transport (put in the init arguments by `DistInitArgs` before the first launch) keeps its acceptor parked until the allow list and cookies are installed, and pending provider names stay binaries until Allow (`docs/design/protocol.md` §7). On iOS nothing writes that transport, so a release build starts no distribution, and a development build's node is Mob's own (`FMutate.Dist` reports it as already alive) |

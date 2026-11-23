@@ -88,7 +88,8 @@
               "number": { "type": "integer", "minimum": 0, "maximum": 127 },
               "jump": { "type": "boolean", "default": false, "description": "CC only: slider jumps to touch position." },
               "on": { "type": "integer", "minimum": 0, "maximum": 127, "default": 127, "description": "CC on a button: the value sent while pressed or toggled on." },
-              "off": { "type": "integer", "minimum": 0, "maximum": 127, "default": 0, "description": "CC on a button: the value sent on release or toggle off, unless a control of this layout last set this CC (then that value comes back)." } } } }, "additionalProperties": false },
+              "off": { "type": "integer", "minimum": 0, "maximum": 127, "default": 0, "description": "CC on a button: the value sent on release or toggle off, unless a control of this layout last set this CC (then that value comes back)." },
+              "to": { "enum": ["synth", "out", "both"], "default": "synth", "description": "Where the message goes: synth (the running firmware's MIDI in), out (only MIDI out: FMutate's own port and the outputs switched on in I/O), or both." } } } }, "additionalProperties": false },
         { "type": "object", "required": ["page"], "properties": { "page": { "type": "string", "description": "'next', 'prev', or a page id." } }, "additionalProperties": false },
         { "type": "object", "required": ["action"], "properties": { "action": { "enum": ["bend", "note_level"], "description": "bend: while on, keyboard strips bend instead of glissando (as glide = wobble). note_level: each press switches note level (velocity.pressure) for every strike-position keyboard strip of the layout, saved with it; a button or key bound to it lights while note level is on and is greyed out on firmwares without per-note pressure." } }, "additionalProperties": false }
       ]

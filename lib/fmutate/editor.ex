@@ -66,7 +66,7 @@ defmodule FMutate.Editor do
       add_menu: nil,
       # the phone's sensors (FMutate.Motion.sensors/0), asked once, when "Add here" or a motion sheet needs them
       sensors: Map.get(socket.assigns, :sensors),
-      draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false},
+      draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false, dest: "synth"},
       # one-step undo: what the slot does next (`Layouts.undo_state/2`), and the text field typed into last
       undo: Layouts.undo_state(instance, firmware),
       undo_key: nil
@@ -338,6 +338,7 @@ defmodule FMutate.Editor do
   def ui(:tap, {:editor, {:channel, d}}, _v, socket), do: draft(socket, channel: clamp(socket.assigns.draft.channel + d, 1, 16))
   def ui(:tap, {:editor, {:number, d}}, _v, socket), do: draft(socket, number: clamp(socket.assigns.draft.number + d, 0, 127))
   def ui(:change, {:editor, :jump}, v, socket), do: draft(socket, jump: v == true)
+  def ui(:tap, {:editor, {:dest, dest}}, _v, socket) when dest in ["synth", "out", "both"], do: draft(socket, dest: dest)
 
   def ui(:tap, {:editor, {:toggle_target, to}}, _v, socket), do: with_control(socket, &toggle_target(&1, &2, &3, to))
   def ui(:tap, {:editor, {:remove_binding, i}}, _v, socket), do: with_control(socket, &remove_binding(&1, &2, &3, i))
@@ -512,6 +513,8 @@ defmodule FMutate.Editor do
     type = midi_type(kind(c, current_draft_on(c)), c, d)
     midi = if type == "pitch_bend", do: %{"type" => type, "channel" => d.channel}, else: %{"type" => type, "channel" => d.channel, "number" => d.number}
     midi = if type == "cc" and c["type"] == "slider" and d.jump, do: Map.put(midi, "jump", true), else: midi
+    # where it goes: absent is the synth (every layout made before MIDI out)
+    midi = if d.dest == "synth", do: midi, else: Map.put(midi, "to", d.dest)
     toggle_target(layout, c, sub, %{"midi" => midi})
   end
 
@@ -1162,20 +1165,23 @@ defmodule FMutate.Editor do
     type = midi_type(kind, c, d)
     number = if type == "note", do: "#{d.number} · #{note_name(d.number)}", else: "CC #{d.number}"
 
+    # pitch bend needs the firmware to take it, unless it only goes out (a DAW takes it)
+    bend = assigns.bend or d.dest == "out"
+
     if type == "pitch_bend" do
-      no_bend = if assigns.bend, do: [], else: [caption("Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend.", :faint)]
+      no_bend = if bend, do: [], else: [caption("Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend. Out sends it to the MIDI outputs only.", :faint)]
 
       [
-        segmented(types, type, if(assigns.bend, do: [], else: ["pitch_bend"])),
+        segmented(types, type, if(bend, do: [], else: ["pitch_bend"])),
         ~MOB"""
         <Row gap={8}>
           {stepper("Ch", Integer.to_string(d.channel), {:channel, -1}, {:channel, 1})}
         </Row>
         """,
         caption("Centred where the phone is when it engages; assumes the firmware's own bend range (±2 semitones on OberVave and ShineOn).")
-      ] ++ no_bend ++ [button("Bind pitch bend", :bind_midi, bg: c(:raised_hi), weight: :none, disabled: not assigns.bend)]
+      ] ++ no_bend ++ destination(d) ++ [button("Bind pitch bend", :bind_midi, bg: c(:raised_hi), weight: :none, disabled: not bend)]
     else
-      midi_number_inputs(c, d, types, type, number, if(motion_axis and not assigns.bend, do: ["pitch_bend"], else: []))
+      midi_number_inputs(c, d, types, type, number, if(motion_axis and not bend, do: ["pitch_bend"], else: []))
     end
   end
 
@@ -1195,7 +1201,15 @@ defmodule FMutate.Editor do
         {button("+12", {:number, 12}, bg: c(:raised_hi), weight: 0.4)}
       </Row>
       """
-    ] ++ jump ++ [button(if(type == "note", do: "Bind note", else: "Bind CC"), :bind_midi, bg: c(:raised_hi), weight: :none)]
+    ] ++ jump ++ destination(d) ++ [button(if(type == "note", do: "Bind note", else: "Bind CC"), :bind_midi, bg: c(:raised_hi), weight: :none)]
+  end
+
+  # where the bound message goes: the synth, MIDI out, or both (FMutate.MIDI.Out)
+  defp destination(d) do
+    [
+      segmented([{"Synth", {:dest, "synth"}, "synth"}, {"Out", {:dest, "out"}, "out"}, {"Both", {:dest, "both"}, "both"}], d.dest),
+      caption("Out: to FMutate A (apps on this phone) and the MIDI outputs switched on in I/O, not to the synth.")
+    ]
   end
 
   defp page_targets(assigns, c, bound) do
@@ -1389,13 +1403,13 @@ defmodule FMutate.Editor do
   defp describe(%{"pot" => _}), do: "MASTER"
   defp describe(%{"mixer" => "balance"}), do: "BALANCE"
   defp describe(%{"button" => b}), do: button_name(b)
-  defp describe(%{"midi" => %{"type" => "note"} = m}), do: "note #{note_name(m["number"] || 0)} · ch#{m["channel"] || 1}"
+  defp describe(%{"midi" => %{"type" => "note"} = m}), do: "note #{note_name(m["number"] || 0)} · ch#{m["channel"] || 1}" <> dest_name(m)
   defp describe(%{"midi" => %{"type" => "cc"} = m}) do
     values = if Map.has_key?(m, "on") or Map.has_key?(m, "off"), do: " · #{m["on"] || 127}/#{m["off"] || 0}", else: ""
-    "CC#{m["number"] || 0} · ch#{m["channel"] || 1}" <> values <> if(m["jump"], do: " · jump", else: "")
+    "CC#{m["number"] || 0} · ch#{m["channel"] || 1}" <> values <> if(m["jump"], do: " · jump", else: "") <> dest_name(m)
   end
 
-  defp describe(%{"midi" => %{"type" => "pitch_bend"} = m}), do: "pitch bend · ch#{m["channel"] || 1}"
+  defp describe(%{"midi" => %{"type" => "pitch_bend"} = m}), do: "pitch bend · ch#{m["channel"] || 1}" <> dest_name(m)
   defp describe(%{"midi" => m}), do: "MIDI #{m["type"]}"
   defp describe(%{"page" => "next"}), do: "go to: next"
   defp describe(%{"page" => "prev"}), do: "go to: previous"
@@ -1403,6 +1417,10 @@ defmodule FMutate.Editor do
   defp describe(%{"action" => "bend"}), do: "bend keys"
   defp describe(%{"action" => "note_level"}), do: "note level on/off"
   defp describe(other), do: inspect(other)
+
+  defp dest_name(%{"to" => "out"}), do: " · out"
+  defp dest_name(%{"to" => "both"}), do: " · synth + out"
+  defp dest_name(_m), do: ""
 
   defp encoder_name(e) when e in [:algorithm, "algorithm"], do: "ALGO"
   defp encoder_name(e), do: e |> to_string() |> String.upcase()
