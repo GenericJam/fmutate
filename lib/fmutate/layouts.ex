@@ -477,17 +477,21 @@ defmodule FMutate.Layouts do
   defp size_errors(%{"grid" => %{"cols" => cols, "rows" => rows}, "pages" => pages} = layout) do
     cells = cols * rows
     dock = layout["dock"] || []
+    area = fn controls -> Enum.sum_by(controls, &(&1["at"]["w"] * &1["at"]["h"])) end
 
-    page_errors =
-      for p <- pages,
-          all = dock ++ (p["controls"] || []),
-          length(all) > cells or Enum.sum_by(all, &(&1["at"]["w"] * &1["at"]["h"])) > cells,
-          do: "page #{p["name"]} has more controls than its #{cols}×#{rows} grid has room for"
+    if length(pages) > @max_pages do
+      ["it has #{length(pages)} pages; a layout has at most #{@max_pages}"]
+    else
+      # the dock is on every page: counted once
+      {dock_n, dock_area} = {length(dock), area.(dock)}
 
-    cond do
-      length(pages) > @max_pages -> ["it has #{length(pages)} pages; a layout has at most #{@max_pages}"]
-      page_errors != [] -> page_errors
-      true -> nested_errors(dock ++ Enum.flat_map(pages, &(&1["controls"] || [])))
+      page_errors =
+        for p <- pages,
+            controls = p["controls"] || [],
+            dock_n + length(controls) > cells or dock_area + area.(controls) > cells,
+            do: "page #{p["name"]} has more controls than its #{cols}×#{rows} grid has room for"
+
+      if page_errors != [], do: page_errors, else: nested_errors(dock ++ Enum.flat_map(pages, &(&1["controls"] || [])))
     end
   end
 

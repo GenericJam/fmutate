@@ -294,10 +294,10 @@ defmodule FMutate.LayoutLibraryTest do
     test "learned inputs and bindings are bounded per control, before the editing rules", %{dir: dir} do
       cc = %{"on" => "press", "type" => "cc", "channel" => 1, "number" => 1}
       {:ok, many_in} = LayoutEdit.put(Layouts.classic(), "fx", %{"midi_in" => List.duplicate(cc, 10_000)})
-      {t, result} = :timer.tc(fn -> Layouts.import_file(write_file(dir, "in.json", JSON.encode!(many_in))) end)
-      assert {:error, msgs} = result
+      # refused by the size check alone: the editing rules (which would say "drives both") never ran
+      assert {:error, msgs} = Layouts.import_file(write_file(dir, "in.json", JSON.encode!(many_in)))
       assert Enum.any?(msgs, &(&1 =~ "fx has 10000 learned MIDI inputs"))
-      assert t < 2_000_000
+      refute Enum.any?(msgs, &(&1 =~ "drives both"))
 
       {:ok, many_b} = LayoutEdit.put(Layouts.classic(), "fx", %{"bindings" => List.duplicate(%{"to" => %{"key" => 1}}, 500)})
       assert {:error, [msg]} = Layouts.validate(many_b)
