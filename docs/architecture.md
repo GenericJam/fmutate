@@ -115,7 +115,7 @@ flowchart LR
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
 | `native/build_ios.sh`, `native/ios_cartridges.exs` + `.lock`, `c_src/fm1host.c`, `ios/` | iOS: the engines and every published iOS cartridge (pinned by the lock) linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
 | `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex` (presets, the current layout per synth and its undo slot, the layout library), `layouts_sheet.ex` (menu › Layouts), `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -134,6 +134,32 @@ flowchart LR
   kept apart from the maker's text (`about`) so the page never presents one as the other.
 - **Layout fitting** (`Layout.kt` `fit/4`): authoring grid as is when it matches; else keep the authoring grid
   with smaller cells if they stay ≥ 40 dp; else move cells onto the device grid and show "doesn't fit".
+- **Layouts: the working layout, the library, one-step undo** (`FMutate.Layouts`, `FMutate.LayoutsSheet`). Each
+  `{instance, synth}` keeps its working layout (`layouts/<instance>/<firmware>.layout.json`), saved on every edit
+  and riding with the synth as before; without one it is the classic layout. The **library** is separate and
+  global to the phone: `layouts/saved/<UTC time, µs>-<slug>.layout.json`, one file per intentional save ("Save
+  current layout" in menu › Layouts, under a name, default the layout's), never overwritten (the same name twice is
+  two entries), stamped `meta.saved_at` (ISO 8601 UTC, seconds; shown in local time) and keeping `firmware.id` =
+  the synth it was saved from, shown as provenance ("from Shine On"). Listed newest first by `saved_at`. **Load**
+  applies an entry to the running synth through the working layout's own save path (retargeted, validated,
+  atomic); firmware-specific parts (MIDI note/CC bindings, learned `midi_in`) come as they are, which the sheet
+  says once. **Export** copies the entry as saved (never the surface-resolved `layout_json`) to
+  `<cache>/exports/<name>.layout.json` and opens the share sheet (`Mob.Share.file/3`); **Import** picks a file
+  (`Mob.Files.pick/2`; Android can't filter by extension, so the content decides), validates it as
+  `fmutate.layout/1` (schema, then the editing rules; the first message is shown when refused), keeps its
+  `saved_at` (normalised to UTC) or stamps the import time, and adds it to the library without loading it.
+  **Original layout** (the sheet's first row) and Layout settings' "Reset to classic" are one path
+  (`Editor.original/1`, `Layouts.reset/2`: the working file is deleted). **Undo**: before every change to the
+  working layout (each edit-mode commit, Original layout, a load, a new layout from a preset, a note-level toggle)
+  the layout it replaces goes into `layouts/<instance>/<firmware>.undo.json` (`{"format":
+  "fmutate.layout-undo/1", "redo": bool, "layout": layout | null}`, null = there was no working file, so undoing
+  back to it deletes the file again). Undo swaps the working layout with the slot and flips `redo`, so the next
+  press redoes; the slot survives a restart. Typing into a text field commits per keystroke, so consecutive
+  commits from the same field (layout name, page name, a control's label) keep the slot as it was: one step. A
+  change that changes nothing, the temporary `use_classic` fallback (a layout that doesn't fit this phone) and
+  I/O clearing learned controls don't touch it. Undo / Redo is in the edit pill (prop `undo`: "undo" | "redo" |
+  "", event `edit_undo`; on a narrow screen the pill drops its "Editing" label to make room) and in the Layouts
+  sheet.
 - **Immersive** while the instrument shows; orientation locked to the layout's frame, and only while the
   instrument's screen is the one shown: the other screens follow the phone, turning at once to the way it is held.
   On iOS a pushed screen (Library, I/O) keeps the instrument's surface in the window, parked off-screen (Mob's

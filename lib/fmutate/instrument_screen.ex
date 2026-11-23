@@ -1,14 +1,14 @@
 defmodule FMutate.InstrumentScreen do
   @moduledoc """
   The instrument (HANDOFF §4, P1-a): the current layout full screen. The creature button is the only app
-  chrome: tap → menu (Library, Edit layout, I/O, Pair an app), long-press → page grid.
+  chrome: tap → menu (Library, Edit layout, Layouts, I/O, Pair an app), long-press → page grid.
   """
 
   use Mob.Screen
 
   require FMutate.Subscription
 
-  alias FMutate.{Editor, Instance, MIDI, Subscription}
+  alias FMutate.{Editor, Instance, LayoutsSheet, MIDI, Subscription}
 
   @instance "a"
   @editor_events Editor.events()
@@ -26,7 +26,7 @@ defmodule FMutate.InstrumentScreen do
 
     socket =
       socket
-      |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false)
+      |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false, layouts: nil)
       # layout editing: the layout for the running firmware, pages, sheets (FMutate.Editor)
       |> Editor.load(@instance, view.firmware)
 
@@ -44,12 +44,14 @@ defmodule FMutate.InstrumentScreen do
         editing: assigns.editing,
         page: assigns.page,
         toast: assigns.toast,
-        add_menu: Editor.add_menu_json(assigns)
+        add_menu: Editor.add_menu_json(assigns),
+        undo: Editor.undo_prop(assigns)
       )
 
     dismiss = {self(), :menu}
     library = {self(), :library}
     edit = {self(), :edit}
+    layouts = {self(), :layouts}
     io = {self(), :io}
     pair = {self(), :pair}
     # (no pairing on iOS yet: FMutate.Pairing.available?/0)
@@ -63,6 +65,7 @@ defmodule FMutate.InstrumentScreen do
         else: []
 
     editor_sheets = Editor.sheets(assigns)
+    layouts_sheet = LayoutsSheet.sheets(assigns)
 
     ~MOB"""
     <Box background="#14121A" padding={0} fill_width={true} fill_height={true}>
@@ -71,11 +74,13 @@ defmodule FMutate.InstrumentScreen do
         <Column padding={20} gap={10}>
           <Button text="Library" on_tap={library} background="#221F2B" text_color="#F3EFF8" />
           <Button text="Edit layout" on_tap={edit} background="#221F2B" text_color="#F3EFF8" />
+          <Button text="Layouts" on_tap={layouts} background="#221F2B" text_color="#F3EFF8" />
           <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
           {pair_button}
         </Column>
       </Sheet>
       {editor_sheets}
+      {layouts_sheet}
     </Box>
     """
     |> FMutate.Style.native_colors()
@@ -129,6 +134,26 @@ defmodule FMutate.InstrumentScreen do
 
   def handle_info({:tap, :edit}, socket),
     do: {:noreply, Mob.Socket.assign(socket, menu: false, editing: true)}
+
+  # the Layouts sheet (FMutate.LayoutsSheet): the layout library, Original layout, Undo
+  def handle_info({:tap, :layouts}, socket),
+    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> LayoutsSheet.open()}
+
+  def handle_info({kind, {:layouts, _} = tag}, socket) when kind in [:tap, :dismiss],
+    do: {:noreply, LayoutsSheet.event(kind, tag, socket)}
+
+  def handle_info({kind, {:layouts, _} = tag, value}, socket) when kind in [:change, :submit],
+    do: {:noreply, LayoutsSheet.event(kind, tag, value, socket)}
+
+  def handle_info({:files, _, _} = msg, %{assigns: %{picking: :layouts}} = socket),
+    do: {:noreply, LayoutsSheet.picked(socket, msg)}
+
+  def handle_info({:files, :cancelled} = msg, %{assigns: %{picking: :layouts}} = socket),
+    do: {:noreply, LayoutsSheet.picked(socket, msg)}
+
+  # an export's share sheet didn't open (Mob.Share.file/3)
+  def handle_info({:mob_share, :error, reason}, socket),
+    do: {:noreply, Mob.Alert.toast(socket, "Couldn't open the share sheet (#{reason})", duration: :long)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 

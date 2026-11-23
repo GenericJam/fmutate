@@ -8,7 +8,8 @@ defmodule FMutate.InstrumentView do
   pid, which gets `{:instrument, event, payload}` for everything that isn't an input: menu, pages, edit,
   page, use_classic and the edit-mode events of `FMutate.Editor`), `:editing` (edit mode on), `:page` (the
   page id to show), `:toast` (`{seq, text}` or nil: a short message drawn over the surface), `:add_menu`
-  (JSON text of the open "Add here" menu, or "").
+  (JSON text of the open "Add here" menu, or ""), `:undo` (the edit pill's Undo button: "undo", "redo", or ""
+  for none; a press is the event `edit_undo`).
 
   Inputs go to `FMutate.Instance` straight, except absolute moves (they carry the control that made them,
   `"c"`), which go through the instance's rule 7 arbiter (HANDOFF §6) in `FMutate.MIDI`, shared with learned
@@ -23,7 +24,7 @@ defmodule FMutate.InstrumentView do
 
   @impl true
   def mount(props, socket) do
-    keys = [:instance, :layout, :view, :owner, :editing, :page, :toast, :add_menu]
+    keys = [:instance, :layout, :view, :owner, :editing, :page, :toast, :add_menu, :undo]
     {:ok, Mob.Socket.assign(socket, Map.take(props, keys))}
   end
 
@@ -52,7 +53,8 @@ defmodule FMutate.InstrumentView do
       page: assigns[:page] || "",
       toast: toast,
       toast_seq: toast_seq,
-      add_menu: assigns[:add_menu] || ""
+      add_menu: assigns[:add_menu] || "",
+      undo: assigns[:undo] || ""
     }
   end
 
