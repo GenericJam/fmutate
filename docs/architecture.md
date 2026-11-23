@@ -482,20 +482,21 @@ flowchart LR
   clips; at an end only that side's own channel plays (balance, not a mono pan). It is per mixer slot, applied
   before the slots are summed (`mix_source` in `c_src/fm1audio.c`) and ramped over 15 ms like the slot gain (no
   zipper noise, no click): a post-sum balance would be global, and slots are synth instances. `FMutate.Instance`
-  keeps `balance` (in its view and its saved state, written ≤ 0.5 s after a move, at `quit/1` and when it stops),
-  sets it on every slot it holds (both engines of a switch, one still fading out) and on each engine's slot right
-  after `Audio.attach/2` (which centres a slot) and before the gain comes up, so it holds across switches, restarts
-  and crashes. Rule 7 keys it `mixer:balance` like `pot:master`: `FMutate.MIDI.Controls` seeds it from the
-  instance, so a learned hardware knob picks it up instead of jumping it; the surface seeds it once, from the
-  instance's own value (the `balance` prop is nil until the instance answers). "Add here" has a **Balance knob** (a
-  knob bound to it, labelled BALANCE); the binding sheet lists it as "FMutate mixer → BALANCE". `Audio.stats/0` has
-  `peaks` (`[left, right]`) beside `peak` to see it.
+  keeps `balance` (in its view and its saved state, written ≤ 0.5 s after a move, at `quit/1` and at once after it,
+  and when it stops), sets it on every slot it holds (both engines of a switch, one still fading out) and on each
+  engine's slot right after `Audio.attach/2` (which centres a slot) and before the gain comes up, so it holds across
+  switches, restarts and crashes. Rule 7 keys it `mixer:balance` like `pot:master`: `FMutate.MIDI.Controls` seeds
+  it from the instance, so a learned hardware knob picks it up instead of jumping it; the surface seeds it once, from
+  the instance's own value (the `balance` prop is nil until the instance answers). "Add here" has a **Balance knob**
+  (a knob bound to it, labelled BALANCE); the binding sheet lists it as "FMutate mixer → BALANCE". `Audio.stats/0`
+  has `peaks` (`[left, right]`) beside `peak` to see it.
 - **Mixer commands reach the audio callback lock-free** (`struct ramp` in `c_src/fm1audio.c`): `gain/3` and
-  `balance/3` publish one atomic word per ramp (sequence, ramp ms, permille); the callback takes the latest at the
-  start of its next block and alone owns the current value, target and step. The callback never waits on a lock,
-  and a command can't be lost or half applied (a move reversing a ramp used to race the callback's ramp step and
-  could be dropped: ThreadSanitizer showed it for gain too; `test/fmutate/audio_nif_test.exs` runs that check). A
-  command lands at most one callback later (a few ms).
+  `balance/3` put one atomic word per ramp in a mailbox (a set bit, ramp ms, permille; 0 = empty); the callback
+  takes it out (exchange) at the start of its next block, and alone owns the current value, target and step; attach
+  empties it. No counter tells commands apart, so none can be mistaken for one already taken. The callback never
+  waits on a lock, and a command can't be lost or half applied (a move reversing a ramp used to race the callback's
+  ramp step and could be dropped: ThreadSanitizer showed it for gain too; `test/fmutate/audio_nif_test.exs` runs
+  that check). A command lands at most one callback later (a few ms).
 
 ## Inputs: what can lose a press, and how to see it
 

@@ -362,23 +362,37 @@ defmodule FMutate.InstanceTest do
       assert_quit("a", pids)
     end
 
-    test "a balance moved just before quit is saved by then (the app's process is killed after quit, no terminate)" do
-      start_instance()
-      await_state(running?("obervave"))
-      Instance.input("a", {:mixer, :balance, 0.25})
-      assert :ok = Instance.quit("a")
-
-      # killed, as FMutateIO kills the process: the supervisor starts it again from what was saved
-      old = GenServer.whereis(Instance.via("a"))
+    # killed, as FMutateIO kills the app's process after quit (no terminate): the supervisor starts it again
+    defp kill_instance(id) do
+      old = GenServer.whereis(Instance.via(id))
       Process.exit(old, :kill)
 
       Enum.find_value(1..100, fn _ ->
         Process.sleep(10)
-        pid = GenServer.whereis(Instance.via("a"))
+        pid = GenServer.whereis(Instance.via(id))
         pid != nil and pid != old
       end)
+    end
 
+    test "a balance moved just before quit, or after it while the engines end, is saved before the kill" do
+      start_instance()
+      await_state(running?("obervave"))
+      Instance.input("a", {:mixer, :balance, 0.25})
+      assert :ok = Instance.quit("a")
+      kill_instance("a")
       assert Instance.view("a").balance == 0.25
+
+      # (quit and the move queued together: the move lands while the engine is still ending, before quit replies)
+      Enum.find_value(1..300, fn _ -> Instance.view("a").phase == :running || (Process.sleep(10) && false) end)
+      pid = GenServer.whereis(Instance.via("a"))
+      :sys.suspend(pid)
+      spawn(fn -> catch_exit(Instance.quit("a")) end)
+      Process.sleep(50)
+      Instance.input("a", {:mixer, :balance, 0.75})
+      :sys.resume(pid)
+      assert %{phase: :stopped, balance: 0.75} = Instance.view("a")
+      kill_instance("a")
+      assert Instance.view("a").balance == 0.75
     end
 
     test "right after the start, while the engine boots" do

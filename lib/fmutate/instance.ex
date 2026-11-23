@@ -40,7 +40,7 @@ defmodule FMutate.Instance do
   same on every firmware: set on every mixer slot the instance has (a switch's two engines, one still fading
   out), and on each new engine's slot when it attaches, before its gain comes up, so it holds across switches,
   restarts and crashes. Saved with the instance (`balance` in the view) at most half a second after a move, and at
-  `quit/1` (the app's process is killed after it).
+  `quit/1` and at once after it (the app's process is killed after quit, with no terminate).
 
   ## Native builds not on the phone yet
 
@@ -1173,7 +1173,9 @@ defmodule FMutate.Instance do
     engines = Enum.reject([state.live, state.next], &is_nil/1) ++ Map.values(state.stopping)
     for eng <- engines, do: Audio.balance(eng.slot, permille(v), @balance_ramp_ms)
     if not state.balance_unsaved, do: Process.send_after(self(), :save_balance, @balance_save_ms)
-    journal(%{state | balance: v, balance_unsaved: true}, :in, event, :sent)
+    state = journal(%{state | balance: v, balance_unsaved: true}, :in, event, :sent)
+    # (after quit/1 the app's process may be killed at any moment: no waiting)
+    if state.quit, do: flush_balance(state), else: state
   end
 
   defp apply_input(%{live: %{ready: true} = eng} = state, event) do

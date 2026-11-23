@@ -144,7 +144,8 @@ defmodule FMutate.AudioNifTest do
   # on slot 0, attached to a ring at `ring`; each {:render, n} first makes n more frames available. {:stress, n}
   # runs the callback on a thread of its own (64 frames at a time, as fast as it goes) while n gain and balance
   # commands reverse each other's ramps, then sends gain 1000 and balance 0 (15 ms) and lets it run 50 ms more.
-  # Returns the renders as [{left, right}] lists.
+  # {:attach} attaches slot 0 again (a new engine in the same slot); {:noise, n} sends n gain commands to slot 3
+  # (no ring). Returns the renders as [{left, right}] lists.
   defp mix_rig(dir, ring, ops) do
     File.write!(Path.join(dir, "rig.c"), """
     #include <erl_nif.h>
@@ -213,6 +214,8 @@ defmodule FMutate.AudioNifTest do
       Enum.flat_map_reduce(ops, 0, fn
         {:gain, g, ms}, w -> {[], (:ok = FMutate.MixRig.gain(0, g, ms)) && w}
         {:balance, b, ms}, w -> {[], (:ok = FMutate.MixRig.balance(0, b, ms)) && w}
+        {:attach}, w -> {[], (:ok = FMutate.MixRig.attach(0, ring)) && w}
+        {:noise, n}, w -> {[], Enum.each(1..n, fn i -> :ok = FMutate.MixRig.gain(3, rem(i, 1000), 5) end) && w}
         {:stress, n}, w ->
           :ok = FMutate.MixRig.spin()
 
@@ -322,6 +325,34 @@ defmodule FMutate.AudioNifTest do
 
     # the last command lands however the commands met the mixer
     assert stressed == left
+  end
+
+  # (1023 and 1023 other commands first: a command used to be told apart by a 10-bit count of every command, and
+  # these two came out equal to what the slot had when it was attached)
+  test "a slot's first commands after attach land, whatever was sent before (to it or to other slots)", ctx do
+    ring = ring!(ctx.dir, 8)
+    p = @period
+
+    [fresh, right, reattached] =
+      mix_rig(ctx.dir, ring, [
+        {:noise, 1023},
+        {:balance, 0, 0},
+        {:gain, 1000, 0},
+        {:render, p},
+        {:balance, 1000, 0},
+        {:render, p},
+        {:attach},
+        {:noise, 1023},
+        {:balance, 1000, 0},
+        {:gain, 1000, 0},
+        {:render, p}
+      ])
+
+    {l, r} = Enum.unzip(fresh)
+    assert Enum.all?(l, &(&1 > 0)) and Enum.all?(r, &(&1 == 0))
+    {l, r} = Enum.unzip(right)
+    assert Enum.all?(l, &(&1 == 0)) and Enum.all?(r, &(&1 < 0))
+    assert reattached == right
   end
 
   # (a sanitizer can't be loaded into the BEAM on macOS, so this runs the mixer in a plain executable: NIF terms are

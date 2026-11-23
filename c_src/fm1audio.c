@@ -59,11 +59,14 @@ typedef struct {
 } ring_hdr;
 
 /* A ramped value the audio callback owns (current value, target, step per source frame). gain/balance hand it
- * commands through `cmd`, one atomic word (sequence << 22 | ramp ms << 10 | permille): a command is never torn or
- * half taken, the callback never waits, and the last command always lands, even one that reverses a ramp. */
+ * commands through `cmd`, a one-word mailbox (CMD_SET | ramp ms << 10 | permille, or NO_CMD): the callback takes
+ * the word out (exchange) at the start of its block, so a command is never torn, half taken or taken twice, the
+ * latest one always lands (even one that reverses a ramp), and the callback never waits. */
+#define NO_CMD 0u
+#define CMD_SET 0x80000000u
+
 struct ramp {
-    _Atomic uint32_t cmd;                     /* written by the NIF, read by the callback */
-    uint32_t seen;                            /* the last command the callback took */
+    _Atomic uint32_t cmd;                     /* written by the NIF, emptied by the callback */
     float v, target, step;                    /* the callback's alone (attach resets them with no callback on it) */
 };
 
@@ -84,16 +87,16 @@ static _Atomic uint32_t peak[2];             /* per channel (L, R), after soft c
 static int32_t dev_rate = 44100;
 static double rs_pos;                         /* resampler: position in the current source block */
 static float rs_prev[2];                      /* the last source frame of the previous block */
-static _Atomic uint32_t cmd_seq;              /* tells apart two equal commands in a row */
 
 /* ---- mixing (audio thread) */
 
-/* take the ramp's latest command, if there is a new one */
+/* take the ramp's command, if one is waiting */
 static inline void ramp_take(struct ramp *r)
 {
-    uint32_t c = atomic_load_explicit(&r->cmd, memory_order_acquire), ms;
-    if (c == r->seen) return;
-    r->seen = c;
+    uint32_t c, ms;
+    if (atomic_load_explicit(&r->cmd, memory_order_relaxed) == NO_CMD) return;
+    c = atomic_exchange_explicit(&r->cmd, NO_CMD, memory_order_acquire);
+    if (c == NO_CMD) return;
     r->target = (c & 0x3FF) / 1000.0f;
     ms = (c >> 10) & 0xFFF;
     r->step = ms ? (r->target - r->v) / (float)(ms * SRC_RATE / 1000) : 0;
@@ -585,21 +588,21 @@ static void detach_locked(int s)
     slots[s].map_len = 0;
 }
 
-/* a slot's ramp back to `v`, ignoring any command not taken yet (lock held, no callback on the slot) */
+/* a slot's ramp back to `v`, dropping any command not taken yet (lock held, no callback on the slot) */
 static void ramp_reset(struct ramp *r, float v)
 {
-    r->seen = atomic_load(&r->cmd);
+    atomic_store(&r->cmd, NO_CMD);
     r->v = r->target = v;
     r->step = 0;
 }
 
-/* hand the callback a new target (permille 0..1000) and ramp (ms, 0..4095); it takes it at its next block */
+/* hand the callback a new target (permille 0..1000) and ramp (ms, 0..4095); it takes it at its next block, and
+ * a command it hasn't taken yet is replaced */
 static void ramp_command(struct ramp *r, int permille, int ms)
 {
-    uint32_t q = atomic_fetch_add(&cmd_seq, 1) + 1;
     permille = permille < 0 ? 0 : permille > 1000 ? 1000 : permille;
     ms = ms < 0 ? 0 : ms > 4095 ? 4095 : ms;
-    atomic_store_explicit(&r->cmd, (q & 0x3FFu) << 22 | (uint32_t)ms << 10 | (uint32_t)permille, memory_order_release);
+    atomic_store_explicit(&r->cmd, CMD_SET | (uint32_t)ms << 10 | (uint32_t)permille, memory_order_release);
 }
 
 /* attach(slot, path) -> :ok | {:error, reason}; the slot starts silent (gain 0) */
