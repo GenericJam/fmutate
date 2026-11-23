@@ -354,19 +354,18 @@ defmodule FMutate.MIDI do
   def handle_call(:line_up_cancel, _from, state), do: {:reply, :ok, line_up_end(state)}
   def handle_call(msg, _from, state) when msg in [:line_up_skip, :line_up_done], do: {:reply, :ok, state}
 
-  # Layouts.save/3 tells this process (a cast, so it is handled before any later call) to take the new layout
+  # Layouts.save/3 tells this process (a cast, so it is handled before any later call) to take the new layout.
+  # The edit is made to the layout as saved when it is written (Layouts.update/3), not to this process's copy,
+  # so an undo or an edit that lands first isn't lost.
   def handle_call({:clear, what}, _from, state) do
-    edited =
+    edit = fn layout ->
       case what do
-        {:control, cid, sub, on} -> LayoutEdit.clear_midi_in(state.layout, cid, sub, on)
-        {:device, name} -> LayoutEdit.clear_midi_device(state.layout, name)
+        {:control, cid, sub, on} -> LayoutEdit.clear_midi_in(layout, cid, sub, on)
+        {:device, name} -> LayoutEdit.clear_midi_device(layout, name)
       end
-
-    with {:ok, layout} <- edited, :ok <- Layouts.save(state.id, state.firmware, layout) do
-      {:reply, :ok, state}
-    else
-      error -> {:reply, error, state}
     end
+
+    {:reply, Layouts.update(state.id, state.firmware, edit), state}
   end
 
   def handle_call(:latency, _from, state) do

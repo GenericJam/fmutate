@@ -493,11 +493,40 @@ defmodule FMutate.LayoutEdit do
       for {{id, sub, on}, n} <- Enum.frequencies(for {c, s, m} <- ins, do: {c["id"], s, m["on"]}), n > 1,
           do: "#{id}#{if sub, do: " pad #{sub}"} has two MIDI inputs for #{on}"
 
-    shared =
-      for {{a, sa, ma}, i} <- Enum.with_index(ins), {b, sb, mb} <- Enum.drop(ins, i + 1), Learn.overlap?(ma, mb),
-          do: "#{Learn.message(ma)} drives both #{a["id"]}#{if sa, do: " pad #{sa}"} and #{b["id"]}#{if sb, do: " pad #{sb}"}"
+    wrong ++ twice ++ shared_errors(ins)
+  end
 
-    wrong ++ twice ++ shared
+  # each learned input that a hardware message already drives through an earlier one (`Learn.overlap?/2`: same
+  # type, channel and number, and the same device or either one any device): one message per input, found by
+  # grouping on the message, so the work is linear however many inputs a file has
+  defp shared_errors(ins) do
+    {errors, _seen} =
+      Enum.reduce(ins, {[], %{}}, fn {c, s, m} = e, {errors, seen} ->
+        key = {m["type"], m["channel"], m["number"]}
+        g = Map.get(seen, key, %{first: nil, any: nil, devices: %{}})
+
+        earlier =
+          case m["device"] do
+            nil -> g.first
+            device -> g.any || Map.get(g.devices, device)
+          end
+
+        errors =
+          case earlier do
+            nil -> errors
+            {a, sa, _} -> ["#{Learn.message(m)} drives both #{a["id"]}#{if sa, do: " pad #{sa}"} and #{c["id"]}#{if s, do: " pad #{s}"}" | errors]
+          end
+
+        g = %{
+          first: g.first || e,
+          any: g.any || if(m["device"] == nil, do: e),
+          devices: if(m["device"], do: Map.put_new(g.devices, m["device"], e), else: g.devices)
+        }
+
+        {errors, Map.put(seen, key, g)}
+      end)
+
+    Enum.reverse(errors)
   end
 
   ## Pages
@@ -805,14 +834,32 @@ defmodule FMutate.LayoutEdit do
 
         outside = for c <- all, not inside?(layout, c["at"]), do: "#{c["id"]} is off the grid"
 
-        overlap =
-          for {a, i} <- Enum.with_index(all), b <- Enum.drop(all, i + 1), overlaps?(a["at"], b["at"]),
-              do: "#{a["id"]} overlaps #{b["id"]} on #{p["name"]}"
+        overlap = overlap_errors(layout, all, p["name"])
 
         size ++ outside ++ overlap
       end)
 
     Enum.uniq(menu_errors ++ dup_errors ++ page_errors ++ midi_errors(layout))
+  end
+
+  # each control that lands on a cell an earlier one (the dock first) already took: one message per control,
+  # found in time proportional to the cells taken, so a file with thousands of stacked controls can't make
+  # validation quadratic. Cells off the grid aren't counted ("off the grid" says what is wrong there).
+  defp overlap_errors(layout, all, page_name) do
+    %{"cols" => cols, "rows" => rows} = layout["grid"]
+
+    {errors, _taken} =
+      Enum.reduce(all, {[], %{}}, fn c, {errors, taken} ->
+        %{"col" => col, "row" => row, "w" => w, "h" => h} = c["at"]
+        cells = for x <- max(col, 0)..(min(col + w, cols) - 1)//1, y <- max(row, 0)..(min(row + h, rows) - 1)//1, do: {x, y}
+
+        case Enum.find_value(cells, &taken[&1]) do
+          nil -> {errors, Enum.reduce(cells, taken, &Map.put(&2, &1, c["id"]))}
+          owner -> {["#{owner} overlaps #{c["id"]} on #{page_name}" | errors], taken}
+        end
+      end)
+
+    Enum.reverse(errors)
   end
 
   ## Helpers

@@ -9,7 +9,9 @@ defmodule FMutate.Editor do
   It works on the screen's socket. Assigns it owns: `layout` (decoded), `layout_json`, `firmware`,
   `page` (page id shown), `editing`, `sheet`, `toast` (`{seq, text}`), `bend` (firmware takes pitch bend),
   `add_menu` (the open "Add here" menu, see `add_menu_json/1`), `draft` (half-typed MIDI numbers etc.),
-  `learning` (`{control, sub, gesture}` while "Learn from MIDI" waits for a hardware control, else nil).
+  `learning` (`{control, sub, gesture}` while "Learn from MIDI" waits for a hardware control, else nil),
+  `undo` (`:undo`, `:redo` or nil: what the edit pill's Undo button does) and `undo_key` (the text field
+  committed last: typing into the same one again is one undo step, `FMutate.Layouts.change/4`).
 
   MIDI learn: the binding sheet's "Learn from MIDI" arms `FMutate.MIDI.learn/2`; the screen hands the result
   to `learned/2`, which stores the input on the control (`FMutate.LayoutEdit.set_midi_in/4`, taking it from
@@ -31,6 +33,7 @@ defmodule FMutate.Editor do
       edit_open {id, sub, len}     tap on a selected control: its sheet (len: keyboard length in dp)
       use_classic                  the layout doesn't fit this phone: show the classic one
       note_level                   a note-level toggle on the surface was pressed (`LayoutEdit.toggle_note_level/2`)
+      edit_undo                    the edit pill's Undo / Redo (`undo/1`)
 
   The surface gets the layout as it plays it on the running firmware (`LayoutEdit.surface/2`, `layout_json`).
   """
@@ -41,7 +44,7 @@ defmodule FMutate.Editor do
   alias FMutate.MIDI.Learn
 
   @events ~w(edit edit_done page pages edit_move edit_resize edit_to_page edit_cell edit_add_close edit_add
-             edit_add_page edit_open use_classic note_level)
+             edit_add_page edit_open use_classic note_level edit_undo)
 
   @doc "The surface events this module handles."
   def events, do: @events
@@ -63,7 +66,10 @@ defmodule FMutate.Editor do
       add_menu: nil,
       # the phone's sensors (FMutate.Motion.sensors/0), asked once, when "Add here" or a motion sheet needs them
       sensors: Map.get(socket.assigns, :sensors),
-      draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false}
+      draft: %{midi_type: "note", channel: 1, number: 60, tab: :firmware, on: nil, jump: false},
+      # one-step undo: what the slot does next (`Layouts.undo_state/2`), and the text field typed into last
+      undo: Layouts.undo_state(instance, firmware),
+      undo_key: nil
     )
   end
 
@@ -81,7 +87,7 @@ defmodule FMutate.Editor do
   def saved_elsewhere(socket, firmware, layout) do
     if firmware != socket.assigns.firmware or layout == socket.assigns.layout,
       do: socket,
-      else: assign_layout(socket, layout, [])
+      else: assign_layout(socket, layout, undo_key: nil)
   end
 
   @doc "What `FMutate.MIDI.learn/2` heard: `{:ok, midi_in}` (stored on the control being learned) or `:timeout`."
@@ -117,7 +123,8 @@ defmodule FMutate.Editor do
 
   @doc "Handle a surface event (see the module doc)."
   def event("edit", _p, socket), do: Mob.Socket.assign(socket, editing: true)
-  def event("edit_done", _p, socket), do: socket |> stop_learning() |> Mob.Socket.assign(editing: false, sheet: nil, add_menu: nil)
+  def event("edit_done", _p, socket),
+    do: socket |> stop_learning() |> Mob.Socket.assign(editing: false, sheet: nil, add_menu: nil, undo_key: nil)
 
   def event("edit_cell", %{"page" => page, "col" => col, "row" => row}, socket) do
     layout = socket.assigns.layout
@@ -188,6 +195,8 @@ defmodule FMutate.Editor do
     end
   end
 
+  def event("edit_undo", _p, socket), do: undo(socket)
+
   def event(_event, _payload, socket), do: socket
 
   # a phone without an accelerometer can't tilt or shake: the motion control is listed, greyed, with why
@@ -201,19 +210,57 @@ defmodule FMutate.Editor do
     if socket.assigns[:sensors], do: socket, else: Mob.Socket.assign(socket, :sensors, Motion.sensors())
   end
 
-  # apply an edit: save it, or say why not
-  defp commit(socket, {:ok, layout}) do
-    case Layouts.save(socket.assigns.instance, socket.assigns.firmware, layout) do
+  # apply an edit: save it (the layout it replaces kept for undo), or say why not. `key`: the text field it
+  # came from, so that typing into the same field again is one undo step
+  defp commit(socket, result, key \\ nil)
+
+  defp commit(socket, {:ok, layout}, key) do
+    %{instance: instance, firmware: firmware} = socket.assigns
+    coalesce = key != nil and key == socket.assigns[:undo_key]
+
+    case Layouts.change(instance, firmware, layout, coalesce: coalesce) do
       :ok ->
         page = if Enum.any?(layout["pages"], &(&1["id"] == socket.assigns.page)), do: socket.assigns.page, else: hd(layout["pages"])["id"]
-        assign_layout(socket, layout, page: page)
+        assign_layout(socket, layout, page: page, undo: Layouts.undo_state(instance, firmware), undo_key: key)
 
       {:error, [msg | _]} ->
         toast(socket, "Not saved: " <> msg)
     end
   end
 
-  defp commit(socket, {:error, msg}), do: toast(socket, msg)
+  defp commit(socket, {:error, msg}, _key), do: toast(socket, msg)
+
+  @doc """
+  The current layout was replaced as a whole (`FMutate.Layouts.reset/2`, `load_saved/3`, `undo/2`): show it from
+  its first page, with `text` as the toast.
+  """
+  def changed(socket, layout, text) do
+    undo = Layouts.undo_state(socket.assigns.instance, socket.assigns.firmware)
+
+    socket
+    |> assign_layout(layout, page: hd(layout["pages"])["id"], undo: undo, undo_key: nil)
+    |> toast(text)
+  end
+
+  @doc "The classic layout again (the Layouts sheet's \"Original layout\", Layout settings' \"Reset to classic\")."
+  def original(socket) do
+    layout = Layouts.reset(socket.assigns.instance, socket.assigns.firmware)
+    changed(socket, layout, "Original layout loaded · Undo in Layouts or the edit bar")
+  end
+
+  @doc "Undo the last change to the layout, or redo it after an undo (`FMutate.Layouts.undo/2`)."
+  def undo(socket) do
+    was = socket.assigns[:undo]
+
+    case Layouts.undo(socket.assigns.instance, socket.assigns.firmware) do
+      {:ok, layout} -> changed(socket, layout, if(was == :redo, do: "Redone", else: "Undone"))
+      :none -> socket |> Mob.Socket.assign(:undo, nil) |> toast("Nothing to undo")
+      {:error, [msg | _]} -> toast(socket, "Can't undo: " <> msg)
+    end
+  end
+
+  @doc "The surface's Undo button: `\"undo\"`, `\"redo\"` or `\"\"` (none)."
+  def undo_prop(assigns), do: to_string(assigns[:undo] || "")
 
   # the layout and what the surface plays: each strip's note level resolved for this firmware
   defp assign_layout(socket, layout, assigns) do
@@ -264,19 +311,13 @@ defmodule FMutate.Editor do
     end
   end
 
-  def ui(:tap, {:editor, :reset_classic}, _v, socket) do
-    layout = Layouts.reset(socket.assigns.instance, socket.assigns.firmware)
-
-    socket
-    |> assign_layout(layout, page: hd(layout["pages"])["id"], sheet: nil)
-    |> toast("Back to the classic layout")
-  end
+  def ui(:tap, {:editor, :reset_classic}, _v, socket), do: socket |> original() |> Mob.Socket.assign(:sheet, nil)
 
   def ui(kind, {:editor, :layout_name}, name, socket) when kind in [:change, :submit] and is_binary(name),
-    do: commit(socket, LayoutEdit.rename(socket.assigns.layout, name))
+    do: commit(socket, LayoutEdit.rename(socket.assigns.layout, name), :layout_name)
 
   def ui(kind, {:editor, :page_name}, name, socket) when kind in [:change, :submit] and is_binary(name),
-    do: commit(socket, LayoutEdit.rename_page(socket.assigns.layout, socket.assigns.page, name))
+    do: commit(socket, LayoutEdit.rename_page(socket.assigns.layout, socket.assigns.page, name), {:page_name, socket.assigns.page})
 
   def ui(:tap, {:editor, {:frame, frame}}, _v, socket),
     do: commit(socket, LayoutEdit.set_frame(socket.assigns.layout, frame))
@@ -325,7 +366,9 @@ defmodule FMutate.Editor do
     do: with_midi_in(socket, on, &if(mode == "absolute", do: Map.delete(&1, "mode"), else: Map.put(&1, "mode", mode)))
 
   def ui(kind, {:editor, :label}, text, socket) when kind in [:change, :submit] and is_binary(text) do
-    with_control(socket, fn layout, c, sub ->
+    key = with {:control, id, sub, _} <- socket.assigns.sheet, do: {:label, id, sub}
+
+    with_control(socket, key, fn layout, c, sub ->
       text = String.slice(text, 0, if(sub, do: 8, else: 16))
 
       if sub do
@@ -420,10 +463,10 @@ defmodule FMutate.Editor do
 
   defp draft(socket, kv), do: Mob.Socket.assign(socket, :draft, Map.merge(socket.assigns.draft, Map.new(kv)))
 
-  defp with_control(socket, fun) do
+  defp with_control(socket, key \\ nil, fun) do
     with {:control, id, sub, _len} <- socket.assigns.sheet,
          {_, c} <- LayoutEdit.find(socket.assigns.layout, id) do
-      commit(socket, fun.(socket.assigns.layout, c, sub))
+      commit(socket, fun.(socket.assigns.layout, c, sub), key)
     else
       _ -> socket
     end
@@ -527,7 +570,11 @@ defmodule FMutate.Editor do
         :ok
     end
 
-    ui(kind, tag, value, socket)
+    socket = ui(kind, tag, value, socket)
+
+    # typing into a field is one undo step only while nothing else happens: a submit, a tap or a dismissed
+    # sheet ends it, so the next text the player types is a step of its own
+    if kind == :change, do: socket, else: Mob.Socket.assign(socket, :undo_key, nil)
   after
     Process.delete({__MODULE__, :on})
     Process.delete({__MODULE__, :draft})

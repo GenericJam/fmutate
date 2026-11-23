@@ -53,7 +53,8 @@
       "properties": {
         "author": { "type": "string" },
         "made_by": { "enum": ["user", "preset", "app"], "description": "'app' = written by a sibling app over distribution." },
-        "created_at": { "type": "string", "format": "date-time" }
+        "created_at": { "type": "string", "format": "date-time" },
+        "saved_at": { "type": "string", "format": "date-time", "description": "When it was saved to (or imported into) the layout library, UTC." }
       }
     }
   },
