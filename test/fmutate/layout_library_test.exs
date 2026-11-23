@@ -200,5 +200,95 @@ defmodule FMutate.LayoutLibraryTest do
       {:ok, l} = Layouts.undo("a", "obervave")
       assert fx_col(l) == 8
     end
+
+    test "back at the unsaved classic layout, submitting its unchanged name keeps Redo" do
+      :ok = Layouts.change("a", "obervave", custom("obervave"))
+      s = Editor.undo(socket("obervave"))
+      assert s.assigns.undo == :redo
+
+      s = Editor.dispatch(:submit, {:editor, :layout_name}, s.assigns.layout["name"], s)
+      assert s.assigns.undo == :redo
+      refute Layouts.saved?("a", "obervave")
+
+      assert fx_col(Editor.undo(s).assigns.layout) == 11
+    end
+
+    test "closing the sheet ends a typing step: A→B, close, reopen, B→C, Undo gives B" do
+      s = socket("obervave")
+      s = Enum.reduce(["A", "B"], s, &Editor.dispatch(:change, {:editor, :layout_name}, &1, &2))
+      s = Editor.dispatch(:tap, {:editor, :close}, nil, s)
+      s = Editor.dispatch(:tap, {:editor, :settings}, nil, s)
+      s = Editor.dispatch(:change, {:editor, :layout_name}, "C", s)
+
+      assert Editor.undo(s).assigns.layout["name"] == "B"
+    end
+
+    test "an in-place edit (MIDI clearing learned controls) applies to the layout as it is now, after an undo" do
+      :ok = Layouts.change("a", "obervave", custom("obervave"))
+      {:ok, _} = Layouts.undo("a", "obervave")
+
+      # the MIDI process still holds the moved-FX layout; its edit must not bring it back
+      :ok = Layouts.update("a", "obervave", &LayoutEdit.rename(&1, "Cleared"))
+      l = Layouts.current("a", "obervave")
+      assert {fx_col(l), l["name"]} == {8, "Cleared"}
+      assert Layouts.undo_state("a", "obervave") == :redo
+    end
+
+    test "a change cut short between the layout and its undo slot is finished on the next read" do
+      before = custom("obervave")
+      :ok = Layouts.change("a", "obervave", before)
+
+      # Original layout, as a crash right after its journal was written would leave it: the custom layout still
+      # the working file, the slot not yet written
+      journal = %{
+        "format" => "fmutate.layout-journal/1",
+        "working" => nil,
+        "slot" => %{"format" => "fmutate.layout-undo/1", "redo" => false, "layout" => Layouts.current("a", "obervave")}
+      }
+
+      File.write!(FMutate.Paths.layout_journal("a", "obervave"), JSON.encode!(journal))
+
+      assert fx_col(Layouts.current("a", "obervave")) == 8
+      refute Layouts.saved?("a", "obervave")
+      assert {:ok, l} = Layouts.undo("a", "obervave")
+      assert fx_col(l) == 11
+    end
+
+    test "concurrent writers leave a consistent pair: Undo always goes back exactly one change" do
+      names = for i <- 1..20, do: "Name #{i}"
+      base = Layouts.current("a", "obervave")
+
+      names
+      |> Enum.map(fn n -> Task.async(fn -> Layouts.change("a", "obervave", Map.put(base, "name", n)) end) end)
+      |> Enum.each(&(:ok = Task.await(&1)))
+
+      last = Layouts.current("a", "obervave")["name"]
+      {:ok, undone} = Layouts.undo("a", "obervave")
+      assert undone["name"] in ["Classic" | names] and undone["name"] != last
+      {:ok, redone} = Layouts.undo("a", "obervave")
+      assert redone["name"] == last
+    end
+  end
+
+  describe "limits on what a file can ask of the app" do
+    test "a file over 1 MB is refused before it is read whole", %{dir: dir} do
+      big = Map.put(Layouts.classic(), "name", String.duplicate("x", 1_100_000))
+      assert {:error, [msg]} = Layouts.import_file(write_file(dir, "big.json", JSON.encode!(big)))
+      assert msg =~ "1 MB"
+    end
+
+    test "more controls than the grid has cells is refused without checking each pair", %{dir: dir} do
+      stacked = fn n ->
+        controls = for i <- 1..n, do: %{"id" => "k#{i}", "type" => "key", "at" => %{"col" => 5, "row" => 5, "w" => 1, "h" => 1}, "bindings" => []}
+        put_in(Layouts.classic(), ["pages", Access.at(0), "controls"], controls)
+      end
+
+      assert {:error, [msg]} = Layouts.import_file(write_file(dir, "many.json", JSON.encode!(stacked.(5000))))
+      assert msg =~ "more controls than its 14×6 grid has room for"
+
+      # as many as fit by count, all on one cell: one message per control, not one per pair
+      assert {:error, msgs} = Layouts.import_file(write_file(dir, "stacked.json", JSON.encode!(stacked.(80))))
+      assert length(msgs) < 100 and Enum.all?(msgs, &(&1 =~ "overlaps"))
+    end
   end
 end

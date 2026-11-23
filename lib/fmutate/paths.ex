@@ -132,6 +132,10 @@ defmodule FMutate.Paths do
   def layout_undo(instance, firmware_id),
     do: Path.join(ensure(Path.join([data_dir(), "layouts", instance])), "#{firmware_id}.undo.json")
 
+  @doc "The journal of a change to the current layout and its undo slot together (`FMutate.Layouts`)."
+  def layout_journal(instance, firmware_id),
+    do: Path.join(ensure(Path.join([data_dir(), "layouts", instance])), "#{firmware_id}.journal.json")
+
   @doc "The layout library: layouts saved on purpose, for no synth or instance in particular (`FMutate.Layouts.library/0`)."
   def saved_layouts, do: ensure(Path.join([data_dir(), "layouts", "saved"]))
 

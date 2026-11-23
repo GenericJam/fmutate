@@ -239,8 +239,8 @@ final class FMEditMode {
     func down(_ ctx: FMEditCtx, _ pointer: FMPointer, _ p: CGPoint) {
         if op != nil { return } // one finger edits; others are ignored until it lifts
         defer { ctx.frame() }
-        if let b = pill(ctx).first(where: { $0.action != nil && $0.rect.contains(p.x, p.y) }) {
-            b.action?()
+        if let b = pill(ctx).first(where: { $0.act != nil && $0.rect.contains(p.x, p.y) }), let a = b.act {
+            pillAct(ctx, a)
             op = Swallow(pointer)
             return
         }
@@ -377,30 +377,63 @@ final class FMEditMode {
 
     // MARK: the pill
 
+    private enum PillAct { case prev, next, undo, addPage, done }
+
+    // `act` is run with the edit context of the moment (`pillAct`), so a cached pill never holds an old one
     private struct PillPart {
         let text: String
         let rect: FMGrid.Rect
         let style: Int
-        let action: (() -> Void)?
+        let act: PillAct?
     }
+
+    // the pill's parts at the top and at the bottom of the screen, measured once for what they show
+    private struct Pill {
+        let pageName: String, pageIndex: Int, pages: Int, undo: String, wDp: CGFloat, hDp: CGFloat
+        let top: [PillPart], bottom: [PillPart]
+    }
+
+    private var pillCache: Pill?
 
     // style: 0 plain text, 1 mono text, 2 light button, 3 dark "Done" button, 4 arrow; the first part is the pill
     private func pill(_ ctx: FMEditCtx) -> [PillPart] {
+        let geo: Pill
+        if let c = pillCache, c.pageName == ctx.page.name, c.pageIndex == ctx.pageIndex, c.pages == ctx.layout.pages.count,
+           c.undo == ctx.undo, c.wDp == ctx.wDp, c.hDp == ctx.hDp {
+            geo = c
+        } else {
+            geo = measurePill(ctx)
+            pillCache = geo
+        }
+        // at the top, unless the control being edited is under it: then at the bottom. Only the pill's buttons
+        // take touches, so a control under its text can still be tapped (and selecting it moves the pill).
+        let top = geo.top[0].rect
+        let busy: FMGrid.Rect?
+        switch op {
+        case let o as Drag: busy = ctx.grid.rect(o.target)
+        case let o as Resize: busy = ctx.grid.rect(o.target)
+        default: busy = ctx.controls.first { $0.id == selected }.map { rectOf(ctx, $0) }
+        }
+        let clash = busy.map { b in b.x < top.x + top.w && top.x < b.x + b.w && b.y < top.y + top.h && top.y < b.y + b.h } ?? false
+        return clash ? geo.bottom : geo.top
+    }
+
+    private func measurePill(_ ctx: FMEditCtx) -> Pill {
         let n = ctx.layout.pages.count
-        var all: [(String, Int, (() -> Void)?)] = [
+        var all: [(String, Int, PillAct?)] = [
             ("Editing", 0, nil),
-            ("‹", 4, { if ctx.pageIndex > 0 { ctx.setPage(ctx.pageIndex - 1) } }),
+            ("‹", 4, .prev),
             ("\(ctx.page.name) · \(ctx.pageIndex + 1)/\(n)", 1, nil),
-            ("›", 4, { if ctx.pageIndex < n - 1 { ctx.setPage(ctx.pageIndex + 1) } }),
+            ("›", 4, .next),
         ]
         switch ctx.undo {
-        case "undo": all.append(("Undo", 2, { ctx.emit("edit_undo", [:]) }))
-        case "redo": all.append(("Redo", 2, { ctx.emit("edit_undo", [:]) }))
+        case "undo": all.append(("Undo", 2, .undo))
+        case "redo": all.append(("Redo", 2, .undo))
         default: break
         }
-        all.append(("+ Page", 2, { ctx.emit("edit_add_page", [:]) }))
-        all.append(("Done", 3, { ctx.emit("edit_done", [:]) }))
-        func width(_ t: String, _ s: Int) -> CGFloat {
+        all.append(("+ Page", 2, .addPage))
+        all.append(("Done", 3, .done))
+        let widths: [CGFloat] = all.map { t, s, _ in
             switch s {
             case 4: return 32
             case 2, 3: return ink.width(t, 13, mono: false, weight: 700) + 26
@@ -409,31 +442,33 @@ final class FMEditMode {
             }
         }
         let gap: CGFloat = 6
-        func span(_ ps: [(String, Int, (() -> Void)?)]) -> CGFloat {
-            14 + ps.reduce(0) { $0 + width($1.0, $1.1) } + gap * CGFloat(ps.count - 1) + 4
-        }
+        var total = 14 + widths.reduce(0, +) + gap * CGFloat(all.count - 1) + 4
         // a narrow (portrait) screen drops the "Editing" label rather than the buttons
-        let parts = span(all) > ctx.wDp - 16 ? Array(all.dropFirst()) : all
-        let widths: [CGFloat] = parts.map { width($0.0, $0.1) }
-        let total = span(parts)
-        var x = ctx.wDp / 2 - total / 2 + 14
-        // at the top, unless the control being edited is under it: then at the bottom. Only the pill's buttons
-        // take touches, so a control under its text can still be tapped (and selecting it moves the pill).
-        let top = FMGrid.Rect(x: ctx.wDp / 2 - total / 2, y: 6, w: total, h: 44)
-        let busy: FMGrid.Rect?
-        switch op {
-        case let o as Drag: busy = ctx.grid.rect(o.target)
-        case let o as Resize: busy = ctx.grid.rect(o.target)
-        default: busy = ctx.controls.first { $0.id == selected }.map { rectOf(ctx, $0) }
+        let from = total > ctx.wDp - 16 ? 1 : 0
+        if from == 1 { total -= widths[0] + gap }
+        func at(_ y: CGFloat) -> [PillPart] {
+            var out = [PillPart(text: "", rect: FMGrid.Rect(x: ctx.wDp / 2 - total / 2, y: y, w: total, h: 44), style: -1, act: nil)]
+            out.reserveCapacity(all.count + 1 - from)
+            var x = ctx.wDp / 2 - total / 2 + 14
+            for i in from..<all.count {
+                let (t, s, a) = all[i]
+                out.append(PillPart(text: t, rect: FMGrid.Rect(x: x, y: y + 4, w: widths[i], h: 36), style: s, act: a))
+                x += widths[i] + gap
+            }
+            return out
         }
-        let clash = busy.map { b in b.x < top.x + top.w && top.x < b.x + b.w && b.y < top.y + top.h && top.y < b.y + b.h } ?? false
-        let y: CGFloat = clash ? ctx.hDp - 50 : 6
-        var out = [PillPart(text: "", rect: FMGrid.Rect(x: ctx.wDp / 2 - total / 2, y: y, w: total, h: 44), style: -1, action: nil)]
-        for (i, (t, s, a)) in parts.enumerated() {
-            out.append(PillPart(text: t, rect: FMGrid.Rect(x: x, y: y + 4, w: widths[i], h: 36), style: s, action: a))
-            x += widths[i] + gap
+        return Pill(pageName: ctx.page.name, pageIndex: ctx.pageIndex, pages: n, undo: ctx.undo, wDp: ctx.wDp, hDp: ctx.hDp,
+                    top: at(6), bottom: at(ctx.hDp - 50))
+    }
+
+    private func pillAct(_ ctx: FMEditCtx, _ a: PillAct) {
+        switch a {
+        case .prev: if ctx.pageIndex > 0 { ctx.setPage(ctx.pageIndex - 1) }
+        case .next: if ctx.pageIndex < ctx.layout.pages.count - 1 { ctx.setPage(ctx.pageIndex + 1) }
+        case .undo: ctx.emit("edit_undo", [:])
+        case .addPage: ctx.emit("edit_add_page", [:])
+        case .done: ctx.emit("edit_done", [:])
         }
-        return out
     }
 
     // MARK: the "Add here" menu

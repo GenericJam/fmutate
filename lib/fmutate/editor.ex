@@ -87,7 +87,7 @@ defmodule FMutate.Editor do
   def saved_elsewhere(socket, firmware, layout) do
     if firmware != socket.assigns.firmware or layout == socket.assigns.layout,
       do: socket,
-      else: assign_layout(socket, layout, [])
+      else: assign_layout(socket, layout, undo_key: nil)
   end
 
   @doc "What `FMutate.MIDI.learn/2` heard: `{:ok, midi_in}` (stored on the control being learned) or `:timeout`."
@@ -123,7 +123,8 @@ defmodule FMutate.Editor do
 
   @doc "Handle a surface event (see the module doc)."
   def event("edit", _p, socket), do: Mob.Socket.assign(socket, editing: true)
-  def event("edit_done", _p, socket), do: socket |> stop_learning() |> Mob.Socket.assign(editing: false, sheet: nil, add_menu: nil)
+  def event("edit_done", _p, socket),
+    do: socket |> stop_learning() |> Mob.Socket.assign(editing: false, sheet: nil, add_menu: nil, undo_key: nil)
 
   def event("edit_cell", %{"page" => page, "col" => col, "row" => row}, socket) do
     layout = socket.assigns.layout
@@ -569,7 +570,11 @@ defmodule FMutate.Editor do
         :ok
     end
 
-    ui(kind, tag, value, socket)
+    socket = ui(kind, tag, value, socket)
+
+    # typing into a field is one undo step only while nothing else happens: a submit, a tap or a dismissed
+    # sheet ends it, so the next text the player types is a step of its own
+    if kind == :change, do: socket, else: Mob.Socket.assign(socket, :undo_key, nil)
   after
     Process.delete({__MODULE__, :on})
     Process.delete({__MODULE__, :draft})

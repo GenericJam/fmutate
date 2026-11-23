@@ -58,12 +58,14 @@ defmodule FMutate.Layouts do
   that no longer validates (hand-edited, older app) is ignored rather than drawn wrong.
   """
   @spec current(String.t(), String.t() | nil) :: layout
-  def current(instance, firmware_id), do: working(instance, firmware_id) || for_this(classic(), firmware_id)
+  def current(_instance, nil), do: classic()
+  def current(instance, firmware_id), do: locked(instance, firmware_id, fn -> effective(instance, firmware_id) end)
 
-  # the saved current layout, or nil (none, or one that no longer validates)
+  defp effective(instance, firmware_id), do: working(instance, firmware_id) || for_this(classic(), firmware_id)
+
+  # the saved current layout, or nil (none, or one that no longer validates); under the lock
   defp working(instance, firmware_id) do
-    with id when is_binary(id) <- firmware_id,
-         {:ok, json} <- File.read(Paths.layout(instance, id)),
+    with {:ok, json} <- File.read(Paths.layout(instance, firmware_id)),
          {:ok, data} <- decode(json),
          :ok <- validate(data) do
       data
@@ -73,23 +75,34 @@ defmodule FMutate.Layouts do
   end
 
   @doc "Whether the player has a saved layout for this firmware (else the instrument shows classic)."
-  def saved?(instance, firmware_id), do: File.exists?(Paths.layout(instance, firmware_id))
+  def saved?(instance, firmware_id),
+    do: locked(instance, firmware_id, fn -> File.exists?(Paths.layout(instance, firmware_id)) end)
 
   @doc """
-  Validate and save the current layout of an instance for a firmware. The instance's `FMutate.MIDI` takes
-  its learned MIDI controls from it.
+  Validate and save the current layout of an instance for a firmware, leaving the undo slot as it is. The
+  instance's `FMutate.MIDI` takes its learned MIDI controls from it.
   """
   @spec save(String.t(), String.t(), layout) :: :ok | {:error, [String.t()]}
   def save(instance, firmware_id, layout) do
     layout = for_this(layout, firmware_id)
 
-    with :ok <- validate(layout) do
-      path = Paths.layout(instance, firmware_id)
-      tmp = path <> ".tmp"
-      File.write!(tmp, encode(layout))
-      File.rename!(tmp, path)
-      FMutate.MIDI.layout_saved(instance, firmware_id, layout)
-    end
+    with :ok <- validate(layout),
+         do: locked(instance, firmware_id, fn -> commit(instance, firmware_id, {:put, layout}, :keep) end)
+  end
+
+  @doc """
+  Edit the current layout in place, like `save/3`, but with `fun` applied to the layout as it is when the edit
+  happens (a writer that holds an older copy, such as `FMutate.MIDI` clearing learned controls, can't undo
+  someone else's change). `fun` returns `{:ok, layout}` or an error, which is returned as it is.
+  """
+  @spec update(String.t(), String.t(), (layout -> {:ok, layout} | term())) :: :ok | term()
+  def update(instance, firmware_id, fun) do
+    locked(instance, firmware_id, fn ->
+      with {:ok, layout} <- fun.(effective(instance, firmware_id)),
+           layout = for_this(layout, firmware_id),
+           :ok <- validate(layout),
+           do: commit(instance, firmware_id, {:put, layout}, :keep)
+    end)
   end
 
   @doc """
@@ -97,15 +110,14 @@ defmodule FMutate.Layouts do
   replaces goes into the undo slot. Returns the classic layout.
   """
   def reset(instance, firmware_id) do
-    before = working(instance, firmware_id)
-    forget(instance, firmware_id)
-    keep_undo(instance, firmware_id, before, nil, [])
-    current(instance, firmware_id)
-  end
+    locked(instance, firmware_id, fn ->
+      if File.exists?(Paths.layout(instance, firmware_id)) do
+        slot = with %{} = before <- working(instance, firmware_id), do: {:put, slot(false, before)}
+        commit(instance, firmware_id, :delete, slot || :keep)
+      end
 
-  defp forget(instance, firmware_id) do
-    _ = File.rm(Paths.layout(instance, firmware_id))
-    FMutate.MIDI.layout_saved(instance, firmware_id, current(instance, firmware_id))
+      effective(instance, firmware_id)
+    end)
   end
 
   ## One-step undo
@@ -113,27 +125,33 @@ defmodule FMutate.Layouts do
   # The undo slot (`Paths.layout_undo/2`) holds the current layout as it was before the last change, or nil
   # when there was no saved one (the classic layout): `{"format": "fmutate.layout-undo/1", "redo": bool,
   # "layout": layout | null}`. Undo swaps it with the current layout, so the next press redoes ("redo": true).
+  #
+  # The working file and the slot change together: such a change is first written whole to a journal
+  # (`Paths.layout_journal/2`, atomically), then applied, then the journal goes; whoever takes the lock next
+  # finishes a journal a crash left behind, so the pair is never half changed. Every reader and writer of the
+  # pair (this module's functions, `FMutate.MIDI` through `update/3`) holds a lock per {instance, firmware}.
 
   @doc """
   Make `layout` the current layout of an instance for a firmware (an edit, a new layout from a preset, a load
   from the library): saved as `save/3` does, with the layout it replaces kept in the undo slot. `coalesce:
   true` (the same text field typed into again) keeps the slot as it is, so a name typed letter by letter is one
-  step. A change that changes nothing leaves the slot alone.
+  step. A layout equal to the current one (the classic one included, when nothing is saved) changes nothing.
   """
   @spec change(String.t(), String.t(), layout, keyword()) :: :ok | {:error, [String.t()]}
   def change(instance, firmware_id, layout, opts \\ []) do
-    before = working(instance, firmware_id)
+    layout = for_this(layout, firmware_id)
 
-    with :ok <- save(instance, firmware_id, layout),
-         do: keep_undo(instance, firmware_id, before, for_this(layout, firmware_id), opts)
-  end
+    with :ok <- validate(layout) do
+      locked(instance, firmware_id, fn ->
+        before = working(instance, firmware_id)
 
-  defp keep_undo(_instance, _firmware_id, same, same, _opts), do: :ok
-
-  defp keep_undo(instance, firmware_id, before, _now, opts) do
-    if opts[:coalesce] && undo_state(instance, firmware_id) == :undo,
-      do: :ok,
-      else: write_slot(instance, firmware_id, false, before)
+        cond do
+          layout == (before || for_this(classic(), firmware_id)) -> :ok
+          opts[:coalesce] && match?({:ok, false, _}, read_slot(instance, firmware_id)) -> commit(instance, firmware_id, {:put, layout}, :keep)
+          true -> commit(instance, firmware_id, {:put, layout}, {:put, slot(false, before)})
+        end
+      end)
+    end
   end
 
   @doc "What the undo slot does next: `:undo`, `:redo`, or nil (nothing to undo)."
@@ -141,7 +159,7 @@ defmodule FMutate.Layouts do
   def undo_state(_instance, nil), do: nil
 
   def undo_state(instance, firmware_id) do
-    case read_slot(instance, firmware_id) do
+    case locked(instance, firmware_id, fn -> read_slot(instance, firmware_id) end) do
       {:ok, true, _} -> :redo
       {:ok, false, _} -> :undo
       :none -> nil
@@ -155,16 +173,18 @@ defmodule FMutate.Layouts do
   """
   @spec undo(String.t(), String.t()) :: {:ok, layout} | :none | {:error, [String.t()]}
   def undo(instance, firmware_id) do
-    with {:ok, redo, layout} <- read_slot(instance, firmware_id) do
-      before = working(instance, firmware_id)
-      result = if layout, do: save(instance, firmware_id, layout), else: forget(instance, firmware_id)
-
-      with :ok <- result do
-        write_slot(instance, firmware_id, not redo, before)
-        {:ok, current(instance, firmware_id)}
+    locked(instance, firmware_id, fn ->
+      with {:ok, redo, layout} <- read_slot(instance, firmware_id),
+           target = layout && for_this(layout, firmware_id),
+           :ok <- if(target, do: validate(target), else: :ok) do
+        before = working(instance, firmware_id)
+        commit(instance, firmware_id, if(target, do: {:put, target}, else: :delete), {:put, slot(not redo, before)})
+        {:ok, effective(instance, firmware_id)}
       end
-    end
+    end)
   end
+
+  defp slot(redo, layout), do: %{"format" => "fmutate.layout-undo/1", "redo" => redo, "layout" => layout}
 
   defp read_slot(instance, firmware_id) do
     with {:ok, json} <- File.read(Paths.layout_undo(instance, firmware_id)),
@@ -176,9 +196,73 @@ defmodule FMutate.Layouts do
     end
   end
 
-  defp write_slot(instance, firmware_id, redo, layout) do
-    slot = %{"format" => "fmutate.layout-undo/1", "redo" => redo, "layout" => layout}
-    write_atomic(Paths.layout_undo(instance, firmware_id), JSON.encode!(slot))
+  # one change to the pair: `working` {:put, layout} | :delete, `slot` {:put, slot} | :keep. Under the lock.
+  defp commit(instance, firmware_id, working, slot) do
+    journal = Paths.layout_journal(instance, firmware_id)
+
+    if slot != :keep do
+      entry = %{"format" => "fmutate.layout-journal/1", "working" => put_or_nil(working), "slot" => elem(slot, 1)}
+      write_atomic(journal, JSON.encode!(entry))
+    end
+
+    apply_change(instance, firmware_id, working, slot)
+    _ = File.rm(journal)
+
+    now = with {:put, layout} <- working, do: layout
+    FMutate.MIDI.layout_saved(instance, firmware_id, if(now == :delete, do: for_this(classic(), firmware_id), else: now))
+  end
+
+  defp put_or_nil({:put, layout}), do: layout
+  defp put_or_nil(:delete), do: nil
+
+  defp apply_change(instance, firmware_id, working, slot) do
+    case working do
+      {:put, layout} -> write_atomic(Paths.layout(instance, firmware_id), encode(layout))
+      :delete -> _ = File.rm(Paths.layout(instance, firmware_id))
+    end
+
+    with {:put, s} <- slot, do: write_atomic(Paths.layout_undo(instance, firmware_id), JSON.encode!(s))
+  end
+
+  # a journal left by a crash: finish what it says (or drop it if it isn't one)
+  defp recover(instance, firmware_id) do
+    journal = Paths.layout_journal(instance, firmware_id)
+
+    with {:ok, json} <- File.read(journal) do
+      case JSON.decode(json) do
+        {:ok, %{"format" => "fmutate.layout-journal/1", "working" => w, "slot" => %{} = s}} when is_map(w) or is_nil(w) ->
+          apply_change(instance, firmware_id, if(w, do: {:put, w}, else: :delete), {:put, s})
+
+        _ ->
+          :ok
+      end
+
+      File.rm(journal)
+    end
+  end
+
+  # one writer (or reader) of an {instance, firmware}'s layout pair at a time; nested calls run inside the outer one
+  defp locked(instance, firmware_id, fun) do
+    key = {__MODULE__, instance, firmware_id}
+
+    if Process.get(key) do
+      fun.()
+    else
+      :global.trans(
+        {key, self()},
+        fn ->
+          Process.put(key, true)
+
+          try do
+            recover(instance, firmware_id)
+            fun.()
+          after
+            Process.delete(key)
+          end
+        end,
+        [node()]
+      )
+    end
   end
 
   defp write_atomic(path, data) do
@@ -209,7 +293,7 @@ defmodule FMutate.Layouts do
     |> Path.join("*.layout.json")
     |> Path.wildcard()
     |> Enum.flat_map(fn path ->
-      with {:ok, json} <- File.read(path), {:ok, l} <- decode(json) do
+      with {:ok, json} <- read_limited(path), {:ok, l} <- decode(json) do
         [%{file: Path.basename(path), name: l["name"], saved_at: get_in(l, ["meta", "saved_at"]) || "", firmware: get_in(l, ["firmware", "id"])}]
       else
         _ -> []
@@ -228,13 +312,17 @@ defmodule FMutate.Layouts do
     layout |> Map.put("name", name) |> put_saved_at(timestamp()) |> add_to_library()
   end
 
+  @max_bytes 1_000_000
+  @max_pages 64
+
   @doc """
-  Import a layout file into the library (it isn't loaded): it must be a valid `fmutate.layout/1`. It keeps its
-  `meta.saved_at` (else it is stamped now) and its `firmware`.
+  Import a layout file into the library (it isn't loaded): it must be a valid `fmutate.layout/1` of at most
+  1 MB. It keeps its `meta.saved_at` (else it is stamped now) and its `firmware`. Reads the file: call it from a
+  task, not from a screen.
   """
   @spec import_file(Path.t()) :: {:ok, entry} | {:error, [String.t()]}
   def import_file(path) do
-    with {:ok, json} <- File.read(path),
+    with {:ok, json} <- read_limited(path),
          {:ok, layout} <- decode(json),
          :ok <- validate(layout) do
       saved_at =
@@ -255,7 +343,7 @@ defmodule FMutate.Layouts do
   @doc "A saved layout (`entry.file`), validated."
   @spec read_saved(String.t()) :: {:ok, layout} | {:error, [String.t()]}
   def read_saved(file) do
-    with {:ok, json} <- File.read(saved_path(file)),
+    with {:ok, json} <- read_limited(saved_path(file)),
          {:ok, layout} <- decode(json),
          :ok <- validate(layout) do
       {:ok, layout}
@@ -343,18 +431,48 @@ defmodule FMutate.Layouts do
   defp for_this(layout, nil), do: layout
   defp for_this(layout, firmware_id), do: Map.put(layout, "firmware", %{"id" => firmware_id})
 
-  @doc "`:ok`, or `{:error, messages}`: the schema first, then the editing rules."
+  @doc """
+  `:ok`, or `{:error, messages}`: the schema first, then the size (at most #{@max_pages} pages, no page with more
+  controls, or more cells of them, than its grid has cells: so the editing rules' work stays bounded for any
+  file), then the editing rules.
+  """
   @spec validate(term()) :: :ok | {:error, [String.t()]}
   def validate(layout) do
-    case Schema.validate(layout) do
-      {:error, errors} ->
+    with {:schema, :ok} <- {:schema, Schema.validate(layout)},
+         [] <- size_errors(layout),
+         [] <- LayoutEdit.semantic_errors(layout) do
+      :ok
+    else
+      {:schema, {:error, errors}} ->
         {:error, Enum.map(errors, fn {path, msg} -> "#{if path == "", do: "/", else: path}: #{msg}" end)}
 
-      :ok ->
-        case LayoutEdit.semantic_errors(layout) do
-          [] -> :ok
-          errors -> {:error, errors}
-        end
+      errors ->
+        {:error, errors}
+    end
+  end
+
+  defp size_errors(%{"grid" => %{"cols" => cols, "rows" => rows}, "pages" => pages} = layout) do
+    cells = cols * rows
+    dock = layout["dock"] || []
+
+    if length(pages) > @max_pages do
+      ["it has #{length(pages)} pages; a layout has at most #{@max_pages}"]
+    else
+      for p <- pages,
+          all = dock ++ (p["controls"] || []),
+          length(all) > cells or Enum.sum_by(all, &(&1["at"]["w"] * &1["at"]["h"])) > cells,
+          do: "page #{p["name"]} has more controls than its #{cols}×#{rows} grid has room for"
+    end
+  end
+
+  # at most @max_bytes of a file, else a refusal that says so
+  defp read_limited(path) do
+    case File.open(path, [:read, :binary], &IO.binread(&1, @max_bytes + 1)) do
+      {:ok, data} when is_binary(data) and byte_size(data) > @max_bytes -> {:error, ["it's too big: a layout file is at most 1 MB"]}
+      {:ok, data} when is_binary(data) -> {:ok, data}
+      {:ok, :eof} -> {:ok, ""}
+      {:ok, {:error, reason}} -> {:error, reason}
+      error -> error
     end
   end
 

@@ -805,14 +805,32 @@ defmodule FMutate.LayoutEdit do
 
         outside = for c <- all, not inside?(layout, c["at"]), do: "#{c["id"]} is off the grid"
 
-        overlap =
-          for {a, i} <- Enum.with_index(all), b <- Enum.drop(all, i + 1), overlaps?(a["at"], b["at"]),
-              do: "#{a["id"]} overlaps #{b["id"]} on #{p["name"]}"
+        overlap = overlap_errors(layout, all, p["name"])
 
         size ++ outside ++ overlap
       end)
 
     Enum.uniq(menu_errors ++ dup_errors ++ page_errors ++ midi_errors(layout))
+  end
+
+  # each control that lands on a cell an earlier one (the dock first) already took: one message per control,
+  # found in time proportional to the cells taken, so a file with thousands of stacked controls can't make
+  # validation quadratic. Cells off the grid aren't counted ("off the grid" says what is wrong there).
+  defp overlap_errors(layout, all, page_name) do
+    %{"cols" => cols, "rows" => rows} = layout["grid"]
+
+    {errors, _taken} =
+      Enum.reduce(all, {[], %{}}, fn c, {errors, taken} ->
+        %{"col" => col, "row" => row, "w" => w, "h" => h} = c["at"]
+        cells = for x <- max(col, 0)..(min(col + w, cols) - 1)//1, y <- max(row, 0)..(min(row + h, rows) - 1)//1, do: {x, y}
+
+        case Enum.find_value(cells, &taken[&1]) do
+          nil -> {errors, Enum.reduce(cells, taken, &Map.put(&2, &1, c["id"]))}
+          owner -> {["#{owner} overlaps #{c["id"]} on #{page_name}" | errors], taken}
+        end
+      end)
+
+    Enum.reverse(errors)
   end
 
   ## Helpers

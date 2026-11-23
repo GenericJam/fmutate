@@ -222,8 +222,8 @@ class EditMode {
 
     fun down(ctx: EditCtx, pointer: Long, p: Offset) {
         if (op != null) return // one finger edits; others are ignored until it lifts
-        pill(ctx).firstOrNull { it.action != null && it.rect.contains(p.x, p.y) }?.let { b ->
-            b.action!!.invoke()
+        pill(ctx).firstOrNull { it.act != null && it.rect.contains(p.x, p.y) }?.let { b ->
+            pillAct(ctx, b.act!!)
             op = Op.Swallow(pointer)
             return
         }
@@ -362,53 +362,83 @@ class EditMode {
 
     // ── the pill ──────────────────────────────────────────────────────────
 
-    private class PillPart(val text: String, val rect: Grid.Rect, val style: Int, val action: (() -> Unit)?)
+    private enum class PillAct { PREV, NEXT, UNDO, ADD_PAGE, DONE }
 
-    // style: 0 plain text, 1 mono text, 2 light button, 3 dark "Done" button, 4 arrow
+    // `act` is run with the edit context of the moment (`pillAct`), so a cached pill never holds an old one
+    private class PillPart(val text: String, val rect: Grid.Rect, val style: Int, val act: PillAct?)
+
+    // the pill's parts at the top and at the bottom of the screen, measured once for what they show
+    private class Pill(
+        val pageName: String, val pageIndex: Int, val pages: Int, val undo: String, val wDp: Float, val hDp: Float,
+        val top: List<PillPart>, val bottom: List<PillPart>,
+    )
+
+    private var pillCache: Pill? = null
+
+    // style: 0 plain text, 1 mono text, 2 light button, 3 dark "Done" button, 4 arrow; the first part is the pill
     private fun pill(ctx: EditCtx): List<PillPart> {
-        val n = ctx.layout.pages.size
-        val undo = when (ctx.undo) {
-            "undo" -> listOf(Triple("Undo", 2, { ctx.emit("edit_undo", emptyMap()) }))
-            "redo" -> listOf(Triple("Redo", 2, { ctx.emit("edit_undo", emptyMap()) }))
-            else -> emptyList()
-        }
-        val all = listOf(
-            Triple("Editing", 0, null),
-            Triple("‹", 4, { if (ctx.pageIndex > 0) ctx.setPage(ctx.pageIndex - 1) }),
-            Triple("${ctx.page.name} · ${ctx.pageIndex + 1}/$n", 1, null),
-            Triple("›", 4, { if (ctx.pageIndex < n - 1) ctx.setPage(ctx.pageIndex + 1) }),
-        ) + undo + listOf(
-            Triple("+ Page", 2, { ctx.emit("edit_add_page", emptyMap()) }),
-            Triple("Done", 3, { ctx.emit("edit_done", emptyMap()) }),
-        )
-        fun width(t: String, s: Int) = when (s) {
-            4 -> 32f
-            2, 3 -> ink.width(t, 13f, true, false) + 26f
-            1 -> ink.width(t, 12f, true, true) + 4f
-            else -> ink.width(t, 13f, true, false) + 4f
-        }
-        val gap = 6f
-        fun total(ps: List<Triple<String, Int, (() -> Unit)?>>) = 14f + ps.sumOf { (t, s, _) -> width(t, s).toDouble() }.toFloat() + gap * (ps.size - 1) + 4f
-        // a narrow (portrait) screen drops the "Editing" label rather than the buttons
-        val parts = if (total(all) > ctx.wDp - 16f) all.drop(1) else all
-        val widths = parts.map { (t, s, _) -> width(t, s) }
-        val total = total(parts)
-        var x = ctx.wDp / 2 - total / 2 + 14f
+        val c = pillCache
+        val geo = if (c != null && c.pageName == ctx.page.name && c.pageIndex == ctx.pageIndex &&
+            c.pages == ctx.layout.pages.size && c.undo == ctx.undo && c.wDp == ctx.wDp && c.hDp == ctx.hDp
+        ) c else measurePill(ctx).also { pillCache = it }
         // at the top, unless the control being edited is under it: then at the bottom. Only the pill's buttons
         // take touches, so a control under its text can still be tapped (and selecting it moves the pill).
-        val top = Grid.Rect(ctx.wDp / 2 - total / 2, 6f, total, 44f)
+        val top = geo.top[0].rect
         val busy = when (val o = op) {
             is Op.Drag -> ctx.grid.rect(o.target)
             is Op.Resize -> ctx.grid.rect(o.target)
             else -> ctx.controls.firstOrNull { it.id == selected }?.let { rectOf(ctx, it) }
         }
         val clash = busy != null && busy.x < top.x + top.w && top.x < busy.x + busy.w && busy.y < top.y + top.h && top.y < busy.y + busy.h
-        val y = if (clash) ctx.hDp - 50f else 6f
-        return parts.mapIndexed { i, (t, s, a) ->
-            val r = Grid.Rect(x, y + 4, widths[i], 36f)
-            x += widths[i] + gap
-            PillPart(t, r, s, a)
-        }.let { listOf(PillPart("", Grid.Rect(ctx.wDp / 2 - total / 2, y, total, 44f), -1, null)) + it }
+        return if (clash) geo.bottom else geo.top
+    }
+
+    private fun measurePill(ctx: EditCtx): Pill {
+        val n = ctx.layout.pages.size
+        val all = ArrayList<Triple<String, Int, PillAct?>>(7)
+        all.add(Triple("Editing", 0, null))
+        all.add(Triple("‹", 4, PillAct.PREV))
+        all.add(Triple("${ctx.page.name} · ${ctx.pageIndex + 1}/$n", 1, null))
+        all.add(Triple("›", 4, PillAct.NEXT))
+        when (ctx.undo) {
+            "undo" -> all.add(Triple("Undo", 2, PillAct.UNDO))
+            "redo" -> all.add(Triple("Redo", 2, PillAct.UNDO))
+        }
+        all.add(Triple("+ Page", 2, PillAct.ADD_PAGE))
+        all.add(Triple("Done", 3, PillAct.DONE))
+        val widths = all.map { (t, s, _) ->
+            when (s) {
+                4 -> 32f
+                2, 3 -> ink.width(t, 13f, true, false) + 26f
+                1 -> ink.width(t, 12f, true, true) + 4f
+                else -> ink.width(t, 13f, true, false) + 4f
+            }
+        }
+        val gap = 6f
+        var total = 14f + widths.sum() + gap * (all.size - 1) + 4f
+        // a narrow (portrait) screen drops the "Editing" label rather than the buttons
+        val from = if (total > ctx.wDp - 16f) 1 else 0
+        if (from == 1) total -= widths[0] + gap
+        fun at(y: Float): List<PillPart> {
+            val out = ArrayList<PillPart>(all.size + 1 - from)
+            out.add(PillPart("", Grid.Rect(ctx.wDp / 2 - total / 2, y, total, 44f), -1, null))
+            var x = ctx.wDp / 2 - total / 2 + 14f
+            for (i in from until all.size) {
+                val (t, s, a) = all[i]
+                out.add(PillPart(t, Grid.Rect(x, y + 4, widths[i], 36f), s, a))
+                x += widths[i] + gap
+            }
+            return out
+        }
+        return Pill(ctx.page.name, ctx.pageIndex, n, ctx.undo, ctx.wDp, ctx.hDp, at(6f), at(ctx.hDp - 50f))
+    }
+
+    private fun pillAct(ctx: EditCtx, a: PillAct) = when (a) {
+        PillAct.PREV -> if (ctx.pageIndex > 0) ctx.setPage(ctx.pageIndex - 1) else Unit
+        PillAct.NEXT -> if (ctx.pageIndex < ctx.layout.pages.size - 1) ctx.setPage(ctx.pageIndex + 1) else Unit
+        PillAct.UNDO -> ctx.emit("edit_undo", emptyMap())
+        PillAct.ADD_PAGE -> ctx.emit("edit_add_page", emptyMap())
+        PillAct.DONE -> ctx.emit("edit_done", emptyMap())
     }
 
     // ── the "Add here" menu ───────────────────────────────────────────────
@@ -524,9 +554,10 @@ class EditMode {
 
         // the pill
         val parts = pill(ctx)
-        val bg = parts.first().rect
+        val bg = parts[0].rect
         rr(bg, E.paper, 22f)
-        for (p in parts.drop(1)) {
+        for (i in 1 until parts.size) {
+            val p = parts[i]
             val r = p.rect
             when (p.style) {
                 0 -> ink.text(s, p.text, r.cx, r.cy, 13f, E.ink, bold = true, mono = false, d = d)

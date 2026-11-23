@@ -157,6 +157,9 @@ defmodule FMutate.InstrumentScreen do
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
+  # a picked layout file, read and checked in a task (FMutate.LayoutsSheet.picked/2)
+  def handle_async({:layouts, :import}, result, socket), do: {:noreply, LayoutsSheet.imported(socket, result)}
+
   defp placeholder_view do
     %{
       id: @instance,

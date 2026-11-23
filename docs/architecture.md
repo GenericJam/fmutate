@@ -145,21 +145,34 @@ flowchart LR
   atomic); firmware-specific parts (MIDI note/CC bindings, learned `midi_in`) come as they are, which the sheet
   says once. **Export** copies the entry as saved (never the surface-resolved `layout_json`) to
   `<cache>/exports/<name>.layout.json` and opens the share sheet (`Mob.Share.file/3`); **Import** picks a file
-  (`Mob.Files.pick/2`; Android can't filter by extension, so the content decides), validates it as
-  `fmutate.layout/1` (schema, then the editing rules; the first message is shown when refused), keeps its
-  `saved_at` (normalised to UTC) or stamps the import time, and adds it to the library without loading it.
+  (`Mob.Files.pick/2`; Android can't filter by extension, so the content decides), reads and checks it in a task
+  (`Mob.Socket.start_async/3`, never on the screen's process), validates it as `fmutate.layout/1` (schema, then
+  the editing rules; the first message is shown when refused), keeps its `saved_at` (normalised to UTC) or stamps
+  the import time, and adds it to the library without loading it. **Limits** (so a file can't make the app do
+  unbounded work): at most 1 MB is read; `Layouts.validate/1` refuses more than 64 pages and any page whose
+  controls (with the dock) outnumber, or cover more cells than, its grid has cells (no valid layout does either:
+  controls are inside the grid and don't overlap) before the editing rules run; and the overlap rule is found
+  through the cells each control takes, one message per control, not per pair.
   **Original layout** (the sheet's first row) and Layout settings' "Reset to classic" are one path
   (`Editor.original/1`, `Layouts.reset/2`: the working file is deleted). **Undo**: before every change to the
   working layout (each edit-mode commit, Original layout, a load, a new layout from a preset, a note-level toggle)
   the layout it replaces goes into `layouts/<instance>/<firmware>.undo.json` (`{"format":
   "fmutate.layout-undo/1", "redo": bool, "layout": layout | null}`, null = there was no working file, so undoing
   back to it deletes the file again). Undo swaps the working layout with the slot and flips `redo`, so the next
-  press redoes; the slot survives a restart. Typing into a text field commits per keystroke, so consecutive
-  commits from the same field (layout name, page name, a control's label) keep the slot as it was: one step. A
-  change that changes nothing, the temporary `use_classic` fallback (a layout that doesn't fit this phone) and
-  I/O clearing learned controls don't touch it. Undo / Redo is in the edit pill (prop `undo`: "undo" | "redo" |
-  "", event `edit_undo`; on a narrow screen the pill drops its "Editing" label to make room) and in the Layouts
-  sheet.
+  press redoes; the slot survives a restart. **The pair changes as one**: a change to both is written whole to
+  `<firmware>.journal.json` (atomically) before either file, and the next reader or writer finishes a journal a
+  crash left behind, so a restart never sees a new layout with an old slot (or Original layout's deleted file
+  without its slot). Every reader and writer of the pair holds a lock per `{instance, firmware}`
+  (`:global.trans/3` on this node only), `FMutate.MIDI` included: it clears learned controls with
+  `Layouts.update/3`, an edit of the layout as saved at that moment, so it can't write back a copy an undo has
+  replaced. Typing into a text field commits per keystroke, so consecutive commits from the same field (layout
+  name, page name, a control's label) keep the slot as it was: one step, which ends with anything that isn't more
+  typing (a submit, a tap, a dismissed sheet, leaving edit mode, a layout saved elsewhere). A change equal to the
+  current layout (the unsaved classic one included), the temporary `use_classic` fallback (a layout that doesn't
+  fit this phone) and I/O clearing learned controls don't touch the slot. Undo / Redo is in the edit pill (prop
+  `undo`: "undo" | "redo" | "", event `edit_undo`; on a narrow screen the pill drops its "Editing" label to make
+  room; the pill is measured once per page, page count, undo state and screen size, not per frame) and in the
+  Layouts sheet.
 - **Immersive** while the instrument shows; orientation locked to the layout's frame, and only while the
   instrument's screen is the one shown: the other screens follow the phone, turning at once to the way it is held.
   On iOS a pushed screen (Library, I/O) keeps the instrument's surface in the window, parked off-screen (Mob's

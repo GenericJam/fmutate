@@ -82,20 +82,28 @@ defmodule FMutate.LayoutsSheet do
 
   @doc """
   The file picker's answer (`{:files, :picked, items}` or `{:files, :cancelled}`). Android's picker can't filter
-  by extension, so the file is recognised by its content (`FMutate.Layouts.import_file/1`).
+  by extension, so the file is recognised by its content (`FMutate.Layouts.import_file/1`), read and checked in
+  a task (`Mob.Socket.start_async/3` as `{:layouts, :import}`) whose result goes to `imported/2`.
   """
   def picked(socket, {:files, :picked, [item | _]}) do
-    socket = Mob.Socket.assign(socket, :picking, nil)
     path = item[:path] || item["path"]
     name = item[:name] || item["name"] || Path.basename(path)
 
-    case Layouts.import_file(path) do
-      {:ok, entry} -> if(socket.assigns.layouts, do: reload(socket), else: socket) |> toast("Imported “#{entry.name}”")
-      {:error, [msg | _]} -> toast(socket, "#{name} wasn't imported: #{msg}")
-    end
+    socket
+    |> Mob.Socket.assign(:picking, nil)
+    |> Mob.Socket.start_async({:layouts, :import}, fn -> {name, Layouts.import_file(path)} end)
   end
 
   def picked(socket, _cancelled), do: Mob.Socket.assign(socket, :picking, nil)
+
+  @doc "The import task's result (the screen's `handle_async({:layouts, :import}, result, socket)`)."
+  def imported(socket, {:ok, {_name, {:ok, entry}}}) do
+    socket = if socket.assigns[:layouts], do: reload(socket), else: socket
+    toast(socket, "Imported “#{entry.name}”")
+  end
+
+  def imported(socket, {:ok, {name, {:error, [msg | _]}}}), do: toast(socket, "#{name} wasn't imported: #{msg}")
+  def imported(socket, {:exit, _reason}), do: toast(socket, "The layout wasn't imported: reading it failed")
 
   defp entry_name(socket, file) do
     case Enum.find(socket.assigns.layouts.entries, &(&1.file == file)) do
