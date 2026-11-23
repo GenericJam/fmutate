@@ -459,10 +459,12 @@ flowchart LR
   (`out:cc:<ch>:<n>`, `out:bend:<ch>`: a DAW's CC 74 isn't the synth's, so neither picks up from the other and
   seeding never reads the synth's value for it); Both keeps the synth's key, since it moves the synth's value too.
   **Stuck notes**: `FMutate.MIDI` tracks the notes held out; release-all (I/O), leaving the instrument for another
-  screen, quit (before the instance stops) and the process stopping send a note off for each and CC 123 on the
-  channels notes went out on (nothing when no note went out since). A page change lets go only of what the page
+  screen, quit (before the instance stops) and the process stopping send a note off for each, sustain (CC 64) off
+  on the channels a sustain went out on (a held pedal would keep released notes sounding) and CC 123 on the
+  channels notes went out on (nothing when nothing went out since). A page change lets go only of what the page
   takes off screen: the dock stays, so the notes the dock's controls send out stay held (as a motion tile's stay
-  on does in the dock), and CC 123 skips their channels. **Unaffected by** firmware
+  on does in the dock), and CC 64 / CC 123 skip their channels. Pitch bend Out can be bound on a firmware without
+  pitch bend (its receiver is the DAW). **Unaffected by** firmware
   switches, crashes and sound loads: the instance never had them, and the surface's toggles re-sent to a new
   engine go to the synth only (`synthSide` in `Layout.kt` / `FMutateLayout.swift`). The rate stays the surface's
   (a value only when it moves by 1/128). Not in scope: the firmware's own MIDI out, MIDI thru, clock to devices

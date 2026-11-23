@@ -1165,20 +1165,23 @@ defmodule FMutate.Editor do
     type = midi_type(kind, c, d)
     number = if type == "note", do: "#{d.number} · #{note_name(d.number)}", else: "CC #{d.number}"
 
+    # pitch bend needs the firmware to take it, unless it only goes out (a DAW takes it)
+    bend = assigns.bend or d.dest == "out"
+
     if type == "pitch_bend" do
-      no_bend = if assigns.bend, do: [], else: [caption("Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend.", :faint)]
+      no_bend = if bend, do: [], else: [caption("Greyed out: #{firmware_name(assigns.firmware)} ignores pitch bend. Out sends it to the MIDI outputs only.", :faint)]
 
       [
-        segmented(types, type, if(assigns.bend, do: [], else: ["pitch_bend"])),
+        segmented(types, type, if(bend, do: [], else: ["pitch_bend"])),
         ~MOB"""
         <Row gap={8}>
           {stepper("Ch", Integer.to_string(d.channel), {:channel, -1}, {:channel, 1})}
         </Row>
         """,
         caption("Centred where the phone is when it engages; assumes the firmware's own bend range (±2 semitones on OberVave and ShineOn).")
-      ] ++ no_bend ++ destination(d) ++ [button("Bind pitch bend", :bind_midi, bg: c(:raised_hi), weight: :none, disabled: not assigns.bend)]
+      ] ++ no_bend ++ destination(d) ++ [button("Bind pitch bend", :bind_midi, bg: c(:raised_hi), weight: :none, disabled: not bend)]
     else
-      midi_number_inputs(c, d, types, type, number, if(motion_axis and not assigns.bend, do: ["pitch_bend"], else: []))
+      midi_number_inputs(c, d, types, type, number, if(motion_axis and not bend, do: ["pitch_bend"], else: []))
     end
   end
 

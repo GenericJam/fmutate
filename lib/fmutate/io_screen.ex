@@ -552,14 +552,22 @@ defmodule FMutate.IOScreen do
         list -> Enum.map(list, &output_row/1)
       end
 
+    # the computer link is Android's USB MIDI mode; an iPhone has none (its outputs are other apps and devices)
     computer =
-      if assigns.route_picker,
-        do: [],
-        else: [
-          hint_text(
-            "To a computer: connect a USB cable and set the phone's USB to MIDI (Android: Settings › Connected devices › USB › MIDI). It then shows up in FL Studio, Ableton and others as a MIDI input."
-          )
-        ]
+      cond do
+        FMutate.IONif.loaded?() ->
+          [
+            hint_text(
+              "To a computer: connect a USB cable and set the phone's USB to MIDI (Android: Settings › Connected devices › USB › MIDI). It then shows up in FL Studio, Ableton and others as a MIDI input."
+            )
+          ]
+
+        assigns.route_picker ->
+          [hint_text("iPhone: other apps on this phone listen to FMutate A; a computer link isn't available here yet.")]
+
+        true ->
+          []
+      end
 
     card(
       [section_label("MIDI OUT"), port_row] ++

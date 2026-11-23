@@ -12,16 +12,17 @@ defmodule FMutate.MIDI.Out do
   synth's CC 74 and a DAW's CC 74 are two values. Both keeps the synth's key: it moves the synth's value, so it
   picks up from (and stales) the synth's controls bound to the same CC.
 
-  What went out is tracked (`sent/2`) so nothing stays held in a DAW: `release/1` gives a note off for every
-  note still on, then CC 123 (all notes off) on each channel notes went out on since the last release.
+  What went out is tracked (`sent/2`) so nothing stays held in a DAW: `release/2` gives a note off for every
+  note still on, then sustain (CC 64) off on each channel a sustain went out on (a held pedal would keep the
+  released notes sounding), then CC 123 (all notes off) on each channel notes went out on since the last release.
   """
 
   import Bitwise
 
-  defstruct held: MapSet.new(), channels: MapSet.new()
+  defstruct held: MapSet.new(), channels: MapSet.new(), sustained: MapSet.new()
 
   @type dest :: :synth | :out | :both
-  @type t :: %__MODULE__{held: MapSet.t({0..15, 0..127}), channels: MapSet.t(0..15)}
+  @type t :: %__MODULE__{held: MapSet.t({0..15, 0..127}), channels: MapSet.t(0..15), sustained: MapSet.t(0..15)}
 
   @doc "Nothing held."
   def new, do: %__MODULE__{}
@@ -61,7 +62,10 @@ defmodule FMutate.MIDI.Out do
   def route(nil, _dest), do: []
   def route(input, _dest), do: [input]
 
-  @doc "`bytes` went out: a note on is held until its note off (or a note on at velocity 0)."
+  @doc """
+  `bytes` went out: a note on is held until its note off (or a note on at velocity 0); a sustain (CC 64) other than
+  0 is held on its channel until a CC 64 of 0.
+  """
   @spec sent(t, binary) :: t
   def sent(%__MODULE__{} = out, <<st, n, v>>) when st in 0x90..0x9F and n < 128 and v in 1..127 do
     ch = st &&& 0x0F
@@ -71,6 +75,12 @@ defmodule FMutate.MIDI.Out do
   def sent(%__MODULE__{} = out, <<st, n, _v>>) when st in 0x80..0x9F and n < 128,
     do: %{out | held: MapSet.delete(out.held, {st &&& 0x0F, n})}
 
+  def sent(%__MODULE__{} = out, <<st, 64, 0>>) when st in 0xB0..0xBF,
+    do: %{out | sustained: MapSet.delete(out.sustained, st &&& 0x0F)}
+
+  def sent(%__MODULE__{} = out, <<st, 64, v>>) when st in 0xB0..0xBF and v < 128,
+    do: %{out | sustained: MapSet.put(out.sustained, st &&& 0x0F)}
+
   def sent(%__MODULE__{} = out, _bytes), do: out
 
   @doc "A note off for every note still held out (what an output being switched off gets)."
@@ -79,16 +89,19 @@ defmodule FMutate.MIDI.Out do
 
   @doc """
   The messages that let go of what was sent out, and what stays held: a note off for every held note not in
-  `keep` (`{channel 0..15, note}`), then CC 123 (all notes off) on each channel notes went out on that has no
-  kept note left. `[]` when no note went out since the last release.
+  `keep` (`{channel 0..15, note}`), then sustain (CC 64) off on each channel a sustain went out on, and CC 123
+  (all notes off) on each channel notes went out on; both skip the channels that keep a note. `[]` when nothing
+  went out since the last release.
   """
   @spec release(t, MapSet.t()) :: {[binary], t}
   def release(%__MODULE__{} = out, keep \\ MapSet.new()) do
     {kept, gone} = Enum.split_with(out.held, &MapSet.member?(keep, &1))
     kept_channels = MapSet.new(kept, &elem(&1, 0))
     offs = for {ch, n} <- Enum.sort(gone), do: <<0x80 + ch, n, 0>>
+    pedal_off = for ch <- Enum.sort(out.sustained), not MapSet.member?(kept_channels, ch), do: <<0xB0 + ch, 64, 0>>
     all_off = for ch <- Enum.sort(out.channels), not MapSet.member?(kept_channels, ch), do: <<0xB0 + ch, 123, 0>>
-    {offs ++ all_off, %__MODULE__{held: MapSet.new(kept), channels: kept_channels}}
+    sustained = MapSet.intersection(out.sustained, kept_channels)
+    {offs ++ pedal_off ++ all_off, %__MODULE__{held: MapSet.new(kept), channels: kept_channels, sustained: sustained}}
   end
 
   @doc """

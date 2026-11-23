@@ -188,6 +188,31 @@ defmodule FMutate.MIDIOutTest do
     assert sent(@port) == [<<0x80, 60, 0>>, <<0xB0, 123, 0>>]
   end
 
+  test "a sustain sent out is let go of before the notes it holds: on release-all, and on a page change but the dock's channel" do
+    note = fn n, ch -> %{"to" => %{"midi" => %{"type" => "note", "channel" => ch, "number" => n, "to" => "out"}}} end
+    layout = Map.put(FMutate.Layouts.classic(), "dock", [%{"id" => "d", "type" => "button", "bindings" => [note.(60, 1)]}])
+    MIDI.layout_saved("a", Instance.view("a").firmware, layout)
+
+    # a sustain toggle out on channels 1 and 2, the dock's note on 1, a page's note on 2
+    for bytes <- [[0xB0, 64, 127], [0xB1, 64, 127], [0x90, 60, 100], [0x91, 62, 100]],
+        do: surface(%{"t" => "midi", "bytes" => bytes, "to" => "out"})
+
+    flush_out()
+
+    {:noreply, _} = InstrumentView.handle_event("page", %{"id" => "p2"}, socket())
+    assert sent(@port) == [<<0x81, 62, 0>>, <<0xB1, 64, 0>>, <<0xB1, 123, 0>>]
+
+    Instance.release_all("a")
+    assert sent(@port) == [<<0x80, 60, 0>>, <<0xB0, 64, 0>>, <<0xB0, 123, 0>>]
+
+    # a sustain switched off already isn't sent again
+    surface(%{"t" => "midi", "bytes" => [0xB2, 64, 127], "to" => "out"})
+    surface(%{"t" => "midi", "bytes" => [0xB2, 64, 0], "to" => "out"})
+    flush_out()
+    Instance.release_all("a")
+    assert sent(@port) == []
+  end
+
   test "outputs: kept by name, opened when the device is plugged in again, switched off; errors on the row" do
     :ok = MIDI.set_output("a", "Box", true)
     assert_receive {:midi_out, {:open, @box}}
