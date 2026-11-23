@@ -22,7 +22,7 @@ defmodule FmutateApp.MixProject do
 
   defp deps do
     [
-      {:mob, "~> 0.9.29"},
+      {:mob, "~> 0.9.32"},
       {:mob_dev, "~> 0.7.31", only: :dev, runtime: false},
       {:ecto_sqlite3, "~> 0.18"},
       # motion controls: the editor lists which motion sensors this phone has (MobSensors.list/0);
