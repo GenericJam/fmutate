@@ -4,7 +4,7 @@ defmodule FmutateApp.MixProject do
   def project do
     [
       app: :fmutate_app,
-      version: "0.2.1",
+      version: "0.3.0",
       elixir: "~> 1.18",
       start_permanent: false,
       deps: deps(),
