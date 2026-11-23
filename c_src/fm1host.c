@@ -536,6 +536,7 @@ static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     engine_type = enif_init_resource_type(env, "fm1host_engine", &init, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (!engine_type || pthread_key_create(&marker_key, NULL)) return -1;
     if (!carts) {                             /* (the static NIF loads once; so does the host build, load_host) */
+        if (!fm1native_carts_layout_2) return -1;   /* (a stale libfm1native.a, the earlier table layout: no link) */
         if (!(carts = calloc(fm1native_ncarts ? fm1native_ncarts : 1, sizeof *carts))) return -1;
         for (size_t i = 0; i < fm1native_ncarts; i++) {
             struct cart *c = &carts[i];

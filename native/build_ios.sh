@@ -199,6 +199,7 @@ for t in $TARGETS; do
         done < "$obj/carts"
         echo "};"
         echo "const size_t fm1native_ncarts = sizeof fm1native_carts / sizeof fm1native_carts[0];"
+        echo "const char fm1native_carts_layout_2 = 1;"
     } > "$obj/fm1native_carts.c"
     $cc $CFLAGS -c -Iengine "$obj/fm1native_carts.c" -o "$obj/fm1native_carts.o"
 

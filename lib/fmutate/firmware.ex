@@ -103,23 +103,36 @@ defmodule FMutate.Firmware do
   def default_id, do: "obervave"
 
   @doc """
-  How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu, caps: map}`
-  for `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it can't run
-  here. Captured capabilities stay with the run even when the library later installs another asset.
+  How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu, caps: map,
+  stamp: term}` for `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it
+  can't run here. Captured capabilities stay with the run even when the library later installs another asset;
+  `stamp` (`stamp/1`) says which file that was, so a restart with this run can tell it's still the same binary.
   """
-  @spec runnable(String.t()) :: %{engine: String.t() | :inproc, file: String.t(), backend: :native | :emu, caps: map} | nil
+  @spec runnable(String.t()) ::
+          %{engine: String.t() | :inproc, file: String.t(), backend: :native | :emu, caps: map, stamp: term} | nil
   def runnable(id) do
     case get(id) do
       %{backend: :native} = fw ->
         with cart when cart != nil <- FMutate.Paths.bundled_cart(id) || downloaded_cart(fw),
-             do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native, caps: fw.caps}
+             do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native, caps: fw.caps, stamp: stamp(cart)}
 
       %{backend: :emu, package: pkg} when is_binary(pkg) ->
         if FMutate.Paths.emu?() and File.exists?(pkg),
-          do: %{engine: FMutate.Paths.emu_bin(), file: pkg, backend: :emu, caps: %{}}
+          do: %{engine: FMutate.Paths.emu_bin(), file: pkg, backend: :emu, caps: %{}, stamp: stamp(pkg)}
 
       _ ->
         nil
+    end
+  end
+
+  @doc """
+  Which file is at `path` now: its inode, size and mtime (an install renames a new file in, a new inode), or nil
+  when there's none. Two equal stamps are the same binary.
+  """
+  def stamp(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} -> {inode, size, mtime}
+      _ -> nil
     end
   end
 

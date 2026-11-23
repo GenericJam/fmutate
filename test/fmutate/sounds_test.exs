@@ -437,6 +437,42 @@ defmodule FMutate.SoundsTest do
     assert :sys.get_state(Instance.via("a")).live.run == run
   end
 
+  test "a cartridge replaced at the same path (an update) is what a snapshot starts again, not the old run" do
+    fake = fake_engine()
+    %{live: %{run: old}} = :sys.get_state(Instance.via("a"))
+    cart = Path.join(fake, "libcart_obervave.so")
+    assert old.file == cart
+
+    # an update renames a new file in at the same path: another inode, the old run's binary is gone
+    File.cp!(cart, cart <> ".new")
+    File.rename!(cart <> ".new", cart)
+    refute FMutate.Firmware.stamp(cart) == old.stamp
+
+    {:ok, _} = Sounds.save("a", "Updated")
+    %{live: %{run: run}} = :sys.get_state(Instance.via("a"))
+    assert run.file == cart and run.stamp == FMutate.Firmware.stamp(cart)
+    refute run == old
+  end
+
+  test "the running build's capabilities stay in the view while a snapshot restarts its engine" do
+    caps = Instance.view("a").caps
+    assert caps.note_pressure
+    forget_instance()
+    {:ok, _} = Sounds.save("a", "Steady")
+
+    views = for {:instance, "a", {:state, v}} <- drain(), do: v
+    assert Enum.any?(views, &(&1.phase == :booting))
+    assert Enum.all?(views, &(&1.caps == caps))
+  end
+
+  defp drain(acc \\ []) do
+    receive do
+      msg -> drain([msg | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
+
   test "Undo is checked as a load: another version asks, another length is refused", %{flash: flash} do
     {:ok, saved} = Sounds.save("a", "Undo")
     changed = turn_cutoff(flash, 15)

@@ -47,6 +47,10 @@ struct fm1native_cart {
 };
 extern const struct fm1native_cart fm1native_carts[];
 extern const size_t fm1native_ncarts;
+/* Defined beside the table: a table generated for an earlier struct fm1native_cart (before commit, sha256 and
+ * caps) has no such symbol, so linking it fails instead of reading it with the wrong stride. Rename it when the
+ * struct changes again. */
+extern const char fm1native_carts_layout_2;
 
 /* How an engine talks to its host. */
 struct fm1engine_io {
