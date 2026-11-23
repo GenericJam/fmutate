@@ -257,11 +257,13 @@ defmodule FMutate.Instance do
       app_crashes: saved[:app_crashes] || %{}
     }
 
-    {:ok,
-     app_crashed(
-       state,
-       Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)
-     ), {:continue, :boot}}
+    # (an app crash while a sound load was booting is the load's: recover_flash/3 undoes it, nothing counts)
+    crashed =
+      opts
+      |> Keyword.get_lazy(:crashed, fn -> FMutate.CrashMarker.claim(id) end)
+      |> Enum.reject(&restoring?(id, &1))
+
+    {:ok, app_crashed(state, crashed), {:continue, :boot}}
   end
 
   # In-process engines (iOS): firmwares that ended the app (FMutate.CrashMarker). Each counts against itself, the
@@ -998,16 +1000,31 @@ defmodule FMutate.Instance do
   defp keep_rollback(path, _old), do: File.rename(path, rollback_path(path))
 
   # an unconfirmed restore's previous flash goes back (no engine of the firmware runs: it is about to start, or
-  # the one booting the restored bytes has ended)
+  # the one booting the restored bytes has ended); an empty one was no file, and leaves none
   defp put_back(path) do
     rollback = rollback_path(path)
 
-    case File.rename(rollback, path) do
-      :ok -> :ok
+    result =
+      case File.stat(rollback) do
+        {:ok, %{size: 0}} -> with :ok <- rm_flash(path), do: File.rm(rollback)
+        {:ok, _} -> File.rename(rollback, path)
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    with {:error, reason} <- result, do: {:error, {:rollback_failed, reason}}
+  end
+
+  defp rm_flash(path) do
+    case File.rm(path) do
       {:error, :enoent} -> :ok
-      {:error, reason} -> {:error, {:rollback_failed, reason}}
+      other -> other
     end
   end
+
+  # an app crash while a restored memory was booting (in-process, iOS): the restore's, not the firmware's own
+  defp restoring?(id, fw),
+    do: Enum.any?([:native, :emu], &File.exists?(rollback_path(Paths.flash(id, fw, &1))))
 
   defp recover_flash(state, fw, backend) do
     path = Paths.flash(state.id, fw, backend)

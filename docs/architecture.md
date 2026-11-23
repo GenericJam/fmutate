@@ -158,7 +158,9 @@ flowchart LR
   fails, nothing starts (it would only boot the failing memory): the instance shows safe mode and keeps the
   rollback, and Run anyway, like any start of that firmware, puts it back first. Quit before READY: the restored
   engine is stopped and the rollback goes back before quit answers; a crash of the app before READY: it goes back
-  before the firmware next starts. There is no flush that keeps the firmware playing, so saving or loading is a
+  before the firmware next starts, and (in-process, where the firmware's crash ends the app) the crash marker
+  doesn't count it toward the firmware's quarantine. A rollback of no file is an empty file and puts back no file.
+  There is no flush that keeps the firmware playing, so saving or loading is a
   gap in the sound, from stop to READY (logged as "… ms from stop to running") plus the 30 ms fade-out and 20 ms
   fade-in: OberVave native, host 8–30 ms; emulator-5584 (Android 15 arm64) save 20–24 ms, load and undo 41–84 ms.
   The restart also drops what the firmware hasn't saved itself (OberVave's `*` edits), so the sheet says to save

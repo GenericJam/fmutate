@@ -38,6 +38,15 @@ defmodule FMutate.SoundsTest do
     end
   end
 
+  # (after the instance is stopped: what the old one sent is no news about the next)
+  defp forget_instance do
+    receive do
+      {:instance, "a", _} -> forget_instance()
+    after
+      0 -> :ok
+    end
+  end
+
   # until the firmware's own clock is `ms` further on (from the next STATUS after those already queued)
   defp firmware_wait(ms) do
     target = fresh_status_ms() + ms
@@ -316,6 +325,7 @@ defmodule FMutate.SoundsTest do
     on_exit(fn -> Application.delete_env(:fmutate_app, :native_lib_dir) end)
 
     stop_supervised!({:instance, "a"})
+    forget_instance()
     start_supervised!({Instance, id: "a"}, id: {:instance, "a"})
     Instance.subscribe("a", status: true)
     await_running("obervave")
@@ -378,20 +388,40 @@ defmodule FMutate.SoundsTest do
     assert {:error, "FMutate is quitting."} = Task.await(task)
   end
 
-  test "a crash of the app before READY: the previous memory is back before the firmware next starts",
+  test "a crash of the app before READY: the previous memory is back before the firmware next starts, and the crash " <>
+         "isn't the firmware's",
        %{flash: flash} do
     {:ok, saved} = Sounds.save("a", "Crash")
     changed = turn_cutoff(flash, 15)
-    # (what a restore leaves when the app dies between the replace and READY)
+    # (what a restore leaves when the app dies between the replace and READY; in-process the crash marker names it)
     stop_supervised!({:instance, "a"})
+    forget_instance()
     File.rename!(flash, flash <> ".rollback")
     File.write!(flash, saved.bytes)
 
-    start_supervised!({Instance, id: "a"}, id: {:instance, "a"})
+    start_supervised!({Instance, id: "a", crashed: ["obervave"]}, id: {:instance, "a"})
     Instance.subscribe("a")
     await_running("obervave")
     assert File.read!(flash) == changed
     refute File.exists?(flash <> ".rollback")
+    assert %{last_exit: nil, restarts: 0} = Instance.view("a")
+    assert :sys.get_state(Instance.via("a")).app_crashes == %{}
+  end
+
+  test "a load into a synth that had no memory file, undone, leaves none: its sounds still load", %{flash: flash} do
+    {:ok, saved} = Sounds.save("a", "Fresh")
+    # (an unconfirmed restore over no file keeps an empty rollback)
+    stop_supervised!({:instance, "a"})
+    forget_instance()
+    File.write!(flash <> ".rollback", "")
+
+    start_supervised!({Instance, id: "a"}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    await_running("obervave")
+    refute File.exists?(flash <> ".rollback")
+    {:ok, running} = Sounds.running("a")
+    assert Sounds.check(saved, running) == :ok
+    assert :ok = Sounds.load("a", saved)
   end
 
   test "a snapshot says which build ran and starts that build again", %{flash: _flash} do
