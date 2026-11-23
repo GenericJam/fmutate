@@ -193,6 +193,22 @@ defmodule FMutate.InstanceTest do
     :sys.get_state(FMutate.Audio).balances[slot]
   end
 
+  # stop the instance as the app does and start it again (it has what it saved). The old one's state messages
+  # still queued are dropped first: they would pass for the new one's (same firmware, phase running).
+  defp restart_instance(id) do
+    stop_supervised!({:instance, id})
+    drop_instance_messages(id)
+    start_instance(id)
+  end
+
+  defp drop_instance_messages(id) do
+    receive do
+      {:instance, ^id, _} -> drop_instance_messages(id)
+    after
+      0 -> :ok
+    end
+  end
+
   test "the balance holds on every engine the instance runs: a crash restart, a switch, an app restart" do
     start_instance()
     await_state(running?("obervave"))
@@ -207,14 +223,15 @@ defmodule FMutate.InstanceTest do
     await_state(running?("obervave"))
     assert live_balance("a") == 200
 
+    # (the view says shineon at once, while the old engine still plays: the new one is live when its screen shows)
+    old_fb = Instance.view("a").fb
     :ok = Instance.switch_firmware("a", "shineon")
-    await_state(running?("shineon"))
-    assert live_balance("a") == 200
+    await_state(&(running?("shineon").(&1) and &1.fb not in [nil, old_fb]))
+    assert live_balance("a") == 200 and :sys.get_state(Instance.via("a")).live.firmware == "shineon"
 
     Instance.input("a", {:mixer, :balance, 1.0})
     assert live_balance("a") == 1000
-    stop_supervised!({:instance, "a"})
-    start_instance()
+    restart_instance("a")
     view = await_state(running?("shineon"))
     assert view.balance == 1.0 and live_balance("a") == 1000
   end
