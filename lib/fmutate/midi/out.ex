@@ -78,12 +78,30 @@ defmodule FMutate.MIDI.Out do
   def offs(%__MODULE__{held: held}), do: for({ch, n} <- Enum.sort(held), do: <<0x80 + ch, n, 0>>)
 
   @doc """
-  The messages that let go of everything sent out (note offs, then CC 123 on each channel notes went out on),
-  and nothing held. `[]` when no note went out since the last release.
+  The messages that let go of what was sent out, and what stays held: a note off for every held note not in
+  `keep` (`{channel 0..15, note}`), then CC 123 (all notes off) on each channel notes went out on that has no
+  kept note left. `[]` when no note went out since the last release.
   """
-  @spec release(t) :: {[binary], t}
-  def release(%__MODULE__{} = out) do
-    all_off = for ch <- Enum.sort(out.channels), do: <<0xB0 + ch, 123, 0>>
-    {offs(out) ++ all_off, new()}
+  @spec release(t, MapSet.t()) :: {[binary], t}
+  def release(%__MODULE__{} = out, keep \\ MapSet.new()) do
+    {kept, gone} = Enum.split_with(out.held, &MapSet.member?(keep, &1))
+    kept_channels = MapSet.new(kept, &elem(&1, 0))
+    offs = for {ch, n} <- Enum.sort(gone), do: <<0x80 + ch, n, 0>>
+    all_off = for ch <- Enum.sort(out.channels), not MapSet.member?(kept_channels, ch), do: <<0xB0 + ch, 123, 0>>
+    {offs ++ all_off, %__MODULE__{held: MapSet.new(kept), channels: kept_channels}}
+  end
+
+  @doc """
+  The notes (`{channel 0..15, note}`) the layout's dock sends out (Out or Both): the dock stays on screen across
+  pages, so a page change doesn't let go of them.
+  """
+  @spec dock_notes(map | nil) :: MapSet.t()
+  def dock_notes(layout) do
+    for c <- (layout && layout["dock"]) || [],
+        b <- (c["bindings"] || []) ++ Enum.flat_map(get_in(c, ["pad_grid", "pads"]) || [], &(&1["bindings"] || [])),
+        %{"midi" => %{"type" => "note"} = mi} = to <- [b["to"]],
+        dest(to) != :synth,
+        into: MapSet.new(),
+        do: {(mi["channel"] || 1) - 1, mi["number"] || 0}
   end
 end

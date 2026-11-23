@@ -15,7 +15,7 @@ defmodule FMutate.InstrumentView do
   `"c"`), which go through the instance's rule 7 arbiter (HANDOFF §6) in `FMutate.MIDI`, shared with learned
   hardware MIDI controls: a control that hasn't picked up the current value is ignored there (`arbitrate/2`),
   and MIDI messages whose binding sends them out (`"to"`: `"out"` or `"both"`, `FMutate.MIDI.Out`), which
-  `FMutate.MIDI` sends to the outputs. A page change lets go of every note still held out.
+  `FMutate.MIDI` sends to the outputs. A page change lets go of the notes held out by controls it takes off screen.
   `toggle` (`{k, on}`: the surface toggled a control or pad) tells it the toggles, which learned MIDI presses
   share. `run_anyway` (a tap on the screen area in safe mode) is `FMutate.Instance.run_anyway/1`.
   """
@@ -90,9 +90,9 @@ defmodule FMutate.InstrumentView do
     {:noreply, socket}
   end
 
-  # another page: nothing stays held out (a DAW never keeps a stuck note)
+  # another page: nothing it took off screen stays held out (a DAW never keeps a stuck note); the dock stays
   def handle_event("page", payload, socket) do
-    MIDI.release_out(socket.assigns.instance)
+    MIDI.release_out(socket.assigns.instance, :page)
     send(socket.assigns.owner, {:instrument, "page", payload})
     {:noreply, socket}
   end

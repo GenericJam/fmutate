@@ -449,17 +449,20 @@ flowchart LR
   `FMutate.MIDI` sends it to every output and Out never reaches `FMutate.Instance`. **Outputs**: the instance's
   virtual port `FMutate A` (always) and the devices switched on in I/O › MIDI OUT (any listed device with a port
   FMutate can write to; on Android that includes the USB peripheral port a phone in USB MIDI mode exposes to a
-  computer), kept per instance by name in its MIDI settings and opened again (`MobMidi.open_output/3`, port 0)
-  whenever they are listed; sends with `MobMidi.send_raw/4`, stamped with the hardware message's timestamp when a
+  computer), kept per instance by name in its MIDI settings and opened again (`MobMidi.open_output/3`) whenever
+  they are listed. Only port 0 of a device is opened for now (Android's USB peripheral port has one; a device with
+  more ports gets the first). Sends with `MobMidi.send_raw/4`, stamped with the hardware message's timestamp when a
   learned control made them (surface events carry none: now). A port that didn't open, or a send that failed, is
   said on its row. Closing a device is per device in mob_midi, so switching an output off closes it only when it
   doesn't play the instance and isn't Bluetooth (that would disconnect it), and `FMutate.IO.close/1` tells
   `FMutate.MIDI`, which opens its output again. **Rule 7**: an Out CC or pitch bend has its own key
   (`out:cc:<ch>:<n>`, `out:bend:<ch>`: a DAW's CC 74 isn't the synth's, so neither picks up from the other and
   seeding never reads the synth's value for it); Both keeps the synth's key, since it moves the synth's value too.
-  **Stuck notes**: `FMutate.MIDI` tracks the notes held out; release-all (I/O), a page change, leaving the
-  instrument for another screen, quit (before the instance stops) and the process stopping send a note off for
-  each and CC 123 on the channels notes went out on (nothing when no note went out since). **Unaffected by** firmware
+  **Stuck notes**: `FMutate.MIDI` tracks the notes held out; release-all (I/O), leaving the instrument for another
+  screen, quit (before the instance stops) and the process stopping send a note off for each and CC 123 on the
+  channels notes went out on (nothing when no note went out since). A page change lets go only of what the page
+  takes off screen: the dock stays, so the notes the dock's controls send out stay held (as a motion tile's stay
+  on does in the dock), and CC 123 skips their channels. **Unaffected by** firmware
   switches, crashes and sound loads: the instance never had them, and the surface's toggles re-sent to a new
   engine go to the synth only (`synthSide` in `Layout.kt` / `FMutateLayout.swift`). The rate stays the surface's
   (a value only when it moves by 1/128). Not in scope: the firmware's own MIDI out, MIDI thru, clock to devices

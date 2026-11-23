@@ -49,8 +49,9 @@ defmodule FMutate.MIDI do
   is sent from here to every output: the instance's virtual port (always) and the devices switched on with
   `set_output/3` (kept per instance by name, opened again when they come back), stamped with the time the
   hardware message had when it came from one (surface events carry none: now). Nothing of it reaches the
-  firmware, and firmware switches, crashes and sound loads don't touch it. `release_out/1` lets go of every
-  note still held out (release-all, a page change, leaving the instrument, quit). `outputs/1` lists the
+  firmware, and firmware switches, crashes and sound loads don't touch it. `release_out/2` lets go of the notes
+  still held out (release-all, leaving the instrument, quit: all of them; a page change: all but the dock's, which
+  stays on screen). Only port 0 of a device is opened (Android's USB peripheral port has one). `outputs/1` lists the
   outputs with what each was sent.
 
   Settings (clock mode, tempo, per-source channel and note mode) are kept per instance across restarts.
@@ -182,11 +183,12 @@ defmodule FMutate.MIDI do
   def set_output(id, name, on) when is_binary(name) and is_boolean(on), do: GenServer.call(via(id), {:output, name, on})
 
   @doc """
-  Let go of everything held out: a note off for each note still on, then CC 123 on the channels notes went out
-  on. Waits until they are sent; `:ok` also when the instance's MIDI isn't running.
+  Let go of what is held out: a note off for each note still on, then CC 123 on the channels notes went out on.
+  `:page` (a page change) keeps the notes the layout's dock sends out (`FMutate.MIDI.Out.dock_notes/1`), and CC 123
+  skips their channels. Waits until they are sent; `:ok` also when the instance's MIDI isn't running.
   """
-  def release_out(id) do
-    GenServer.call(via(id), :release_out)
+  def release_out(id, scope \\ :all) when scope in [:all, :page] do
+    GenServer.call(via(id), {:release_out, scope})
   catch
     :exit, _ -> :ok
   end
@@ -336,7 +338,8 @@ defmodule FMutate.MIDI do
     {:reply, :ok, state}
   end
 
-  def handle_call(:release_out, _from, state), do: {:reply, :ok, release_out_now(state)}
+  def handle_call({:release_out, :all}, _from, state), do: {:reply, :ok, release_out_now(state)}
+  def handle_call({:release_out, :page}, _from, state), do: {:reply, :ok, release_out_now(state, Out.dock_notes(state.layout))}
 
   def handle_call({:clock, mode}, _from, state) do
     state = state |> stop_clock() |> Map.put(:clock, mode) |> reconfigure() |> start_clock()
@@ -1049,8 +1052,8 @@ defmodule FMutate.MIDI do
     %{state | stats: Map.put(state.stats, name, stats)}
   end
 
-  defp release_out_now(state) do
-    {msgs, out} = Out.release(state.out)
+  defp release_out_now(state, keep \\ MapSet.new()) do
+    {msgs, out} = Out.release(state.out, keep)
     Enum.reduce(msgs, %{state | out: out}, &to_outputs(&2, &1))
   end
 

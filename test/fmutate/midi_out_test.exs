@@ -167,6 +167,27 @@ defmodule FMutate.MIDIOutTest do
     assert sent(@port) == [<<0x80, 50, 0>>, <<0xB0, 123, 0>>]
   end
 
+  test "a page change lets go of the Out notes it takes off screen; the dock's stay held" do
+    # a dock button plays note 60 out (channel 1); a page's buttons note 62 out on channel 1 and 64 on channel 2
+    note = fn n, ch -> %{"to" => %{"midi" => %{"type" => "note", "channel" => ch, "number" => n, "to" => "out"}}} end
+    dock = %{"id" => "d", "type" => "button", "bindings" => [note.(60, 1)]}
+    layout = Map.put(FMutate.Layouts.classic(), "dock", [dock])
+    MIDI.layout_saved("a", Instance.view("a").firmware, layout)
+
+    surface(%{"t" => "midi", "bytes" => [0x90, 60, 100], "to" => "out"})
+    surface(%{"t" => "midi", "bytes" => [0x90, 62, 100], "to" => "out"})
+    surface(%{"t" => "midi", "bytes" => [0x91, 64, 100], "to" => "out"})
+    flush_out()
+
+    {:noreply, _} = InstrumentView.handle_event("page", %{"id" => "p2"}, socket())
+    # no CC 123 on channel 1: the dock's note still sounds there
+    assert sent(@port) == [<<0x80, 62, 0>>, <<0x81, 64, 0>>, <<0xB1, 123, 0>>]
+
+    # the dock's note goes on release-all
+    Instance.release_all("a")
+    assert sent(@port) == [<<0x80, 60, 0>>, <<0xB0, 123, 0>>]
+  end
+
   test "outputs: kept by name, opened when the device is plugged in again, switched off; errors on the row" do
     :ok = MIDI.set_output("a", "Box", true)
     assert_receive {:midi_out, {:open, @box}}
