@@ -187,6 +187,28 @@ defmodule FMutate.MIDI.ControlsTest do
     assert Controls.handle_auto(c, "X", cc(71, 5, 2)) == :unmapped
   end
 
+  test "MIDI out: a learned knob on a CC sent out goes out, and the synth's CC of the same number is another value" do
+    {:ok, l, page} = LayoutEdit.add_page(@panel)
+    {:ok, l, daw} = LayoutEdit.add(l, page, "knob", 0, 1)
+    {:ok, l, synth} = LayoutEdit.add(l, page, "knob", 2, 1)
+    cc74 = %{"type" => "cc", "channel" => 1, "number" => 74}
+    {:ok, l} = LayoutEdit.set_bindings(l, daw, nil, [%{"on" => "value", "to" => %{"midi" => Map.put(cc74, "to", "out")}}])
+    {:ok, l} = LayoutEdit.set_bindings(l, synth, nil, [%{"on" => "value", "to" => %{"midi" => cc74}}])
+    l = learn(l, daw, %{"on" => "value", "type" => "cc", "channel" => 1, "number" => 20})
+    assert Layouts.validate(l) == :ok
+    c = Controls.new() |> Controls.load(l)
+
+    # the on-screen synth knob sets the synth's CC 74 low; the hardware knob sends CC 74 out at the top, at once:
+    # no pickup against the synth's value, and nothing of it to the synth
+    touch = fn c, v -> Controls.touch(c, %{"t" => "midi", "bytes" => [0xB0, 74, round(v * 127)], "abs" => "cc:1:74", "v" => v, "c" => synth}) end
+    {{:midi, <<0xB0, 74, 13>>}, c} = touch.(c, 0.1)
+    {ins, sur, c} = run(c, [cc(20, 127)])
+    assert ins == [{:out, <<0xB0, 74, 127>>}]
+    assert {:value, ^daw, "out:cc:1:74", 1.0} = List.last(sur)
+    # and the synth knob still owns the synth's CC 74
+    assert {{:midi, <<0xB0, 74, 25>>}, _} = touch.(c, 0.2)
+  end
+
   test "what the surface is told, as text" do
     text =
       Controls.surface_text([

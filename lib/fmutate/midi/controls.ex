@@ -24,10 +24,13 @@ defmodule FMutate.MIDI.Controls do
       turn; docs/architecture.md "MIDI controllers" has the measurement).
     * **Value, relative** (a CC whose `mode` is relative): each step is one encoder click, or 1/100 of an
       absolute target's range (rule 7 lets relative moves through: they start from the current value).
+
+  A MIDI target sent out (`"to"`: `"out"` or `"both"`, `FMutate.MIDI.Out`) gives `{:out, bytes}` among the instance
+  inputs: `FMutate.MIDI` sends those to the outputs instead of the instance.
   """
 
   alias FMutate.{Bindings, Inputs, LayoutEdit}
-  alias FMutate.MIDI.Learn
+  alias FMutate.MIDI.{Learn, Out}
   alias FMutate.MIDI.Map, as: MidiMap
 
   @sweep_clicks 64
@@ -331,10 +334,11 @@ defmodule FMutate.MIDI.Controls do
     end
   end
 
-  defp fire(_c, %{"midi" => %{"type" => "note"} = mi}, down) do
+  defp fire(_c, %{"midi" => %{"type" => "note"} = mi} = to, down) do
     ch = (mi["channel"] || 1) - 1
     n = mi["number"] || 0
-    if down, do: [{:midi, <<0x90 + ch, n, 100>>}], else: [{:midi, <<0x80 + ch, n, 0>>}]
+    input = if down, do: {:midi, <<0x90 + ch, n, 100>>}, else: {:midi, <<0x80 + ch, n, 0>>}
+    Out.route(input, Out.dest(to))
   end
 
   # a CC button: `on` while down; on release the value a control of this layout last set, else `off`
@@ -346,7 +350,7 @@ defmodule FMutate.MIDI.Controls do
         true -> mi["off"] || 0
       end
 
-    [{:midi, <<0xB0 + (mi["channel"] || 1) - 1, mi["number"] || 0, v>>}]
+    Out.route({:midi, <<0xB0 + (mi["channel"] || 1) - 1, mi["number"] || 0, v>>}, Out.dest(to))
   end
 
   defp fire(_c, %{"encoder" => _} = to, true), do: encoder(to, if(to["invert"], do: -1, else: 1))
@@ -445,7 +449,7 @@ defmodule FMutate.MIDI.Controls do
 
   defp set({ins, sur, c}, m, to, key, v) do
     case Bindings.absolute(c.bindings, key, "midi:#{m.key}:#{m.on}", v) do
-      {:send, v, b} -> {ins ++ [value_input(to, v)], sur ++ [{:value, m.control, key, v}], %{c | bindings: b}}
+      {:send, v, b} -> {ins ++ Out.route(value_input(to, v), Out.dest(to)), sur ++ [{:value, m.control, key, v}], %{c | bindings: b}}
       {:ignore, b} -> {ins, sur, %{c | bindings: b}}
     end
   end
@@ -471,11 +475,14 @@ defmodule FMutate.MIDI.Controls do
   @doc "Clicks an encoder binding gets for a whole sweep of an absolute hardware control."
   def sweep_clicks, do: @sweep_clicks
 
-  @doc "The surface's key of an absolute target (`Layout.kt` `absoluteKey`), or nil."
+  @doc """
+  The surface's key of an absolute target (`Layout.kt` `absoluteKey`), or nil. An Out-only MIDI target has its own
+  (`FMutate.MIDI.Out.key_prefix/1`).
+  """
   def target_key(%{"pot" => _}), do: "pot:master"
   def target_key(%{"mixer" => "balance"}), do: "mixer:balance"
-  def target_key(%{"midi" => %{"type" => "cc"} = mi}), do: "cc:#{mi["channel"] || 1}:#{mi["number"] || 0}"
-  def target_key(%{"midi" => %{"type" => "pitch_bend"} = mi}), do: "bend:#{mi["channel"] || 1}"
+  def target_key(%{"midi" => %{"type" => "cc"} = mi} = to), do: Out.key_prefix(Out.dest(to)) <> "cc:#{mi["channel"] || 1}:#{mi["number"] || 0}"
+  def target_key(%{"midi" => %{"type" => "pitch_bend"} = mi} = to), do: Out.key_prefix(Out.dest(to)) <> "bend:#{mi["channel"] || 1}"
   def target_key(_), do: nil
 
   defp value01({:cc, _, _, v}), do: v / 127

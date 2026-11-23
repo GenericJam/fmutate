@@ -53,6 +53,11 @@ early: Android, as a sideloaded APK or built from source (an iOS port is in test
   drives as you turn it, lines up your knobs one by one ("turn the knob you want for KNOB1"), pins a knob to a
   synth parameter by name (OberVave, Shine On), and says what an unmapped knob does to the synth. Any hardware
   knob, fader, pad or key can also be learned onto a control in the layout editor.
+- **A MIDI controller for other programs**: a binding to a MIDI note, CC or pitch bend goes to the synth, **Out**
+  or **Both**: an XY pad, a motion tile or a knob can drive FL Studio, Ableton or another app while the phone keeps
+  playing. Out goes to `FMutate A` (apps on the phone) and the MIDI outputs you switch on in I/O (USB, Bluetooth,
+  and on Android a computer over USB with the phone's USB set to MIDI); nothing held is left stuck there. iPhone:
+  the same bindings go to `FMutate A` and opened outputs; the computer link is Android only for now.
 - **Sibling apps** (planned separately: a pattern sequencer, voice control, …) drive FMutate over Erlang
   distribution, after you allow them ([docs/design/protocol.md](docs/design/protocol.md)).
 

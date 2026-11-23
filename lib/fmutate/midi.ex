@@ -42,6 +42,17 @@ defmodule FMutate.MIDI do
   #{div(15_000, 1000)} s; `cancel_learn/1` disarms it. `subscribe/1` gets `{:midi, id, {:layout, firmware,
   layout}}` whenever the current layout was saved (by the editor or by `clear_learned/2` from I/O).
 
+  ## MIDI out from the surface
+
+  A layout binding to a MIDI message has a destination (`FMutate.MIDI.Out`): synth (the firmware's MIDI in, as
+  always), out, or both. What goes out (from the surface, `surface_in/2`, and from learned hardware controls)
+  is sent from here to every output: the instance's virtual port (always) and the devices switched on with
+  `set_output/3` (kept per instance by name, opened again when they come back), stamped with the time the
+  hardware message had when it came from one (surface events carry none: now). Nothing of it reaches the
+  firmware, and firmware switches, crashes and sound loads don't touch it. `release_out/1` lets go of every
+  note still held out (release-all, a page change, leaving the instrument, quit). `outputs/1` lists the
+  outputs with what each was sent.
+
   Settings (clock mode, tempo, per-source channel and note mode) are kept per instance across restarts.
   Sources are known by name, so a device keeps its settings when it is plugged in again.
   """
@@ -50,7 +61,7 @@ defmodule FMutate.MIDI do
   require Logger
 
   alias FMutate.{Firmware, Instance, LayoutEdit, Layouts, Paths}
-  alias FMutate.MIDI.{Automap, Controls, Learn, Mapping, Params}
+  alias FMutate.MIDI.{Automap, Controls, Learn, Mapping, Out, Params}
   alias FMutate.MIDI.Map, as: MidiMap
 
   @latency_samples 256
@@ -159,6 +170,28 @@ defmodule FMutate.MIDI do
   def send_out(id, bytes) when is_binary(bytes), do: GenServer.cast(via(id), {:send_out, bytes})
 
   @doc """
+  The MIDI outputs: the virtual port first (always on), then every device with a port FMutate can write to:
+  `%{name, type, device, on, status, sent, bytes, last, error}`. `type` `:port` (the virtual port) or the
+  device's (`:usb`, `:bluetooth`, `:virtual`); `status` `:open`, `:opening`, `:off`, `:unavailable` (no virtual
+  port) or `{:error, reason}` (it didn't open); `sent` / `bytes` what went out of it, `last` the last message,
+  `error` the last send's error (nil once a send goes through; `:no_listener` on the virtual port: no app).
+  """
+  def outputs(id), do: GenServer.call(via(id), :outputs)
+
+  @doc "Send MIDI out to a device (by name) or stop; kept per instance, and opened whenever it is plugged in."
+  def set_output(id, name, on) when is_binary(name) and is_boolean(on), do: GenServer.call(via(id), {:output, name, on})
+
+  @doc """
+  Let go of everything held out: a note off for each note still on, then CC 123 on the channels notes went out
+  on. Waits until they are sent; `:ok` also when the instance's MIDI isn't running.
+  """
+  def release_out(id) do
+    GenServer.call(via(id), :release_out)
+  catch
+    :exit, _ -> :ok
+  end
+
+  @doc """
   What the MIDI trip costs, over the last #{@latency_samples} messages, in ms (`min`, `median`, `p90`,
   `max`): `delivery` from the sender's timestamp to the bridge, `to_beam` from the bridge to this process, `n`.
   """
@@ -204,16 +237,18 @@ defmodule FMutate.MIDI do
   @impl true
   def init(opts) do
     id = Keyword.fetch!(opts, :id)
+    # terminate/2 lets go of what is held out when the app stops
+    Process.flag(:trap_exit, true)
     saved = load(id)
     view = Instance.subscribe(id)
 
     MobMidi.open_virtual(nil, port_name(id))
 
-    names =
+    io =
       if Process.whereis(FMutate.IO) do
         # v1: every opened device plays instance "a"
         if index(id) == 0, do: :ok = FMutate.IO.attach_player(self())
-        device_names(FMutate.IO.subscribe())
+        FMutate.IO.subscribe()
       else
         %{}
       end
@@ -226,7 +261,8 @@ defmodule FMutate.MIDI do
       bpm: saved[:bpm] || 120,
       prefs: saved[:sources] || %{},
       bend: bends?(view.firmware),
-      names: names,
+      names: device_names(io),
+      devices: Map.get(io, :midi, []),
       virtual: nil,
       parsers: %{},
       samples: [],
@@ -246,11 +282,24 @@ defmodule FMutate.MIDI do
       seen: %{},
       params: Params.of(view.firmware),
       surface: Keyword.get_lazy(opts, :surface, &native_surface/0),
-      shown: []
+      shown: [],
+      # MIDI out (FMutate.MIDI.Out): the devices switched on (by name), their ports' state by device id, what each
+      # output (by name) was sent, what the outputs hold, the timestamp of the hardware message being handled
+      enabled: MapSet.new(saved[:outputs] || []),
+      opened: %{},
+      stats: %{},
+      out: Out.new(),
+      at: 0,
+      # the mob_midi boundary for output ports (tests fake it)
+      midi_out: Keyword.get(opts, :midi_out, &mob_midi_out/1)
     }
 
-    {:ok, start_clock(state)}
+    {:ok, state |> sync_outputs() |> start_clock()}
   end
+
+  defp mob_midi_out({:open, device}), do: MobMidi.open_output(nil, device)
+  defp mob_midi_out({:close, device}), do: MobMidi.close(nil, device)
+  defp mob_midi_out({:send, device, bytes, at}), do: MobMidi.send_raw(nil, device, bytes, at: at)
 
   # the surface's queue on a device (Android: FMutate.IONif; iOS: FMutate.SurfaceNif); nowhere on a host
   defp native_surface do
@@ -271,6 +320,23 @@ defmodule FMutate.MIDI do
      |> Map.put(:learned, learned(state.layout))
      |> Map.put(:automap, Map.new(names, &{&1, automap_summary(state, &1)})), state}
   end
+
+  def handle_call(:outputs, _from, state), do: {:reply, outputs_view(state), state}
+
+  def handle_call({:output, name, true}, _from, state) do
+    state = sync_outputs(%{state | enabled: MapSet.put(state.enabled, name)})
+    save(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call({:output, name, false}, _from, state) do
+    state = Enum.reduce(state.devices, state, fn d, st -> if d.name == name, do: output_off(st, d), else: st end)
+    state = %{state | enabled: MapSet.delete(state.enabled, name)}
+    save(state)
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:release_out, _from, state), do: {:reply, :ok, release_out_now(state)}
 
   def handle_call({:clock, mode}, _from, state) do
     state = state |> stop_clock() |> Map.put(:clock, mode) |> reconfigure() |> start_clock()
@@ -390,10 +456,10 @@ defmodule FMutate.MIDI do
 
   def handle_cast({:layout, _other_firmware, _layout, _saver}, state), do: {:noreply, state}
 
+  # an absolute move through rule 7, or a MIDI message the surface sends out: to where its binding sends it
   def handle_cast({:surface_in, payload}, state) do
     {event, controls} = Controls.touch(state.controls, payload)
-    if event, do: Instance.input(state.id, event)
-    {:noreply, %{state | controls: controls}}
+    {:noreply, deliver(%{state | controls: controls}, Out.route(event, Out.payload_dest(payload)))}
   end
 
   def handle_cast({:surface_toggle, key, on}, state),
@@ -417,9 +483,10 @@ defmodule FMutate.MIDI do
     {events, parser} = MidiMap.feed(state.parsers[source], bytes)
     state = %{state | parsers: Map.put(state.parsers, source, parser)}
     name = source_name(state, source)
-    state = Enum.reduce(events, state, &(&2 |> event(source, &1) |> moved(name, moved_key(&1))))
+    # what learned controls send out keeps the hardware message's time
+    state = Enum.reduce(events, %{state | at: sent_ns}, &(&2 |> event(source, &1) |> moved(name, moved_key(&1))))
     sample = {(recv_ns - sent_ns) / 1.0e6, (now - recv_ns) / 1.0e6}
-    {:noreply, %{state | samples: Enum.take([sample | state.samples], @latency_samples)}}
+    {:noreply, %{state | at: 0, samples: Enum.take([sample | state.samples], @latency_samples)}}
   end
 
   # what the learned controls show, in one call for everything this mailbox had waiting
@@ -472,6 +539,24 @@ defmodule FMutate.MIDI do
     {:noreply, state}
   end
 
+  # (an output switched off while it opened stays off)
+  def handle_info({:midi, :opened, %{direction: :output, device: device}}, state) do
+    if Map.has_key?(state.opened, device),
+      do: {:noreply, %{state | opened: Map.put(state.opened, device, :open)}},
+      else: {:noreply, state}
+  end
+
+  # an output that didn't open (or whose open close/2 cancelled): shown on its row
+  def handle_info({:midi, :error, %{op: :open_output, device: device, reason: reason}}, state) do
+    if Map.has_key?(state.opened, device),
+      do: {:noreply, %{state | opened: Map.put(state.opened, device, {:error, reason})}},
+      else: {:noreply, state}
+  end
+
+  # FMutate.IO closed the device (every port of it): an output still switched on opens again
+  def handle_info({:device_closed, device}, state),
+    do: {:noreply, sync_outputs(%{state | opened: Map.delete(state.opened, device)})}
+
   def handle_info({:midi, :error, %{op: :open_virtual, reason: reason}}, state) do
     Logger.warning("midi: #{port_name(state.id)} not available (#{reason})")
     {:noreply, state}
@@ -486,7 +571,8 @@ defmodule FMutate.MIDI do
           not Map.has_key?(names, device),
           do: src
 
-    {:noreply, %{release_sources(state, gone) | names: names}}
+    state = %{release_sources(state, gone) | names: names, devices: Map.get(io, :midi, [])}
+    {:noreply, sync_outputs(state)}
   end
 
   def handle_info({:instance, id, {:state, view}}, %{id: id} = state) do
@@ -839,7 +925,7 @@ defmodule FMutate.MIDI do
 
   # the inputs first, then (once the mailbox is through) what the surface shows
   defp show(state, inputs, shown) do
-    for input <- inputs, do: Instance.input(state.id, input)
+    state = deliver(state, inputs)
 
     if shown != [] and state.shown == [], do: send(self(), :show)
     %{state | shown: Enum.reverse(shown, state.shown)}
@@ -925,8 +1011,102 @@ defmodule FMutate.MIDI do
   # out of the virtual port, stamped `timestamp_ns` (0 = now); nobody listening is fine
   defp out(%{virtual: nil}, _bytes, _timestamp_ns), do: :ok
 
-  defp out(state, bytes, timestamp_ns),
-    do: MobMidi.send_raw(nil, state.virtual, bytes, at: timestamp_ns)
+  defp out(state, bytes, timestamp_ns), do: state.midi_out.({:send, state.virtual, bytes, timestamp_ns})
+
+  ## MIDI out from the surface (FMutate.MIDI.Out)
+
+  # instance inputs to the instance, `{:out, bytes}` to the outputs
+  defp deliver(state, inputs) do
+    Enum.reduce(inputs, state, fn
+      {:out, bytes}, st -> to_outputs(st, bytes)
+      input, st -> input!(st, input)
+    end)
+  end
+
+  # to every output: the virtual port, and each device switched on whose port is open or opening (Android
+  # queues what is sent while it opens)
+  defp to_outputs(state, bytes) do
+    state = %{state | out: Out.sent(state.out, bytes)}
+    Enum.reduce(out_targets(state), state, fn {name, device}, st -> send_to(st, name, device, bytes) end)
+  end
+
+  defp out_targets(state) do
+    port = if state.virtual, do: [{port_name(state.id), state.virtual}], else: []
+
+    port ++
+      for d <- state.devices, Map.get(state.opened, d.id) in [:open, :opening], do: {d.name, d.id}
+  end
+
+  defp send_to(state, name, device, bytes) do
+    stats = Map.get(state.stats, name, %{sent: 0, bytes: 0, last: nil, error: nil})
+
+    stats =
+      case state.midi_out.({:send, device, bytes, state.at}) do
+        {:error, reason} -> %{stats | error: reason}
+        _sent -> %{stats | sent: stats.sent + 1, bytes: stats.bytes + byte_size(bytes), last: bytes, error: nil}
+      end
+
+    %{state | stats: Map.put(state.stats, name, stats)}
+  end
+
+  defp release_out_now(state) do
+    {msgs, out} = Out.release(state.out)
+    Enum.reduce(msgs, %{state | out: out}, &to_outputs(&2, &1))
+  end
+
+  # the devices switched on that are plugged in and have a port to write to get it opened; a device that went
+  # away forgets its port (it comes back under a new id)
+  defp sync_outputs(state) do
+    present = MapSet.new(state.devices, & &1.id)
+    opened = Map.filter(state.opened, fn {id, _} -> MapSet.member?(present, id) end)
+
+    opened =
+      for d <- state.devices,
+          writable?(d),
+          MapSet.member?(state.enabled, d.name),
+          not Map.has_key?(opened, d.id),
+          reduce: opened do
+        acc ->
+          state.midi_out.({:open, d.id})
+          Map.put(acc, d.id, :opening)
+      end
+
+    %{state | opened: opened}
+  end
+
+  # a device switched off: its held notes let go, and its port closed unless the device plays the instance (closing
+  # is per device) or is a Bluetooth one (closing disconnects it)
+  defp output_off(state, d) do
+    if Map.has_key?(state.opened, d.id) do
+      state = Enum.reduce(Out.offs(state.out), state, &send_to(&2, d.name, d.id, &1))
+      if not Map.get(d, :open, false) and Map.get(d, :type) != :bluetooth, do: state.midi_out.({:close, d.id})
+      %{state | opened: Map.delete(state.opened, d.id)}
+    else
+      state
+    end
+  end
+
+  defp writable?(d), do: Map.get(d, :inputs, 0) > 0
+
+  defp outputs_view(state) do
+    port = port_name(state.id)
+    status = if state.virtual, do: :open, else: :unavailable
+    first = Map.merge(%{name: port, type: :port, device: state.virtual, on: true, status: status}, out_stats(state, port))
+
+    devices =
+      for d <- state.devices, writable?(d) do
+        on = MapSet.member?(state.enabled, d.name)
+        status = if on, do: Map.get(state.opened, d.id, :opening), else: :off
+        Map.merge(%{name: d.name, type: Map.get(d, :type, :usb), device: d.id, on: on, status: status}, out_stats(state, d.name))
+      end
+
+    [first | devices]
+  end
+
+  defp out_stats(state, name), do: Map.get(state.stats, name, %{sent: 0, bytes: 0, last: nil, error: nil})
+
+  @impl true
+  def terminate(_reason, state), do: release_out_now(state)
 
   defp now_ns, do: MobMidi.now_ns()
 
@@ -951,7 +1131,7 @@ defmodule FMutate.MIDI do
   end
 
   defp save(state) do
-    data = %{clock: state.clock, bpm: state.bpm, sources: state.prefs}
+    data = %{clock: state.clock, bpm: state.bpm, sources: state.prefs, outputs: MapSet.to_list(state.enabled)}
     File.write!(Paths.midi_settings(state.id), :erlang.term_to_binary(data))
   end
 end

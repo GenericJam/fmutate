@@ -22,7 +22,10 @@ defmodule FMutate.IO do
                                                   #   the FM-1 has no audio in, nothing produces it yet
       }
 
-  Devices the player opened are reopened when they come back (kept by name across restarts).
+  Devices the player opened are reopened when they come back (kept by name across restarts). A device with
+  `inputs` (ports FMutate writes to) can also be an instance's MIDI output (`FMutate.MIDI.set_output/3`, which
+  opens those itself); `close/1` closes every port of a device, so the player is told (`{:device_closed, id}`)
+  and opens its output again.
   """
 
   use GenServer
@@ -152,6 +155,8 @@ defmodule FMutate.IO do
 
       dev ->
         MobMidi.close(nil, id)
+        # closing is per device: the player's MIDI out to it (FMutate.MIDI.set_output/3) opens again
+        if state.player, do: send(state.player, {:device_closed, id})
         reopen = MapSet.delete(state.reopen, dev.name)
         save(reopen)
 

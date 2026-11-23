@@ -33,12 +33,14 @@ import java.util.concurrent.atomic.AtomicReference;
  *   am start -n ... --es do notes [--ei note 60] [--ei count 1] [--ei hold 1500] [--ei gap 300] [--ei channel 1]
  *       note on/off into the "FMutate A" virtual port, each stamped System.nanoTime()
  *   am start -n ... --es do listen [--ei ms 3000]
- *       what comes out of "FMutate A" (the clock FMutate sends), with tick intervals
+ *       what comes out of "FMutate A" (the clock FMutate sends, with tick intervals; every other message as hex)
  *   am start -n ... --es do emit [--ei note 60] [--ei hold 1500]
  *       a note out of this app's own "FMutate Probe" port (once FMutate has opened it)
  *   am start -n ... --es do emit --es hex "b0 46 40,99 24 64,89 24 00" [--ei gap 20]
  *       those messages (comma-separated, hex bytes) out of "FMutate Probe", gap ms apart: a controller's knobs,
  *       pads on channel 10, anything
+ *
+ * FMutate can also send to "FMutate Probe" (I/O › MIDI OUT): each message it gets is logged as "in: b0 4a 40".
  */
 public class ProbeActivity extends Activity {
     private static final String TAG = "FMutateProbe";
@@ -175,14 +177,20 @@ public class ProbeActivity extends Activity {
         MidiOutputPort out = dev.openOutputPort(0);
         final List<long[]> ticks = new ArrayList<>();
         final int[] other = {0};
+        final List<String> messages = new ArrayList<>();
         out.connect(new MidiReceiver() {
             @Override
             public void onSend(byte[] msg, int off, int n, long ts) {
                 synchronized (ticks) {
+                    StringBuilder m = new StringBuilder();
                     for (int i = off; i < off + n; i++) {
                         if ((msg[i] & 0xFF) == 0xF8) ticks.add(new long[]{ts, System.nanoTime()});
-                        else other[0]++;
+                        else {
+                            other[0]++;
+                            m.append(m.length() > 0 ? " " : "").append(String.format("%02x", msg[i] & 0xFF));
+                        }
                     }
+                    if (m.length() > 0) messages.add(m.toString());
                 }
             }
         });
@@ -191,6 +199,7 @@ public class ProbeActivity extends Activity {
         dev.close();
         synchronized (ticks) {
             Log.i(TAG, "listen: " + ticks.size() + " clock ticks, " + other[0] + " other bytes");
+            for (String line : messages) Log.i(TAG, "listen: " + line);
             if (ticks.size() > 2) {
                 double sum = 0, min = Double.MAX_VALUE, max = 0, late = 0;
                 for (int i = 1; i < ticks.size(); i++) {
@@ -233,5 +242,11 @@ public class ProbeActivity extends Activity {
         Thread.sleep(hold);
         out.send(new byte[]{(byte) 0x80, (byte) note, 0}, 0, 3, System.nanoTime());
         Log.i(TAG, "emit: note off " + note);
+    }
+
+    static String hex(byte[] msg, int off, int n) {
+        StringBuilder s = new StringBuilder();
+        for (int i = off; i < off + n; i++) s.append(i > off ? " " : "").append(String.format("%02x", msg[i] & 0xFF));
+        return s.toString();
     }
 }

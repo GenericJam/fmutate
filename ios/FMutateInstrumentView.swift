@@ -400,14 +400,14 @@ private func sendValueBytes(_ t: FMTarget, _ v: Float, _ control: String) -> [St
     switch t {
     case .pot: return ["t": "pot", "v": Double(v), "c": control]
     case .balance: return ["t": "balance", "v": Double(v), "c": control]
-    case let .midi(type, channel, number, _, _, _):
+    case let .midi(type, channel, number, _, _, _, _):
         if type == "cc" {
-            return ["t": "midi", "bytes": [0xB0 | (channel - 1), number, fmRound(v * 127)],
-                    "c": control, "abs": t.absoluteKey ?? "", "v": Double(v)]
+            return t.midiPayload([0xB0 | (channel - 1), number, fmRound(v * 127)],
+                                 ["c": control, "abs": t.absoluteKey ?? "", "v": Double(v)])
         } else if type == "pitch_bend" {
             let raw = fmBendRaw(v)
-            return ["t": "midi", "bytes": [0xE0 | (channel - 1), raw & 0x7F, raw >> 7],
-                    "c": control, "abs": t.absoluteKey ?? "", "v": Double(v)]
+            return t.midiPayload([0xE0 | (channel - 1), raw & 0x7F, raw >> 7],
+                                 ["c": control, "abs": t.absoluteKey ?? "", "v": Double(v)])
         }
         return nil
     default: return nil
@@ -770,7 +770,8 @@ final class FMInstrumentSurface: UIView {
         guard phase == "running" else { return }
         fmAfter(FIRMWARE_BOOT_MS) { [weak self] in
             guard let self, !self.disposed, self.phaseGen == gen else { return }
-            for t in self.toggled() { self.fire(t, true) }
+            // (a new engine only: what a toggle sends out was never lost, so it isn't sent out again)
+            for t in self.toggled() { if let s = t.synthSide { self.fire(s, true) } }
             if self.hasVelocityStrip && self.oct0 {
                 self.input(["t": "button", "id": "oct_down", "d": true])
                 self.input(["t": "button", "id": "oct_up", "d": true])
@@ -1003,15 +1004,15 @@ final class FMInstrumentSurface: UIView {
         case let .button(id):
             input(["t": "button", "id": id, "d": down])
             octaveFollows(id, down)
-        case let .midi(type, channel, number, _, on, off):
+        case let .midi(type, channel, number, _, on, off, _):
             switch type {
             case "note":
-                input(["t": "midi", "bytes": [(down ? 0x90 : 0x80) | (channel - 1), number, down ? 100 : 0]])
+                input(t.midiPayload([(down ? 0x90 : 0x80) | (channel - 1), number, down ? 100 : 0]))
             // a CC on a button: its `on` value while pressed (or toggled on); on release its `off` value, or the
             // value a knob/slider of this layout last set for that CC (so a long-release toggle gives it back)
             case "cc":
                 let v = down ? on : (t.absoluteKey.flatMap { state.values[$0] }.map { fmRound($0 * 127) } ?? off)
-                input(["t": "midi", "bytes": [0xB0 | (channel - 1), number, fmClamp(v, 0, 127)]])
+                input(t.midiPayload([0xB0 | (channel - 1), number, fmClamp(v, 0, 127)]))
             default: break
             }
         case let .action(id):

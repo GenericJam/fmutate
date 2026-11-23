@@ -125,16 +125,9 @@ defmodule FMutate.InstrumentScreen do
 
   def handle_info({:dismiss, :menu}, socket), do: {:noreply, Mob.Socket.assign(socket, :menu, false)}
 
-  def handle_info({:tap, :library}, socket),
-    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.LibraryScreen)}
-
-  def handle_info({:tap, :io}, socket),
-    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.IOScreen)}
-
-  def handle_info({:tap, :pair}, socket),
-    do:
-      {:noreply,
-       socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(FMutate.PairScreen)}
+  def handle_info({:tap, :library}, socket), do: {:noreply, leave(socket, FMutate.LibraryScreen)}
+  def handle_info({:tap, :io}, socket), do: {:noreply, leave(socket, FMutate.IOScreen)}
+  def handle_info({:tap, :pair}, socket), do: {:noreply, leave(socket, FMutate.PairScreen)}
 
   def handle_info({:tap, :edit}, socket),
     do: {:noreply, Mob.Socket.assign(socket, menu: false, editing: true)}
@@ -169,6 +162,12 @@ defmodule FMutate.InstrumentScreen do
 
   # a picked layout file, read and checked in a task (FMutate.LayoutsSheet.picked/2)
   def handle_async({:layouts, :import}, result, socket), do: {:noreply, LayoutsSheet.imported(socket, result)}
+
+  # another screen over the instrument: nothing stays held out of MIDI out (the surface lets go of its fingers too)
+  defp leave(socket, screen) do
+    MIDI.release_out(@instance)
+    socket |> Mob.Socket.assign(:menu, false) |> Mob.Socket.push_screen(screen)
+  end
 
   defp placeholder_view do
     %{
