@@ -322,6 +322,7 @@ defmodule FMutate.LibraryUI do
 
   defp explain(:quarantined), do: "It crashed twice. Use Run anyway."
   defp explain(:not_installed), do: "It doesn’t run in this build yet."
+  defp explain(:busy), do: "A sound is being saved or loaded; try again in a moment."
   defp explain(other), do: inspect(other)
 
   @doc "Show a toast for a few seconds (`undo`: the firmware id Undo switches back to, or nil)."

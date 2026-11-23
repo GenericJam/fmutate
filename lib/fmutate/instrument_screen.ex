@@ -1,14 +1,14 @@
 defmodule FMutate.InstrumentScreen do
   @moduledoc """
   The instrument (HANDOFF §4, P1-a): the current layout full screen. The creature button is the only app
-  chrome: tap → menu (Library, Edit layout, Layouts, I/O, Pair an app), long-press → page grid.
+  chrome: tap → menu (Library, Edit layout, Layouts, Sounds, I/O, Pair an app), long-press → page grid.
   """
 
   use Mob.Screen
 
   require FMutate.Subscription
 
-  alias FMutate.{Editor, Instance, LayoutsSheet, MIDI, Subscription}
+  alias FMutate.{Editor, Instance, LayoutsSheet, MIDI, SoundsSheet, Subscription}
 
   @instance "a"
   @editor_events Editor.events()
@@ -26,7 +26,7 @@ defmodule FMutate.InstrumentScreen do
 
     socket =
       socket
-      |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false, layouts: nil)
+      |> Mob.Socket.assign(instance: @instance, view: view, menu: false, editing: false, layouts: nil, sounds: nil)
       # layout editing: the layout for the running firmware, pages, sheets (FMutate.Editor)
       |> Editor.load(@instance, view.firmware)
 
@@ -54,6 +54,7 @@ defmodule FMutate.InstrumentScreen do
     layouts = {self(), :layouts}
     io = {self(), :io}
     pair = {self(), :pair}
+    sounds = {self(), :sounds}
     # (no pairing on iOS yet: FMutate.Pairing.available?/0)
     pair_button =
       if FMutate.Pairing.available?(),
@@ -66,6 +67,7 @@ defmodule FMutate.InstrumentScreen do
 
     editor_sheets = Editor.sheets(assigns)
     layouts_sheet = LayoutsSheet.sheets(assigns)
+    sounds_sheet = SoundsSheet.sheets(assigns)
 
     ~MOB"""
     <Box background="#14121A" padding={0} fill_width={true} fill_height={true}>
@@ -75,12 +77,14 @@ defmodule FMutate.InstrumentScreen do
           <Button text="Library" on_tap={library} background="#221F2B" text_color="#F3EFF8" />
           <Button text="Edit layout" on_tap={edit} background="#221F2B" text_color="#F3EFF8" />
           <Button text="Layouts" on_tap={layouts} background="#221F2B" text_color="#F3EFF8" />
+          <Button text="Sounds" on_tap={sounds} background="#221F2B" text_color="#F3EFF8" />
           <Button text="I/O" on_tap={io} background="#221F2B" text_color="#F3EFF8" />
           {pair_button}
         </Column>
       </Sheet>
       {editor_sheets}
       {layouts_sheet}
+      {sounds_sheet}
     </Box>
     """
     |> FMutate.Style.native_colors()
@@ -154,6 +158,12 @@ defmodule FMutate.InstrumentScreen do
   # an export's share sheet didn't open (Mob.Share.file/3)
   def handle_info({:mob_share, :error, reason}, socket),
     do: {:noreply, Mob.Alert.toast(socket, "Couldn't open the share sheet (#{reason})", duration: :long)}
+
+  def handle_info({:tap, :sounds}, socket),
+    do: {:noreply, socket |> Mob.Socket.assign(:menu, false) |> SoundsSheet.open()}
+
+  # the Sounds sheet's own events, while it is open or its work runs (FMutate.SoundsSheet)
+  def handle_info(msg, %{assigns: %{sounds: %{}}} = socket), do: {:noreply, SoundsSheet.event(msg, socket)}
 
   def handle_info(_message, socket), do: {:noreply, socket}
 
