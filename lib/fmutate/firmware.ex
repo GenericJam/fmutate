@@ -126,6 +126,41 @@ defmodule FMutate.Firmware do
   defp downloaded_cart(%{cart: cart}) when is_binary(cart), do: if(File.exists?(cart), do: cart)
   defp downloaded_cart(_fw), do: nil
 
+  @typedoc "Who a running build is (`build/2`): what a sound saved from it says."
+  @type build :: %{
+          id: String.t(),
+          name: String.t(),
+          version: String.t() | nil,
+          commit: String.t() | nil,
+          backend: :native | :emu
+        }
+
+  @doc """
+  Who a run of firmware `id` from `run` (`runnable/1`'s answer, as it started) is. `version` is the build's: a
+  downloaded native cartridge's own when the index has moved past it (`native.cart_version`), else the firmware's
+  (on iOS already the linked cartridge's); `commit` when the build says (a bundled cartridge's pinned source, the
+  index's entry when its version is the build's), else nil.
+  """
+  @spec build(String.t(), %{backend: :native | :emu, file: term}) :: build
+  def build(id, %{backend: backend, file: file}) do
+    case get(id) do
+      nil ->
+        %{id: id, name: id, version: nil, commit: nil, backend: backend}
+
+      fw ->
+        {version, commit} = build_version(fw, file)
+        %{id: fw.id, name: fw.name, version: version, commit: commit, backend: backend}
+    end
+  end
+
+  defp build_version(%__MODULE__{native: %{} = n} = fw, file) do
+    version = if file == n[:cart] and is_binary(n[:cart_version]), do: n.cart_version, else: fw.version
+    {version, if(version == n[:version], do: n[:commit])}
+  end
+
+  defp build_version(%__MODULE__{source: :bundled, ref: ref} = fw, _file), do: {fw.version, ref}
+  defp build_version(fw, _file), do: {fw.version, nil}
+
   @doc """
   Whether a firmware runs natively from a cartridge this phone downloads and doesn't have yet: a Hub firmware
   gone native in the cartridge index (`FMutate.Library.download/1` fetches it).

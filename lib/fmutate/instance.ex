@@ -53,6 +53,19 @@ defmodule FMutate.Instance do
   on `:auto` the clock steps down while the engine is too slow and is kept per firmware (`cpu` in the saved
   state), so its next engine starts there. `advice` says what the instrument shows beside "Too slow".
 
+  ## Sound snapshots
+
+  `snapshot/1` and `restore/5` (`FMutate.Sounds`) read and replace the running firmware's whole save memory (its
+  flash file) with no engine running. The live engine is asked to save and end with its port open
+  (`FMutate.Engine.finish/1`), so only its exit status 0, given once its flash is written, counts as a clean end;
+  anything else fails the operation and leaves the file alone. The file is then read, or replaced (the new bytes
+  written beside it, the current file kept as `<flash>.rollback`, the new one renamed into place), and the same
+  build (the cartridge or package that ran) starts again; the call answers at its READY. Until that READY the
+  rollback stays: if the restored memory doesn't start it goes back and the firmware starts again (not counted as
+  a crash); if quit or a crash of the app comes first, it goes back when the engine has ended or before the
+  firmware next starts. If it can't go back, nothing starts: the instance shows safe mode and Run anyway tries
+  again. Refused while a switch, a download or another snapshot is under way, before READY, and after quit.
+
   ## Subscribers
 
   `subscribe/1` delivers `{:instance, id, event}`: `{:state, view}` whenever `view/1` changes and
@@ -71,6 +84,8 @@ defmodule FMutate.Instance do
   @quarantine_after 2
   # an engine's stop grace (3 s, FMutate.Engine) and a margin
   @quit_timeout_ms 10_000
+  # a snapshot or restore: the stop grace, a READY (5 s), and a rollback's READY, with a margin
+  @sound_timeout_ms 30_000
 
   defstruct id: nil,
             firmware: nil,
@@ -103,7 +118,9 @@ defmodule FMutate.Instance do
             wanted: nil,
             # quit/1 was called: no engine starts again; callers still waiting for the engines to end
             quit: false,
-            quitting: []
+            quitting: [],
+            # a snapshot or restore under way (sound_* below): the engine it stopped, what it answers, its step
+            sound: nil
 
   ## API
 
@@ -181,6 +198,34 @@ defmodule FMutate.Instance do
   """
   def quit(id), do: GenServer.call(via(id), :quit, @quit_timeout_ms)
 
+  @doc """
+  The running firmware's save memory (see "Sound snapshots" above): `{:ok, %{build: build, bytes: binary}}` once
+  the firmware runs again (`build`: who it is, `FMutate.Firmware.build/2`, taken from the engine that ran), or
+  `{:error, reason}`: `:busy` (another snapshot or restore), `:switching` (a switch or download under way),
+  `:not_running`, `:quit`, `{:stop_failed, reason}` (the engine didn't end cleanly; the file wasn't read).
+  """
+  def snapshot(id), do: GenServer.call(via(id), {:sound, :snapshot}, @sound_timeout_ms)
+
+  @doc """
+  Replace the running firmware's save memory with `bytes` and start it again (see "Sound snapshots" above).
+  `firmware_id` and `backend` must be what runs (else `{:error, :wrong_synth}`). `keep` is called with the bytes
+  being replaced (nil when there was no file) after the engine has ended and before the file is replaced:
+  anything but `:ok` stops the restore there (the firmware starts again unchanged) and is the answer. `{:ok,
+  old}` at the restored firmware's READY; `{:error, {:failed_to_start, reason}}` when it didn't start and the old
+  bytes are back; `{:error, {:rollback_failed, why, reason}}` when they couldn't go back (nothing runs then);
+  `:build_changed` when the build that ran is gone; else the errors of `snapshot/1`.
+  """
+  def restore(id, firmware_id, backend, bytes, keep \\ fn _old -> :ok end)
+      when backend in [:native, :emu] and is_binary(bytes) and is_function(keep, 1),
+      do: GenServer.call(via(id), {:sound, {:restore, firmware_id, backend, bytes, keep}}, @sound_timeout_ms)
+
+  @doc """
+  What runs, for a snapshot or restore to be checked against: `%{build: build, flash: path}` (the running
+  engine's build, `FMutate.Firmware.build/2`, and its flash file), or nil while none is running and READY (or a
+  switch or a snapshot is under way).
+  """
+  def running(id), do: GenServer.call(via(id), :running)
+
   # --- library hooks (FMutate.Library / LibraryScreen) ---
   @doc "The firmwares quarantined on this instance (any, not only the current one)."
   @spec quarantined(String.t()) :: [String.t()]
@@ -212,11 +257,13 @@ defmodule FMutate.Instance do
       app_crashes: saved[:app_crashes] || %{}
     }
 
-    {:ok,
-     app_crashed(
-       state,
-       Keyword.get_lazy(opts, :crashed, fn -> FMutate.CrashMarker.claim(id) end)
-     ), {:continue, :boot}}
+    # (an app crash while a sound load was booting is the load's: recover_flash/3 undoes it, nothing counts)
+    crashed =
+      opts
+      |> Keyword.get_lazy(:crashed, fn -> FMutate.CrashMarker.claim(id) end)
+      |> Enum.reject(&restoring?(id, &1))
+
+    {:ok, app_crashed(state, crashed), {:continue, :boot}}
   end
 
   # In-process engines (iOS): firmwares that ended the app (FMutate.CrashMarker). Each counts against itself, the
@@ -261,6 +308,8 @@ defmodule FMutate.Instance do
 
   @impl true
   def handle_call(:quit, from, state) do
+    state = sound_quit(state)
+
     # a switch's old engine still crossfading out hasn't been told to stop yet ({:finish_switch, _})
     for {pid, _eng} <- state.stopping, do: Engine.stop(pid)
 
@@ -291,6 +340,17 @@ defmodule FMutate.Instance do
 
   def handle_call(:run_anyway, _from, %{quit: true} = state), do: {:reply, {:error, :quit}, state}
 
+  # a snapshot or restore has the engine (sound_* below): nothing else starts one until it is done
+  def handle_call({:switch, _fw}, _from, %{sound: %{}} = state), do: {:reply, {:error, :busy}, state}
+  def handle_call(:run_anyway, _from, %{sound: %{}} = state), do: {:reply, {:error, :busy}, state}
+
+  def handle_call({:sound, op}, from, state) do
+    case sound_refusal(state, op) do
+      nil -> {:noreply, sound_stop(state, op, from)}
+      reason -> {:reply, {:error, reason}, state}
+    end
+  end
+
   def handle_call({:switch, fw}, _from, state) do
     cond do
       Firmware.runnable(fw) == nil and not Firmware.needs_cart?(Firmware.get(fw)) ->
@@ -320,6 +380,11 @@ defmodule FMutate.Instance do
   end
 
   def handle_call(:view, _from, state), do: {:reply, view_of(state), state}
+
+  def handle_call(:running, _from, %{phase: :running, live: %{ready: true} = eng, next: nil, sound: nil} = state),
+    do: {:reply, %{build: eng.build, flash: Paths.flash(state.id, eng.firmware, eng.backend)}, state}
+
+  def handle_call(:running, _from, state), do: {:reply, nil, state}
 
   def handle_call({:buffer, buffer}, _from, state) do
     state = %{state | buffer: buffer}
@@ -410,10 +475,16 @@ defmodule FMutate.Instance do
   def handle_cast({:debug, _}, state), do: {:noreply, state}
 
   @impl true
+  # the engine a snapshot or restore stopped, until it has ended
+  def handle_info({:engine, pid, event}, %{sound: %{step: :stopping, eng: %{pid: pid}}} = state),
+    do: {:noreply, sound_stopped(state, event)}
+
   def handle_info({:engine, pid, event}, state) do
     case which(state, pid) do
       nil -> {:noreply, state}
       :stopping -> {:noreply, stopping_event(state, pid, event)}
+      # the firmware a snapshot or restore started again, until READY
+      :live when state.sound != nil -> {:noreply, sound_live(state, event)}
       role -> {:noreply, engine_event(state, role, event)}
     end
   end
@@ -434,6 +505,9 @@ defmodule FMutate.Instance do
       when is_map_key(stopping, pid),
       do: {:noreply, stopping_event(state, pid, {:exit, :gone})}
 
+  def handle_info({:EXIT, pid, _reason}, %{sound: %{step: :stopping, eng: %{pid: pid}}} = state),
+    do: {:noreply, sound_stopped(state, {:exit, :gone})}
+
   def handle_info({:EXIT, _pid, _reason}, state), do: {:noreply, state}
 
   def handle_info({:library, {:downloaded, fw, result}}, %{fetching: %{fw: fw} = f} = state),
@@ -452,6 +526,7 @@ defmodule FMutate.Instance do
   @impl true
   def terminate(_reason, state) do
     engines = Enum.reject([state.live, state.next], &is_nil/1) ++ Map.values(state.stopping)
+    engines = if state.sound && state.sound.step == :stopping, do: [state.sound.eng | engines], else: engines
 
     for eng <- engines do
       Engine.stop(eng.pid)
@@ -463,9 +538,11 @@ defmodule FMutate.Instance do
 
   ## Engines
 
-  # `carry`: the fill the previous engine of this firmware ended with (a restart keeps what auto learnt)
-  defp start_engine(state, role, fw, carry \\ nil) do
-    with %{engine: bin, file: cart, backend: backend} <- Firmware.runnable(fw) || nil,
+  # `carry`: the fill the previous engine of this firmware ended with (a restart keeps what auto learnt); `run`:
+  # the build to start (`Firmware.runnable/1`'s answer, kept with the engine), else what the library says now
+  defp start_engine(state, role, fw, carry \\ nil, run \\ nil) do
+    with %{engine: bin, file: cart, backend: backend} = run <- run || Firmware.runnable(fw) || nil,
+         :ok <- recover_flash(state, fw, backend),
          {:ok, slot} <- Audio.claim() do
       prefix = Paths.shm_prefix(state.id, slot)
       fill = Health.start_fill(state.buffer, Audio.engine_fill(), carry)
@@ -491,7 +568,10 @@ defmodule FMutate.Instance do
         prefix: prefix,
         ready: false,
         fill: fill,
-        backend: backend
+        backend: backend,
+        # which build runs (what a snapshot says it is, and what a snapshot or restore starts again)
+        run: run,
+        build: Firmware.build(fw, run)
       }
 
       phase = if role == :live, do: :booting, else: state.phase
@@ -499,6 +579,10 @@ defmodule FMutate.Instance do
     else
       nil ->
         fetch_cart(state, role, fw, carry)
+
+      {:error, {:rollback_failed, _} = reason} ->
+        Logger.error("instance #{state.id}: cannot start #{fw}: #{inspect(reason)}")
+        if role == :live, do: %{state | phase: :safe_mode, last_exit: reason}, else: not_installed(state, role)
 
       {:error, reason} ->
         Logger.error("instance #{state.id}: cannot start #{fw}: #{inspect(reason)}")
@@ -603,6 +687,8 @@ defmodule FMutate.Instance do
   defp stopping_event(state, pid, {:exit, _}) do
     {eng, stopping} = Map.pop(state.stopping, pid)
     Audio.release(eng.slot)
+    # (a restored memory it was booting, not confirmed by its READY: the previous one goes back; quit after a load)
+    _ = recover_flash(state, eng.firmware, eng.backend)
     quit_done(%{state | stopping: stopping})
   end
 
@@ -773,6 +859,287 @@ defmodule FMutate.Instance do
     else
       state
     end
+  end
+
+  ## Sound snapshots (snapshot/1, restore/5)
+
+  defp sound_refusal(state, op) do
+    live = state.live
+
+    cond do
+      state.quit -> :quit
+      state.sound != nil -> :busy
+      state.next != nil or state.fetching != nil or map_size(state.stopping) > 0 -> :switching
+      state.phase != :running or live == nil or not live.ready -> :not_running
+      not sound_for?(op, live) -> :wrong_synth
+      true -> nil
+    end
+  end
+
+  defp sound_for?({:restore, fw, backend, _bytes, _keep}, live), do: {fw, backend} == {live.firmware, live.backend}
+  defp sound_for?(:snapshot, _live), do: true
+
+  # the live engine saves and ends (verified: Engine.finish/1); nothing reaches the firmware until it runs again
+  defp sound_stop(state, op, from) do
+    eng = state.live
+    Logger.info("instance #{state.id}: #{sound_kind(op)} of #{eng.firmware} (#{eng.backend}): stopping its engine")
+    state = release_keys(state, eng)
+    Engine.finish(eng.pid)
+    Audio.gain(eng.slot, 0, 30)
+
+    sound = %{
+      op: op,
+      from: from,
+      eng: eng,
+      step: :stopping,
+      carry: state.health && state.health.fill,
+      t0: System.monotonic_time(:millisecond),
+      answer: nil,
+      # the flash file holds a restore's bytes, its previous ones kept beside it until READY (rollback_path/1)
+      restored: false,
+      failed: nil
+    }
+
+    %{state | live: nil, phase: :booting, health: nil, sound: sound}
+    |> journal(:engine, {sound_kind(op), eng.firmware}, :noted)
+    |> publish()
+  end
+
+  defp sound_kind(:snapshot), do: :snapshot
+  defp sound_kind({:restore, _, _, _, _}), do: :restore
+
+  # the stopped engine ended: only a verified clean exit (status 0: its flash written) lets the file be used
+  defp sound_stopped(%{sound: s} = state, {:exit, :stopped}) do
+    eng = s.eng
+    Audio.release(eng.slot)
+    path = Paths.flash(state.id, eng.firmware, eng.backend)
+
+    s =
+      case read_flash(path) do
+        {:ok, old} -> sound_apply(s, s.op, path, old)
+        {:error, reason} -> %{s | answer: {:error, {:read_failed, reason}}}
+      end
+
+    sound_start(%{state | sound: %{s | step: :booting}})
+  end
+
+  defp sound_stopped(%{sound: s} = state, {:exit, reason}) do
+    Audio.release(s.eng.slot)
+
+    Logger.warning(
+      "instance #{state.id}: #{s.eng.firmware} didn't end cleanly (#{inspect(reason)}); its save memory is untouched"
+    )
+
+    sound_start(%{state | sound: %{s | step: :booting, answer: {:error, {:stop_failed, reason}}}})
+  end
+
+  defp sound_stopped(state, _event), do: state
+
+  defp sound_apply(s, :snapshot, _path, old),
+    do: %{s | answer: {:ok, %{build: s.eng.build, bytes: old || <<>>}}}
+
+  defp sound_apply(s, {:restore, _fw, _backend, bytes, keep}, path, old) do
+    with :ok <- same_build(s.eng),
+         :ok <- sound_keep(keep, old),
+         :ok <- replace_flash(path, bytes, old) do
+      %{s | answer: {:ok, old}, restored: true}
+    else
+      {:error, _} = error -> %{s | answer: error}
+      other -> %{s | answer: {:error, other}}
+    end
+  end
+
+  # the build that ran can start again (a library update may have removed its cartridge or package)
+  defp same_build(eng), do: if(build_there?(eng.run), do: :ok, else: {:error, :build_changed})
+
+  defp build_there?(%{engine: :inproc}), do: true
+  defp build_there?(%{engine: bin, file: file}), do: File.exists?(bin) and File.exists?(file)
+
+  defp sound_keep(keep, old) do
+    keep.(old)
+  rescue
+    e -> {:error, {:keep_failed, Exception.message(e)}}
+  end
+
+  defp read_flash(path) do
+    case File.read(path) do
+      {:ok, bytes} -> {:ok, bytes}
+      {:error, :enoent} -> {:ok, nil}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # A restore's previous flash, kept beside the file until the restored firmware is READY: put back if it doesn't
+  # start, if quit or a crash of the app comes first (recover_flash/3, before any start of the firmware). An empty
+  # one stands for no file (both engines read an empty flash as none).
+  defp rollback_path(path), do: path <> ".rollback"
+
+  # the new bytes in a sibling file; the current file becomes the rollback; the new one takes its place (renames:
+  # no space needed once the new bytes are written)
+  defp replace_flash(path, bytes, old) do
+    tmp = path <> ".restore.tmp"
+
+    result =
+      with :ok <- File.write(tmp, bytes, [:sync]),
+           :ok <- keep_rollback(path, old) do
+        # (if the new file can't take its place, the previous one goes back)
+        with {:error, _} = error <- File.rename(tmp, path), do: tap(error, fn _ -> put_back(path) end)
+      end
+
+    case result do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        File.rm(tmp)
+        {:error, {:write_failed, reason}}
+    end
+  end
+
+  defp keep_rollback(path, nil), do: File.write(rollback_path(path), <<>>, [:sync])
+  defp keep_rollback(path, _old), do: File.rename(path, rollback_path(path))
+
+  # an unconfirmed restore's previous flash goes back (no engine of the firmware runs: it is about to start, or
+  # the one booting the restored bytes has ended); an empty one was no file, and leaves none
+  defp put_back(path) do
+    rollback = rollback_path(path)
+
+    result =
+      case File.stat(rollback) do
+        {:ok, %{size: 0}} -> with :ok <- rm_flash(path), do: File.rm(rollback)
+        {:ok, _} -> File.rename(rollback, path)
+        {:error, :enoent} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+
+    with {:error, reason} <- result, do: {:error, {:rollback_failed, reason}}
+  end
+
+  defp rm_flash(path) do
+    case File.rm(path) do
+      {:error, :enoent} -> :ok
+      other -> other
+    end
+  end
+
+  # an app crash while a restored memory was booting (in-process, iOS): the restore's, not the firmware's own
+  defp restoring?(id, fw),
+    do: Enum.any?([:native, :emu], &File.exists?(rollback_path(Paths.flash(id, fw, &1))))
+
+  defp recover_flash(state, fw, backend) do
+    path = Paths.flash(state.id, fw, backend)
+
+    cond do
+      # (the restore under way starts the firmware on its bytes)
+      state.sound != nil and state.sound.eng.firmware == fw -> :ok
+      File.exists?(rollback_path(path)) -> log_recovery(state, fw, put_back(path))
+      true -> :ok
+    end
+  end
+
+  defp log_recovery(state, fw, result) do
+    Logger.warning(
+      "instance #{state.id}: #{fw}: a sound load wasn't confirmed; its previous memory back: #{inspect(result)}"
+    )
+
+    result
+  end
+
+  # the same build again (or, when it is gone, what the library has now); the answer goes at its READY
+  defp sound_start(%{sound: s} = state) do
+    run = if build_there?(s.eng.run), do: s.eng.run
+    state = start_engine(state, :live, s.eng.firmware, s.carry, run)
+
+    cond do
+      state.live != nil ->
+        publish(state)
+
+      # it can't start at all (no audio slot, its cartridge gone): the restore isn't kept
+      s.restored ->
+        case put_back(Paths.flash(state.id, s.eng.firmware, s.eng.backend)) do
+          :ok -> sound_done(state, {:error, {:failed_to_start, :no_engine}})
+          error -> sound_done(rollback_failed(state, error), {:error, {:failed_to_start, :no_engine}})
+        end
+
+      true ->
+        sound_done(state, sound_answer(s))
+    end
+  end
+
+  defp sound_live(%{sound: %{step: :booting, restored: true} = s, live: eng} = state, {:ready, _ms} = event) do
+    state = engine_event(state, :live, event)
+
+    # READY: the restore is kept
+    case File.rm(rollback_path(Paths.flash(state.id, eng.firmware, eng.backend))) do
+      :ok -> sound_done(state, sound_answer(s))
+      {:error, reason} -> sound_done(state, {:error, {:confirm_failed, reason}})
+    end
+  end
+
+  defp sound_live(%{sound: s} = state, {:ready, _ms} = event),
+    do: state |> engine_event(:live, event) |> sound_done(sound_answer(s))
+
+  # the restored save memory doesn't start: the previous one goes back and the firmware starts again on it (not a
+  # crash of the firmware's own: no failure counted). If it can't go back, nothing starts: the firmware would
+  # only boot the failing bytes again; the rollback stays beside the file for the next start (Run anyway).
+  defp sound_live(%{sound: %{step: :booting, restored: true} = s, live: eng} = state, {:exit, reason}) do
+    Audio.release(eng.slot)
+
+    Logger.warning(
+      "instance #{state.id}: #{eng.firmware} didn't start on the restored sound (#{inspect(reason)}); " <>
+        "putting its previous memory back"
+    )
+
+    state = %{state | live: nil} |> journal(:engine, {:exit, :live, reason}, :noted)
+
+    case put_back(Paths.flash(state.id, eng.firmware, eng.backend)) do
+      :ok ->
+        sound_start(%{state | sound: %{s | step: :rollback, failed: reason, restored: false}})
+
+      {:error, {:rollback_failed, why}} = error ->
+        Logger.error("instance #{state.id}: #{eng.firmware}'s previous memory can't go back: #{inspect(why)}")
+        state |> rollback_failed(error) |> sound_done({:error, {:rollback_failed, why, reason}})
+    end
+  end
+
+  # starting again failed otherwise (a snapshot's bytes are good all the same): the ordinary crash handling
+  defp sound_live(%{sound: s} = state, {:exit, _reason} = event),
+    do: state |> sound_done(sound_answer(s)) |> engine_event(:live, event)
+
+  defp sound_live(state, event), do: engine_event(state, :live, event)
+
+  # nothing runs: Run anyway (the screen's tap in safe mode) tries to put the previous memory back again
+  defp rollback_failed(state, {:error, reason}),
+    do: %{state | phase: :safe_mode, last_exit: reason, held_keys: MapSet.new(), held_buttons: MapSet.new()}
+
+  defp sound_answer(%{step: :rollback, failed: reason}), do: {:error, {:failed_to_start, reason}}
+  defp sound_answer(%{answer: answer}), do: answer
+
+  defp sound_done(%{sound: s} = state, answer) do
+    GenServer.reply(s.from, answer)
+    ms = System.monotonic_time(:millisecond) - s.t0
+    outcome = if match?({:ok, _}, answer), do: :ok, else: answer
+
+    Logger.info(
+      "instance #{state.id}: #{sound_kind(s.op)} of #{s.eng.firmware}: #{inspect(outcome)}, " <>
+        "#{ms} ms from stop to running"
+    )
+
+    publish(%{state | sound: nil})
+  end
+
+  # Quit while a snapshot or restore runs: it ends there. An engine it stopped is waited for as quit's own; a
+  # restored engine not READY yet is stopped as the live one, and its previous memory goes back when it has ended
+  # (stopping_event/3), before quit answers.
+  defp sound_quit(%{sound: nil} = state), do: state
+
+  defp sound_quit(%{sound: s} = state) do
+    GenServer.reply(s.from, {:error, :quit})
+    state = %{state | sound: nil}
+
+    if s.step == :stopping,
+      do: %{state | stopping: Map.put(state.stopping, s.eng.pid, s.eng)},
+      else: state
   end
 
   ## Inputs

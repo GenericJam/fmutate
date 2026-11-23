@@ -103,6 +103,12 @@ flowchart LR
   brings Firebase, which needs host Gradle wiring).
 - **Flash per backend**: `flash/<instance>/<id>.bin` (native image) and `flash/<instance>/emu/<id>.bin`
   (fm1-emu's changed sectors), so no id shares a flash file across backends.
+- **Sounds** (`FMutate.Sounds`, the Opling menu's Sounds sheet `FMutate.SoundsSheet`): a firmware's whole flash
+  file as a `fmutate.sound/1` JSON in `sounds/<id>/` (id percent-encoded, dots too, so `hub:<id>` stays apart and
+  no id leaves `sounds/`), read and replaced only through `FMutate.Instance.snapshot/1` / `restore/5`, which stop
+  the engine first. The undo of the last load is one file, `sounds/.undo/<instance>/<id>.term` (per instance, as
+  the flash is). A restore's previous flash waits as `<flash>.rollback` until the restored firmware is READY.
+  Decision below.
 - **Subscriptions survive restarts**: the screens subscribe through `FMutate.Subscription`, which monitors the
   server (Instance, Library, IO, Dist) and subscribes again when its supervisor has restarted it.
 
@@ -115,7 +121,7 @@ flowchart LR
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
 | `native/build_ios.sh`, `native/ios_cartridges.exs` + `.lock`, `c_src/fm1host.c`, `ios/` | iOS: the engines and every published iOS cartridge (pinned by the lock) linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
 | `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
-| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex` (presets, the current layout per synth and its undo slot, the layout library), `layouts_sheet.ex` (menu › Layouts), `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
+| `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex` (presets, the current layout per synth and its undo slot, the layout library), `layouts_sheet.ex` (menu › Layouts), `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), `sounds.ex` (sound snapshots: the format, checks, undo) and `sounds_sheet.ex` (its sheet over the instrument), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
 | `priv/layouts/*.layout.json`, `priv/layout.schema.json` | layout presets and schema |
@@ -125,6 +131,43 @@ flowchart LR
 
 - **Package id** `com.genericjam.fmutate` (Kotlin namespace stays `com.example.fmutate_app`: the JNI symbols
   in `beam_jni.c` follow it).
+- **Sound snapshots** (Kevin chose a snapshot of the firmware's save memory over parsing patches): a sound is the
+  engine's flash file as opaque bytes, for every firmware and both engines, loadable only into the same synth: the
+  same firmware id (`hub:<id>` is another synth than `<id>`) and backend (a native cartridge's concatenated save
+  blobs and fm1-emu's sparse sector records are unrelated formats). `fmutate.sound/1`: `format`, `name`, `saved_at`
+  (ISO 8601 UTC, shown in local time), `firmware` (`id`, `name`, `version`, `backend` `native`|`emu`, `commit` when
+  the build says), `payload` (`encoding: base64`, `bytes`, `sha256`, `data`); saving always adds a file
+  `<UTC time>-<name>.sound.json`. Load and import check the id and backend exactly, the length and SHA-256, an
+  emulator payload as whole 4,100-byte records at distinct 4096-aligned offsets inside the 1 MiB flash (the engine
+  would silently ignore a malformed file and boot the package's flash, which looks like a reset), a native one as
+  long as the synth's current file; another synth is refused, naming it; another version of the same synth asks
+  "Made with <v1>; you have <v2>. Load anyway?". Import adds to the running synth's list without loading.
+  **The sequence** (`FMutate.Instance`, one operation at a time; refused during a switch, a download, before READY
+  and after quit; a switch or Run anyway meanwhile answers `{:error, :busy}`): release held keys, ask the engine to
+  save and end with its port open (op `0x09`, `FMutate.Engine.finish/1`) and wait for its exit: only status 0,
+  which the engine gives once its flash file is written, is a clean end (`Engine.stop/1` closes the port, after
+  which an executable's exit status isn't seen, so a crash while stopping looked like a stop; a failed save, a
+  crash, a kill or no exit within 3 s fails the operation and leaves the file alone). Then read the file or, for a
+  restore, hand the bytes it replaces to the caller (`FMutate.Sounds` keeps them as the undo first: one file,
+  written beside the last one and renamed over it, so a failure leaves the last undo whole), write the new bytes
+  beside the flash, rename the flash to `<flash>.rollback` and the new file into its place, and start the same
+  build again (the cartridge or package the engine ran, kept with it, so a library update meanwhile doesn't
+  change what restarts or what a snapshot says it is: `FMutate.Firmware.build/2` gives the build's own version and
+  commit). At READY the rollback is deleted and the call answers. A restored memory the firmware doesn't start on:
+  the rollback is renamed back and the firmware starts again, without counting a failure. If even that rename
+  fails, nothing starts (it would only boot the failing memory): the instance shows safe mode and keeps the
+  rollback, and Run anyway, like any start of that firmware, puts it back first. Quit before READY: the restored
+  engine is stopped and the rollback goes back before quit answers; a crash of the app before READY: it goes back
+  before the firmware next starts, and (in-process, where the firmware's crash ends the app) the crash marker
+  doesn't count it toward the firmware's quarantine. A rollback of no file is an empty file and puts back no file.
+  There is no flush that keeps the firmware playing, so saving or loading is a
+  gap in the sound, from stop to READY (logged as "… ms from stop to running") plus the 30 ms fade-out and 20 ms
+  fade-in: OberVave native, host 8–30 ms; emulator-5584 (Android 15 arm64) save 20–24 ms, load and undo 41–84 ms.
+  The restart also drops what the firmware hasn't saved itself (OberVave's `*` edits), so the sheet says to save
+  in the synth first. **Undo last load** puts back the kept bytes through the same restore, under a load's checks
+  (another version asks, another native length is refused), and keeps what it replaced, so it toggles. Not taken:
+  `quit/1` (nothing restarts in that launch), a switch away and back (a switch answers before the old engine has
+  ended), replacing the file while the engine runs (it would write over it).
 - **Synth page design** (HANDOFF has no board for a firmware detail page; this is the tech decision, in the
   library's look: `bg`, `surface` cards at radius 18, the card's badges and pills, `info` for links): "‹ Library",
   the Hub's picture (200 dp, fit) with whose it is, name (30 bold), status / New / Native-Emulated, the meta line,
