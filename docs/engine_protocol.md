@@ -27,7 +27,8 @@ Elixir (BEAM, app process) ──Port──▶ libfm1engine.so <cart> <prefix> <
   (`FMutate.Paths.flash/3`; the two formats differ, so a firmware id never shares a file across backends).
   Loaded before boot, rewritten atomically whenever the firmware saves, and when the port closes: on EOF, or on a
   message the engine can't send (the BEAM closes the port's two pipes in no set order, so the engine can see its
-  output gone before its input's EOF; the same when the BEAM is gone).
+  output gone before its input's EOF; the same when the BEAM is gone). Once the port is closed the BEAM can't see
+  the executable's exit status, so a closed port can't tell a saved end from a crash; op `0x09` (below) can.
 
 ## Port messages (`{:packet, 2}`, one opcode byte, big-endian fields)
 
@@ -43,6 +44,7 @@ Elixir → engine:
 | `0x06` | `frame:u64 status:u8 d1:u8 d2:u8` | MIDI at mixer frame `frame` (see the clock below); delivered half a firmware block early so notes land on the nearest 256-frame block (desktop: −1.7…+3.6 ms) |
 | `0x07` | `fill:u16` | target ring fill in frames, from now on (as the `[fill]` argument; clamped to 512..3840). Lowering it plays out what is queued; raising it renders ahead. Both engines |
 | `0x08` | `mhz:u16` | the emulated CPU's clock, from now on (clamped to 20..240; 240 = the FM-1's). Emulator engine only (below) |
+| `0x09` | – | save the flash and end, the port still open: exit status 0 only once the flash file is written (atomically), 2 when it couldn't be; a crash or kill shows as itself. `FMutate.Engine.finish/1`: the flush a sound snapshot or restore waits for (`FMutate.Instance`). Both engines, in-process too |
 | `0x10` | – | debug: crash (SIGSEGV in the firmware thread) |
 | `0x11` | – | debug: hang (the firmware loop stops yielding) |
 

@@ -3,14 +3,15 @@ defmodule FMutate.SoundsSheet do
   The Sounds sheet over the instrument (the Opling menu's Sounds): the running synth's saved sounds
   (`FMutate.Sounds`). Save sound… (a name, then a new entry), the list (newest first: name, local date and time,
   version; one made with another version of this synth says so), per entry Load / Export / Delete (asks first),
-  Import…, and Undo last load. Loading, saving and undoing restart the synth for a moment; they run in a task and
-  the sheet says what it is doing meanwhile.
+  Import…, and Undo last load. A sound or an undo made with another version asks first. Loading, saving and
+  undoing restart the synth for a moment; they run in a task and the sheet says what it is doing meanwhile. The
+  list is read in a task too (each file in turn, without its payload) and drawn as a lazy list.
 
   It works on the instrument screen's socket. Its assign is `sounds` (nil while the sheet is closed and nothing
   runs); it sets the screen's `picking: :sounds` while the file picker is open, and uses the instrument's `toast`
   (`FMutate.Editor`) for a result that arrives after the sheet was closed. Events (`event/2`): taps and changes
-  tagged `{:sounds, _}`, `{:alert, :sounds_*}`, `{:files, …}` while picking, `{:mob_share, :error, _}`,
-  `{:sounds_done, op, result}` from its task.
+  tagged `{:sounds, _}`, `{:alert, :sounds_*}`, `{:files, …}` while picking, `{:mob_share, :error, _}`, and its
+  tasks' `{:sounds_done, op, result}` and `{:sounds_listed, firmware_id, entries, undo}`.
   """
 
   import Mob.Sigil, only: [sigil_MOB: 2]
@@ -26,8 +27,8 @@ defmodule FMutate.SoundsSheet do
     %{
       open: false,
       firmware: nil,
-      backend: nil,
-      entries: [],
+      # nil while the list is being read
+      entries: nil,
       undo: false,
       naming: false,
       name: "",
@@ -37,21 +38,33 @@ defmodule FMutate.SoundsSheet do
     }
   end
 
-  # the running synth's list and undo, read again
+  # the running synth's list and undo, read again in a task
   defp refresh(socket) do
-    s = socket.assigns.sounds
-    fw = Firmware.get(socket.assigns.view.firmware)
-    backend = fw && Map.get(Firmware.runnable(fw.id) || %{}, :backend)
+    id = socket.assigns.view.firmware
+    fw = Firmware.get(id)
+    instance = socket.assigns.instance
+    me = self()
 
-    {entries, undo} =
-      if fw && backend do
-        entries = Enum.map(Sounds.list(fw.id), &Map.delete(&1, :bytes))
-        {entries, Sounds.undo?(socket.assigns.instance, fw.id, backend)}
-      else
-        {[], false}
-      end
+    Task.start(fn ->
+      {entries, undo} =
+        try do
+          backend =
+            case Sounds.running(instance) do
+              {:ok, %{backend: b}} -> b
+              _ -> nil
+            end
 
-    Mob.Socket.assign(socket, :sounds, %{s | firmware: fw, backend: backend, entries: entries, undo: undo})
+          {Sounds.list(id), backend != nil and Sounds.undo?(instance, id, backend)}
+        catch
+          kind, reason ->
+            Logger.error("sounds: listing #{id} failed: #{Exception.format(kind, reason)}")
+            {[], false}
+        end
+
+      send(me, {:sounds_listed, id, entries, undo})
+    end)
+
+    put(socket, firmware: %{id: id, name: (fw && fw.name) || id, version: fw && fw.version})
   end
 
   defp put(socket, changes), do: Mob.Socket.assign(socket, :sounds, Map.merge(socket.assigns.sounds, Map.new(changes)))
@@ -67,11 +80,15 @@ defmodule FMutate.SoundsSheet do
 
   def event({:tap, {:sounds, :close}}, socket), do: event({:dismiss, {:sounds, :close}}, socket)
 
+  def event({:sounds_listed, id, entries, undo}, %{assigns: %{sounds: %{firmware: %{id: id}}}} = socket),
+    do: put(socket, entries: entries, undo: undo)
+
+  def event({:sounds_listed, _id, _entries, _undo}, socket), do: socket
+
   def event({:tap, {:sounds, _}}, %{assigns: %{sounds: %{busy: busy}}} = socket) when busy != nil, do: socket
 
   def event({:tap, {:sounds, :name}}, socket) do
-    s = socket.assigns.sounds
-    name = "#{(s.firmware && s.firmware.name) || "Sound"} #{Sounds.local_time(now())}"
+    name = "#{socket.assigns.sounds.firmware.name} #{Sounds.local_time(now())}"
     put(socket, naming: true, name: name, status: nil)
   end
 
@@ -87,16 +104,12 @@ defmodule FMutate.SoundsSheet do
          {:ok, running} <- Sounds.running(socket.assigns.instance) do
       case Sounds.check(sound, running) do
         :ok ->
-          load(socket, sound)
+          load(socket, sound, [])
 
         {:other_version, made, have} ->
           socket
           |> put(pending: {:load, path})
-          |> Mob.Alert.alert(
-            title: "Load “#{sound.name}”?",
-            message: "Made with #{made}; you have #{have}. Load anyway?",
-            buttons: [[label: "Load anyway", action: :sounds_load_anyway], [label: "Cancel", style: :cancel]]
-          )
+          |> ask_version("Load “#{sound.name}”?", made, have, "Load anyway", :sounds_load_anyway)
 
         {:error, text} ->
           refused(socket, text)
@@ -109,7 +122,7 @@ defmodule FMutate.SoundsSheet do
   def event({:tap, {:sounds, {:export, path}}}, socket) do
     dir = Path.join(Mob.Storage.dir(:cache), "exports")
 
-    with {:ok, sound} <- Sounds.read(path),
+    with %{} = sound <- entry(socket, path) || {:error, "It's gone."},
          {:ok, out} <- Sounds.export(sound, dir) do
       Mob.Share.file(socket, out, mime: "application/json", title: sound.name)
     else
@@ -118,7 +131,7 @@ defmodule FMutate.SoundsSheet do
   end
 
   def event({:tap, {:sounds, {:delete, path}}}, socket) do
-    name = Enum.find_value(socket.assigns.sounds.entries, "this sound", &(&1.path == path && &1.name))
+    name = (entry(socket, path) || %{name: "this sound"}).name
 
     socket
     |> put(pending: {:delete, path})
@@ -132,30 +145,24 @@ defmodule FMutate.SoundsSheet do
   def event({:tap, {:sounds, :import}}, socket),
     do: socket |> Mob.Socket.assign(:picking, :sounds) |> Mob.Files.pick(types: ["json"])
 
-  def event({:tap, {:sounds, :undo}}, socket),
-    do: run(socket, :undo, "Undoing the last load…", fn instance -> Sounds.undo(instance) end)
+  def event({:tap, {:sounds, :undo}}, socket), do: undo(socket, [])
 
   def event({:alert, :sounds_delete}, %{assigns: %{sounds: %{pending: {:delete, path}}}} = socket) do
-    case Enum.find(socket.assigns.sounds.entries, &(&1.path == path)) do
-      nil -> socket
-      sound -> Sounds.delete(sound)
-    end
-
+    Sounds.delete(%{path: path})
     socket |> put(pending: nil, status: {:ok, "Deleted."}) |> refresh()
   end
 
   def event({:alert, :sounds_load_anyway}, %{assigns: %{sounds: %{pending: {:load, path}}}} = socket) do
     socket = put(socket, pending: nil)
 
-    with {:ok, sound} <- Sounds.read(path),
-         {:ok, running} <- Sounds.running(socket.assigns.instance),
-         # (the player said yes to the other version; everything else is checked again)
-         :ok <- anyway(Sounds.check(sound, running)) do
-      load(socket, sound)
-    else
+    case Sounds.read(path) do
+      {:ok, sound} -> load(socket, sound, anyway: true)
       {:error, text} -> refused(socket, text)
     end
   end
+
+  def event({:alert, :sounds_undo_anyway}, %{assigns: %{sounds: %{pending: :undo}}} = socket),
+    do: socket |> put(pending: nil) |> undo(anyway: true)
 
   def event({:alert, _}, socket), do: put(socket, pending: nil)
 
@@ -178,6 +185,13 @@ defmodule FMutate.SoundsSheet do
   def event({:mob_share, :error, reason}, socket),
     do: refused(socket, "Couldn’t open the share sheet (#{reason}).")
 
+  # an undo made with another version: the player says
+  def event({:sounds_done, :undo, {:other_version, made, have}}, socket) do
+    socket
+    |> put(busy: nil, pending: :undo)
+    |> ask_version("Undo the last load?", made, have, "Undo anyway", :sounds_undo_anyway)
+  end
+
   def event({:sounds_done, op, result}, socket) do
     socket = put(socket, busy: nil)
 
@@ -186,6 +200,7 @@ defmodule FMutate.SoundsSheet do
         {:save, {:ok, sound}} -> {:ok, "Saved “#{sound.name}”."}
         {:load, :ok} -> {:ok, "Loaded. Undo last load puts back what was there."}
         {:undo, :ok} -> {:ok, "Undone. Undo again to redo."}
+        {_, {:other_version, _, _}} -> {:error, "Made with another version: not loaded."}
         {_, {:error, text}} -> {:error, text}
       end
 
@@ -198,16 +213,28 @@ defmodule FMutate.SoundsSheet do
 
   def event(_message, socket), do: socket
 
-  defp anyway({:other_version, _made, _have}), do: :ok
-  defp anyway(answer), do: answer
+  defp entry(socket, path), do: Enum.find(socket.assigns.sounds.entries || [], &(&1.path == path))
+
+  defp ask_version(socket, title, made, have, yes, action) do
+    Mob.Alert.alert(socket,
+      title: title,
+      message: "Made with #{made || "an unknown version"}; you have #{have || "an unknown version"}. #{yes}?",
+      buttons: [[label: yes, action: action], [label: "Cancel", style: :cancel]]
+    )
+  end
 
   defp save(socket) do
     name = socket.assigns.sounds.name
     run(socket, :save, "Saving… the synth restarts for a moment.", &Sounds.save(&1, name))
   end
 
-  defp load(socket, sound),
-    do: run(socket, :load, "Loading “#{sound.name}”… the synth restarts for a moment.", &Sounds.load(&1, sound))
+  defp load(socket, sound, opts) do
+    busy = "Loading “#{sound.name}”… the synth restarts for a moment."
+    run(socket, :load, busy, &Sounds.load(&1, sound, opts))
+  end
+
+  defp undo(socket, opts),
+    do: run(socket, :undo, "Undoing the last load…", &Sounds.undo(&1, opts))
 
   # the work in a task (it stops and starts the firmware); its answer comes back as {:sounds_done, op, result}
   defp run(socket, op, busy, fun) do
@@ -245,43 +272,62 @@ defmodule FMutate.SoundsSheet do
   def sheets(%{sounds: %{open: true} = s} = assigns) do
     running = assigns.view.phase == :running
     idle = running and s.busy == nil
-    synth = (s.firmware && s.firmware.name) || assigns.view.firmware
+    synth = s.firmware.name
     dismiss = {self(), {:sounds, :close}}
     bg = Style.argb(:surface)
 
-    children =
+    status_rows =
+      case status(s, running) do
+        [] -> []
+        lines -> [row_of("status", lines)]
+      end
+
+    rows =
       [
-        title(synth),
-        text("A sound is everything #{synth} keeps in its memory: every patch and setting. " <>
-               "Loading one restarts the synth for a moment.", 12, :muted),
-        # (saving restarts it too: an edit the synth hasn't saved itself, e.g. OberVave's `*`, is gone then)
-        text("Save your edits in #{synth} first: what it hasn't saved isn't in its memory.", 12, :muted)
+        row_of("title", [title(synth)]),
+        row_of("caption", [
+          text("A sound is everything #{synth} keeps in its memory: every patch and setting. " <>
+                 "Loading one restarts the synth for a moment.", 12, :muted),
+          # (saving restarts it too: an edit the synth hasn't saved itself, e.g. OberVave's `*`, is gone then)
+          text("Save your edits in #{synth} first: what it hasn't saved isn't in its memory.", 12, :muted)
+        ])
       ] ++
-        status(s, running) ++
-        save_row(s, idle) ++
-        [section("Saved")] ++
+        status_rows ++
+        [row_of("save", save_row(s, idle)), row_of("saved", [section("Saved")])] ++
         entries(s, idle) ++
         [
-          row([
-            button("Import…", :import, disabled: not idle),
-            button("Undo last load", :undo, disabled: not (idle and s.undo))
+          row_of("footer", [
+            row([
+              button("Import…", :import, disabled: not idle),
+              button("Undo last load", :undo, disabled: not (idle and s.undo))
+            ])
           ])
         ]
 
     [
       ~MOB"""
       <Sheet id="sounds" detents={[:large]} on_dismiss={dismiss} background={bg}>
-        <Scroll>
-          <Column padding={16} gap={12} background={bg}>
-            {children}
-          </Column>
-        </Scroll>
+        <LazyList id="sounds_list" weight={1} background={bg}>
+          {rows}
+        </LazyList>
       </Sheet>
       """
     ]
   end
 
   def sheets(_assigns), do: []
+
+  # one LazyList row: the list has no padding or gap of its own, so the row carries them
+  defp row_of(id, children) do
+    bg = Style.argb(:surface)
+
+    ~MOB"""
+    <Column id={id} padding_left={16} padding_right={16} padding_top={6} padding_bottom={6} gap={8} background={bg}
+      fill_width={true}>
+      {children}
+    </Column>
+    """
+  end
 
   defp title(synth) do
     color = Style.argb(:text)
@@ -318,16 +364,17 @@ defmodule FMutate.SoundsSheet do
 
   defp save_row(_s, idle), do: [row([button("Save sound…", :name, disabled: not idle, primary: true)])]
 
+  defp entries(%{entries: nil}, _idle), do: [row_of("reading", [text("Reading…", 12, :muted)])]
+
   defp entries(%{entries: []} = s, _idle),
-    do: [text("No sounds saved for #{(s.firmware && s.firmware.name) || "this synth"} yet.", 12, :muted)]
+    do: [row_of("none", [text("No sounds saved for #{s.firmware.name} yet.", 12, :muted)])]
 
   defp entries(s, idle) do
-    have = s.firmware && s.firmware.version
+    have = s.firmware.version
 
     for sound <- s.entries do
       made = sound.firmware.version
       bg = Style.argb(:raised_hi)
-
       meta = text("#{Sounds.local_time(sound.saved_at)} · #{made}", 12, :muted)
 
       other =
@@ -344,11 +391,13 @@ defmodule FMutate.SoundsSheet do
 
       children = [text(sound.name, 15, :text, true), meta] ++ other ++ [buttons]
 
-      ~MOB"""
-      <Column padding={12} gap={6} background={bg} corner_radius={12}>
-        {children}
-      </Column>
-      """
+      row_of(sound.path, [
+        ~MOB"""
+        <Column padding={12} gap={6} background={bg} corner_radius={12}>
+          {children}
+        </Column>
+        """
+      ])
     end
   end
 

@@ -104,9 +104,11 @@ flowchart LR
 - **Flash per backend**: `flash/<instance>/<id>.bin` (native image) and `flash/<instance>/emu/<id>.bin`
   (fm1-emu's changed sectors), so no id shares a flash file across backends.
 - **Sounds** (`FMutate.Sounds`, the Opling menu's Sounds sheet `FMutate.SoundsSheet`): a firmware's whole flash
-  file as a `fmutate.sound/1` JSON in `sounds/<id>/` (id percent-encoded, so `hub:<id>` stays apart), read and
-  replaced only through `FMutate.Instance.snapshot/1` / `restore/5`, which stop the engine first. The undo of the
-  last load is `sounds/.undo/<instance>/<id>.bin` + `.json` (per instance, as the flash is). Decision below.
+  file as a `fmutate.sound/1` JSON in `sounds/<id>/` (id percent-encoded, dots too, so `hub:<id>` stays apart and
+  no id leaves `sounds/`), read and replaced only through `FMutate.Instance.snapshot/1` / `restore/5`, which stop
+  the engine first. The undo of the last load is one file, `sounds/.undo/<instance>/<id>.term` (per instance, as
+  the flash is). A restore's previous flash waits as `<flash>.rollback` until the restored firmware is READY.
+  Decision below.
 - **Subscriptions survive restarts**: the screens subscribe through `FMutate.Subscription`, which monitors the
   server (Instance, Library, IO, Dist) and subscribes again when its supervisor has restarted it.
 
@@ -141,19 +143,29 @@ flowchart LR
   long as the synth's current file; another synth is refused, naming it; another version of the same synth asks
   "Made with <v1>; you have <v2>. Load anyway?". Import adds to the running synth's list without loading.
   **The sequence** (`FMutate.Instance`, one operation at a time; refused during a switch, a download, before READY
-  and after quit; a switch or Run anyway meanwhile answers `{:error, :busy}`): release held keys, `Engine.stop`
-  (the engine saves and exits) and wait for `{:exit, :stopped}` (anything else, e.g. a crash, fails it and leaves
-  the file alone), read the file or, for a restore, hand the bytes it replaces to the caller (`FMutate.Sounds`
-  keeps them as the undo) and replace it atomically (sibling file + rename), start the same firmware on the same
-  backend, answer at READY. A restored memory the firmware doesn't start on: the old bytes go back and it starts
-  again, without counting a failure. There is no flush command in the engine protocol, so a snapshot can't be
-  taken while the firmware plays: saving or loading is a gap in the sound, from stop to READY (logged as "… ms
-  from stop to running") plus the 30 ms fade-out and 20 ms fade-in: OberVave native, host 8–30 ms; emulator-5584
-  (Android 15 arm64) save 20 ms, load and undo 71–84 ms. The restart also drops what the firmware hasn't saved
-  itself (OberVave's `*` edits), so the sheet says to save in the synth first. **Undo last load** puts back the
-  kept bytes through the same restore and keeps what it replaced, so it toggles. Not taken: `quit/1` (nothing
-  restarts in that launch), a switch away and back (a switch answers before the old engine has ended), replacing
-  the file while the engine runs (it would write over it).
+  and after quit; a switch or Run anyway meanwhile answers `{:error, :busy}`): release held keys, ask the engine to
+  save and end with its port open (op `0x09`, `FMutate.Engine.finish/1`) and wait for its exit: only status 0,
+  which the engine gives once its flash file is written, is a clean end (`Engine.stop/1` closes the port, after
+  which an executable's exit status isn't seen, so a crash while stopping looked like a stop; a failed save, a
+  crash, a kill or no exit within 3 s fails the operation and leaves the file alone). Then read the file or, for a
+  restore, hand the bytes it replaces to the caller (`FMutate.Sounds` keeps them as the undo first: one file,
+  written beside the last one and renamed over it, so a failure leaves the last undo whole), write the new bytes
+  beside the flash, rename the flash to `<flash>.rollback` and the new file into its place, and start the same
+  build again (the cartridge or package the engine ran, kept with it, so a library update meanwhile doesn't
+  change what restarts or what a snapshot says it is: `FMutate.Firmware.build/2` gives the build's own version and
+  commit). At READY the rollback is deleted and the call answers. A restored memory the firmware doesn't start on:
+  the rollback is renamed back and the firmware starts again, without counting a failure. If even that rename
+  fails, nothing starts (it would only boot the failing memory): the instance shows safe mode and keeps the
+  rollback, and Run anyway, like any start of that firmware, puts it back first. Quit before READY: the restored
+  engine is stopped and the rollback goes back before quit answers; a crash of the app before READY: it goes back
+  before the firmware next starts. There is no flush that keeps the firmware playing, so saving or loading is a
+  gap in the sound, from stop to READY (logged as "… ms from stop to running") plus the 30 ms fade-out and 20 ms
+  fade-in: OberVave native, host 8–30 ms; emulator-5584 (Android 15 arm64) save 20–24 ms, load and undo 41–84 ms.
+  The restart also drops what the firmware hasn't saved itself (OberVave's `*` edits), so the sheet says to save
+  in the synth first. **Undo last load** puts back the kept bytes through the same restore, under a load's checks
+  (another version asks, another native length is refused), and keeps what it replaced, so it toggles. Not taken:
+  `quit/1` (nothing restarts in that launch), a switch away and back (a switch answers before the old engine has
+  ended), replacing the file while the engine runs (it would write over it).
 - **Synth page design** (HANDOFF has no board for a firmware detail page; this is the tech decision, in the
   library's look: `bg`, `surface` cards at radius 18, the card's badges and pills, `info` for links): "‹ Library",
   the Hub's picture (200 dp, fit) with whose it is, name (30 bold), status / New / Native-Emulated, the meta line,

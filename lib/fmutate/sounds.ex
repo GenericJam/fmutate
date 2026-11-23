@@ -12,23 +12,24 @@ defmodule FMutate.Sounds do
                     "commit": "792535d…"},
        "payload": {"encoding": "base64", "bytes": 147456, "sha256": "…", "data": "…"}}
 
-  kept in `sounds/<id>/<UTC time>-<name>.sound.json` (`FMutate.Paths.sounds/1`); saving always adds a file.
-  `commit` is there when the build says. The payload is the engine's flash file as it is: for a native
-  cartridge its save blobs one after the other (its length is the cartridge's), for a package in the emulator
-  engine the sectors that differ from the package's own flash (records of a little-endian u32 sector offset and
-  4096 bytes, `docs/engine_protocol.md`).
+  kept in `sounds/<id>/<UTC time>-<name>.sound.json` (`FMutate.Paths.sounds/1`); saving always adds a file (the
+  name is reserved by an exclusive create, so two saves at once never share one). `firmware` is the build that
+  ran (`FMutate.Firmware.build/2`, kept with its engine), `commit` when the build says. The payload is the
+  engine's flash file as it is: for a native cartridge its save blobs one after the other (its length is the
+  cartridge's), for a package in the emulator engine the sectors that differ from the package's own flash
+  (records of a little-endian u32 sector offset and 4096 bytes, `docs/engine_protocol.md`).
 
-  Loading checks the sound against the running synth (`check/2`): the firmware id and backend must be the same,
+  Loading checks the sound against the running build (`check/2`): the firmware id and backend must be the same,
   the payload's length and SHA-256 must match it, an emulator payload must be whole records at distinct
-  4096-aligned offsets inside the 1 MiB flash, a native one as long as the synth's current file. Made with
-  another version of the same synth: `{:other_version, made, have}`, for the player to decide. Before replacing,
-  the bytes it replaces are kept (`Paths.sound_undo/2`): `undo/1` puts them back and keeps what it replaced, so a
-  second undo redoes.
+  4096-aligned offsets inside the 1 MiB flash, a native one as long as the synth's current file (again once the
+  engine has ended). Made with another version of the same synth: `{:other_version, made, have}`, for the player
+  to decide. Before replacing, the bytes it replaces are kept (`Paths.sound_undo/2`, one file replaced as a
+  whole): `undo/2` puts them back under the same checks and keeps what it replaced, so a second undo redoes.
   """
 
   require Logger
 
-  alias FMutate.{Firmware, Instance, Paths}
+  alias FMutate.{Instance, Paths}
 
   @format "fmutate.sound/1"
   @record 4100
@@ -37,17 +38,29 @@ defmodule FMutate.Sounds do
   # a whole emulated flash in base64 with its JSON is ~1.4 MB: anything much bigger isn't a sound
   @max_file 4_000_000
 
-  @typedoc "A sound read and checked: `firmware` has `id`, `name`, `version`, `backend` and optionally `commit`."
+  @typedoc "Who a sound is for: the build it was saved from (`FMutate.Firmware.build/2`)."
+  @type firmware :: %{
+          id: String.t(),
+          name: String.t(),
+          version: String.t() | nil,
+          backend: :native | :emu,
+          commit: String.t() | nil
+        }
+
+  @typedoc "A sound read and checked."
   @type sound :: %{
           name: String.t(),
           saved_at: String.t(),
-          firmware: %{id: String.t(), name: String.t(), version: String.t(), backend: :native | :emu},
+          firmware: firmware,
           bytes: binary,
           path: String.t() | nil
         }
 
-  @typedoc "What runs: the firmware, its backend and the length of its flash file (nil when there is none)."
-  @type running :: %{firmware: Firmware.t(), backend: :native | :emu, flash_size: non_neg_integer | nil}
+  @typedoc "A listed sound: what the list shows, no payload (`list/1`); `read/1` gets the whole sound."
+  @type entry :: %{name: String.t(), saved_at: String.t(), firmware: firmware, size: non_neg_integer, path: String.t()}
+
+  @typedoc "What runs: its build, its backend and the length of its flash file (nil when there is none)."
+  @type running :: %{firmware: firmware, backend: :native | :emu, flash_size: non_neg_integer | nil}
 
   ## Saving and the list
 
@@ -57,22 +70,16 @@ defmodule FMutate.Sounds do
   """
   @spec save(String.t(), String.t()) :: {:ok, sound} | {:error, String.t()}
   def save(instance, name) do
-    with {:ok, snap} <- Instance.snapshot(instance) |> instance_answer(),
-         %Firmware{} = fw <- snap.firmware || {:error, "The running firmware isn't known."} do
-      sound = %{
-        name: clean_name(name, fw.name),
-        saved_at: now(),
-        firmware: %{id: fw.id, name: fw.name, version: fw.version, backend: snap.backend, commit: commit(fw)},
-        bytes: snap.bytes,
-        path: nil
-      }
-
-      add(sound)
+    with {:ok, %{build: build, bytes: bytes}} <- Instance.snapshot(instance) |> instance_answer() do
+      add(%{name: clean_name(name, build.name), saved_at: now(), firmware: build, bytes: bytes, path: nil})
     end
   end
 
-  @doc "The saved sounds of a firmware, newest first. Files that aren't sounds are left out (and logged)."
-  @spec list(String.t()) :: [sound]
+  @doc """
+  The saved sounds of a firmware, newest first, without their payloads (each file is read and let go of in turn).
+  Files that aren't sounds are left out (and logged).
+  """
+  @spec list(String.t()) :: [entry]
   def list(firmware_id) do
     dir = Paths.sounds(firmware_id)
 
@@ -82,9 +89,13 @@ defmodule FMutate.Sounds do
     |> Enum.flat_map(fn file ->
       path = Path.join(dir, file)
 
-      case read(path) do
-        {:ok, sound} ->
-          [sound]
+      case entry(path) do
+        {:ok, entry} ->
+          [entry]
+
+        # (an empty file is a name reserved by a save still writing)
+        :empty ->
+          []
 
         {:error, why} ->
           Logger.warning("sounds: #{path} left out: #{why}")
@@ -92,6 +103,24 @@ defmodule FMutate.Sounds do
       end
     end)
     |> Enum.sort_by(&{&1.saved_at, &1.path}, :desc)
+  end
+
+  defp entry(path) do
+    with {:ok, %{size: size}} when size > 0 <- File.stat(path),
+         true <- size <= @max_file || {:error, "too big"},
+         {:ok, json} <- File.read(path),
+         {:ok, %{"format" => @format} = doc} <- decode(json),
+         {:ok, fw} <- parse_firmware(doc["firmware"]),
+         %{"bytes" => n} when is_integer(n) <- doc["payload"] do
+      saved_at = parse_time(doc["saved_at"]) || ""
+      {:ok, %{name: clean_name(doc["name"], "Sound"), saved_at: saved_at, firmware: fw, size: n, path: path}}
+    else
+      {:ok, %{size: 0}} -> :empty
+      {:error, :no_firmware} -> {:error, "no firmware"}
+      {:error, reason} when is_atom(reason) -> {:error, to_string(:file.format_error(reason))}
+      {:error, _} = error -> error
+      _ -> {:error, "not a sound"}
+    end
   end
 
   @doc "Read a saved or picked sound file (`parse/1`)."
@@ -112,7 +141,7 @@ defmodule FMutate.Sounds do
   end
 
   @doc "Delete a saved sound."
-  @spec delete(sound) :: :ok
+  @spec delete(%{path: String.t()}) :: :ok
   def delete(%{path: path}) do
     _ = File.rm(path)
     :ok
@@ -122,7 +151,8 @@ defmodule FMutate.Sounds do
   Copy a saved sound into `dir` (the cache, for the share sheet) under a file name made from its name and its
   synth's, and return that path.
   """
-  @spec export(sound, String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  @spec export(%{path: String.t(), name: String.t(), firmware: firmware}, String.t()) ::
+          {:ok, String.t()} | {:error, String.t()}
   def export(%{path: path} = sound, dir) do
     out = Path.join(dir, "#{slug(sound.name)}-#{slug(sound.firmware.name)}.sound.json")
 
@@ -139,32 +169,27 @@ defmodule FMutate.Sounds do
   def import(path, instance) do
     with {:ok, sound} <- read(path),
          {:ok, running} <- running(instance),
-         :ok <- importable(check(sound, running)),
+         :ok <- anyway(check(sound, running)),
          do: add(%{sound | path: nil})
   end
 
-  defp importable({:other_version, _made, _have}), do: :ok
-  defp importable(answer), do: answer
-
   ## Loading
 
-  @doc "What runs on `instance` now, for `check/2`."
+  @doc "What runs on `instance` now (its build, from the engine), for `check/2`."
   @spec running(String.t()) :: {:ok, running} | {:error, String.t()}
   def running(instance) do
-    view = Instance.view(instance)
+    case Instance.running(instance) do
+      %{build: build, flash: flash} ->
+        size =
+          case File.stat(flash) do
+            {:ok, %{size: size}} -> size
+            _ -> nil
+          end
 
-    with :running <- view.phase,
-         %Firmware{} = fw <- Firmware.get(view.firmware),
-         %{backend: backend} <- Firmware.runnable(fw.id) do
-      size =
-        case File.stat(Paths.flash(instance, fw.id, backend)) do
-          {:ok, %{size: size}} -> size
-          _ -> nil
-        end
+        {:ok, %{firmware: build, backend: build.backend, flash_size: size}}
 
-      {:ok, %{firmware: fw, backend: backend, flash_size: size}}
-    else
-      _ -> {:error, "The synth isn't running."}
+      nil ->
+        {:error, "The synth isn't running."}
     end
   end
 
@@ -172,7 +197,8 @@ defmodule FMutate.Sounds do
   Whether `sound` can go into the running synth: `:ok`, `{:other_version, made, have}` (the same synth and backend,
   another version: the player decides) or `{:error, text}` saying why not.
   """
-  @spec check(sound, running) :: :ok | {:other_version, String.t(), String.t()} | {:error, String.t()}
+  @spec check(%{firmware: firmware, bytes: binary}, running) ::
+          :ok | {:other_version, String.t() | nil, String.t() | nil} | {:error, String.t()}
   def check(%{firmware: sf} = sound, %{firmware: fw, backend: backend} = running) do
     cond do
       sf.id != fw.id ->
@@ -193,75 +219,80 @@ defmodule FMutate.Sounds do
   end
 
   @doc """
-  Load a checked sound into the running synth (it restarts for a moment). What it replaces is kept for `undo/1`.
+  Load a sound into the running synth (it restarts for a moment): checked again here (`check/2`); another version
+  only with `anyway: true` (else `{:other_version, made, have}`, nothing done). What it replaces is kept for
+  `undo/2`.
   """
-  @spec load(String.t(), sound) :: :ok | {:error, String.t()}
-  def load(instance, %{firmware: %{id: id, backend: backend}, bytes: bytes}) do
-    version = current_version(id)
-
-    keep = fn old ->
-      if backend == :native and old != nil and byte_size(old) != byte_size(bytes),
-        do: {:error, "Its memory is #{byte_size(bytes)} bytes; the synth's is #{byte_size(old)}."},
-        else: keep_undo(instance, id, backend, version, old)
-    end
-
-    Instance.restore(instance, id, backend, bytes, keep) |> instance_answer() |> ok()
+  @spec load(String.t(), sound, keyword) ::
+          :ok | {:other_version, String.t() | nil, String.t() | nil} | {:error, String.t()}
+  def load(instance, sound, opts \\ []) do
+    with {:ok, running} <- running(instance),
+         :ok <- confirmed(check(sound, running), opts[:anyway]),
+         do: restore(instance, running, sound.bytes)
   end
 
-  @doc "Whether the last load into `firmware_id` on `backend` can be undone (or redone) on `instance`."
+  @doc "Whether the last load into the running firmware on `instance` can be undone (or redone): its backend's."
   @spec undo?(String.t(), String.t(), :native | :emu) :: boolean
   def undo?(instance, firmware_id, backend) do
-    match?({:ok, %{backend: ^backend}}, undo_meta(instance, firmware_id))
+    match?({:ok, %{backend: ^backend}}, read_undo(instance, firmware_id))
   end
 
   @doc """
-  Put back what the last load (or undo) replaced in the running synth, keeping what this replaces: a second undo
-  redoes.
+  Put back what the last load (or undo) replaced in the running synth, under the checks of a load (made with
+  another version: only with `anyway: true`, else `{:other_version, made, have}`), keeping what this replaces: a
+  second undo redoes.
   """
-  @spec undo(String.t()) :: :ok | {:error, String.t()}
-  def undo(instance) do
-    with {:ok, %{firmware: fw, backend: backend}} <- running(instance),
-         {:ok, %{backend: ^backend}} <- undo_meta(instance, fw.id),
-         {:ok, bytes} <- File.read(Paths.sound_undo(instance, fw.id) <> ".bin") |> file_answer() do
-      keep = &keep_undo(instance, fw.id, backend, fw.version, &1)
-      Instance.restore(instance, fw.id, backend, bytes, keep) |> instance_answer() |> ok()
-    else
-      {:error, _} = error -> error
-      _ -> {:error, "There's no load to undo."}
-    end
+  @spec undo(String.t(), keyword) :: :ok | {:other_version, String.t() | nil, String.t() | nil} | {:error, String.t()}
+  def undo(instance, opts \\ []) do
+    with {:ok, running} <- running(instance),
+         {:ok, kept} <- read_undo(instance, running.firmware.id) |> or_error("There's no load to undo."),
+         as_sound = %{firmware: %{running.firmware | version: kept.version, backend: kept.backend}, bytes: kept.bytes},
+         :ok <- confirmed(check(as_sound, running), opts[:anyway]),
+         do: restore(instance, running, kept.bytes)
   end
 
-  # the bytes about to be replaced, and whose they are, as the undo (nil: there was no file, which is what an
-  # empty one gives the engines too)
-  defp keep_undo(instance, id, backend, version, old) do
-    base = Paths.sound_undo(instance, id)
-    meta = JSON.encode!(%{firmware: id, backend: backend, version: version, kept_at: now()})
+  defp confirmed({:other_version, _made, _have}, true), do: :ok
+  defp confirmed(answer, _anyway), do: answer
 
-    with :ok <- atomic_write(base <> ".bin", old || <<>>),
-         :ok <- atomic_write(base <> ".json", meta) do
-      :ok
-    else
+  defp anyway({:other_version, _made, _have}), do: :ok
+  defp anyway(answer), do: answer
+
+  # the bytes it replaces: as long as them (native; checked with the engine ended), and kept as the undo first
+  defp restore(instance, %{firmware: build}, bytes) do
+    keep = fn old ->
+      if build.backend == :native and old != nil and byte_size(old) != byte_size(bytes),
+        do: {:error, "Its memory is #{byte_size(bytes)} bytes; the synth's is #{byte_size(old)}."},
+        else: keep_undo(instance, build, old)
+    end
+
+    Instance.restore(instance, build.id, build.backend, bytes, keep) |> instance_answer() |> ok()
+  end
+
+  # one file with the bytes and whose they are, written beside and renamed over the last one (which stays whole
+  # if this fails); nil (no file) is kept as empty, which the engines read as none too
+  defp keep_undo(instance, build, old) do
+    kept = %{firmware: build.id, backend: build.backend, version: build.version, kept_at: now(), bytes: old || <<>>}
+
+    case atomic_write(Paths.sound_undo(instance, build.id), :erlang.term_to_binary(kept)) do
+      :ok -> :ok
       {:error, reason} -> {:error, "Couldn't keep the current memory for Undo (#{:file.format_error(reason)})."}
     end
   end
 
-  defp undo_meta(instance, id) do
-    base = Paths.sound_undo(instance, id)
-
-    with true <- File.exists?(base <> ".bin"),
-         {:ok, json} <- File.read(base <> ".json"),
-         {:ok, %{"firmware" => ^id, "backend" => b} = meta} when b in ["native", "emu"] <- JSON.decode(json) do
-      {:ok, %{backend: String.to_existing_atom(b), version: meta["version"]}}
+  defp read_undo(instance, id) do
+    with {:ok, bin} <- File.read(Paths.sound_undo(instance, id)),
+         %{firmware: ^id, backend: backend, version: version, bytes: bytes} when backend in [:native, :emu] <-
+           safe_term(bin) do
+      {:ok, %{backend: backend, version: version, bytes: bytes}}
     else
       _ -> :none
     end
   end
 
-  defp current_version(id) do
-    case Firmware.get(id) do
-      %Firmware{version: v} -> v
-      nil -> nil
-    end
+  defp safe_term(bin) do
+    :erlang.binary_to_term(bin, [:safe])
+  rescue
+    _ -> nil
   end
 
   ## The file format
@@ -272,7 +303,7 @@ defmodule FMutate.Sounds do
 
   def parse(json) do
     with {:ok, %{"format" => @format} = doc} <- decode(json),
-         {:ok, fw} <- parse_firmware(doc["firmware"]),
+         {:ok, fw} <- parse_firmware(doc["firmware"]) |> describe(),
          {:ok, bytes} <- parse_payload(doc["payload"]),
          :ok <- check_bytes(fw.backend, bytes) do
       {:ok,
@@ -304,7 +335,10 @@ defmodule FMutate.Sounds do
     {:ok, %{id: id, name: name, version: version, backend: String.to_existing_atom(backend), commit: commit}}
   end
 
-  defp parse_firmware(_), do: {:error, "It doesn't say which synth it is for."}
+  defp parse_firmware(_), do: {:error, :no_firmware}
+
+  defp describe({:error, :no_firmware}), do: {:error, "It doesn't say which synth it is for."}
+  defp describe(ok), do: ok
 
   defp parse_payload(%{"encoding" => "base64", "bytes" => n, "sha256" => sha, "data" => data})
        when is_integer(n) and n >= 0 and is_binary(sha) and is_binary(data) do
@@ -360,28 +394,47 @@ defmodule FMutate.Sounds do
     })
   end
 
-  # always a new file: `<UTC time>-<name>.sound.json`, `-2`, `-3`… when that is taken
+  # always a new file: `<UTC time>-<name>.sound.json`, `-2`, `-3`… when that is taken. The name is reserved by an
+  # exclusive create (an empty file, left out of the list), then the sound is written beside it and renamed over it.
   defp add(sound) do
     dir = Paths.sounds(sound.firmware.id)
-    stamp = sound.saved_at |> String.replace(["-", ":"], "")
-    base = "#{stamp}-#{slug(sound.name)}"
+    base = "#{String.replace(sound.saved_at, ["-", ":"], "")}-#{slug(sound.name)}"
 
-    path =
-      Stream.iterate(1, &(&1 + 1))
-      |> Stream.map(fn
-        1 -> Path.join(dir, base <> ".sound.json")
-        n -> Path.join(dir, "#{base}-#{n}.sound.json")
-      end)
-      |> Enum.find(&(not File.exists?(&1)))
+    with {:ok, path} <- reserve(dir, base, 1) do
+      case atomic_write(path, encode(sound)) do
+        :ok ->
+          {:ok, %{sound | path: path}}
 
-    case atomic_write(path, encode(sound)) do
-      :ok -> {:ok, %{sound | path: path}}
-      {:error, reason} -> {:error, "Couldn't save it (#{:file.format_error(reason)})."}
+        {:error, reason} ->
+          File.rm(path)
+          {:error, "Couldn't save it (#{:file.format_error(reason)})."}
+      end
     end
   end
 
+  @max_same 1000
+
+  defp reserve(_dir, _base, n) when n > @max_same, do: {:error, "Couldn't save it (too many of that name)."}
+
+  defp reserve(dir, base, n) do
+    path = Path.join(dir, if(n == 1, do: "#{base}.sound.json", else: "#{base}-#{n}.sound.json"))
+
+    case File.open(path, [:write, :exclusive]) do
+      {:ok, io} ->
+        File.close(io)
+        {:ok, path}
+
+      {:error, :eexist} ->
+        reserve(dir, base, n + 1)
+
+      {:error, reason} ->
+        {:error, "Couldn't save it (#{:file.format_error(reason)})."}
+    end
+  end
+
+  # (a temp file of its own: two writers never share one)
   defp atomic_write(path, data) do
-    tmp = path <> ".tmp"
+    tmp = "#{path}.#{System.unique_integer([:positive])}.tmp"
 
     with :ok <- File.write(tmp, data, [:sync]),
          :ok <- File.rename(tmp, path) do
@@ -421,11 +474,6 @@ defmodule FMutate.Sounds do
   end
 
   defp parse_time(_), do: nil
-
-  # the build's commit when it says: a Hub native build's index entry, or a bundled cartridge's pinned source
-  defp commit(%Firmware{native: %{commit: c}}) when is_binary(c), do: c
-  defp commit(%Firmware{source: :bundled, ref: ref}) when is_binary(ref), do: ref
-  defp commit(_fw), do: nil
 
   defp clean_name(name, default) when is_binary(name) do
     case name |> String.trim() |> String.slice(0, 60) do
@@ -467,9 +515,15 @@ defmodule FMutate.Sounds do
   defp explain(:not_running), do: "The synth isn't running."
   defp explain(:quit), do: "FMutate is quitting."
   defp explain(:wrong_synth), do: "Another synth is running now."
-  defp explain(:backend_changed), do: "The synth now runs on another engine; nothing was changed."
+  defp explain(:build_changed), do: "The synth's build changed since it started; nothing was changed."
   defp explain({:stop_failed, _}), do: "The synth didn't stop cleanly; nothing was changed."
   defp explain({:failed_to_start, _}), do: "The synth didn't start with that sound, so its memory is back as it was."
+  defp explain({:confirm_failed, _}), do: "Loaded, but FMutate couldn't record it: it goes back at the next start."
+
+  defp explain({:rollback_failed, _why, _reason}),
+    do: "The synth didn't start with that sound, and its memory couldn't be put back. Free some space, then Run anyway."
+
+  defp explain({:write_failed, reason}), do: "Couldn't write the synth's memory (#{inspect(reason)}); nothing changed."
   defp explain(text) when is_binary(text), do: text
   defp explain(other), do: "It didn't work (#{inspect(other)})."
 end

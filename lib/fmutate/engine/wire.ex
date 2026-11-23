@@ -13,6 +13,7 @@ defmodule FMutate.Engine.Wire do
           | {:midi_at, non_neg_integer, 0..255, 0..255, 0..255}
           | {:fill, pos_integer}
           | {:cpu_mhz, pos_integer}
+          | :finish
           | :crash
           | :hang
           | :segv
@@ -39,6 +40,9 @@ defmodule FMutate.Engine.Wire do
 
   # the emulator engine's CPU clock, now (MHz; it clamps to 20..240 itself); the native engine ignores it
   def encode({:cpu_mhz, mhz}) when is_integer(mhz), do: <<0x08, clamp(mhz, 0, 0xFFFF)::16>>
+
+  # save the flash and end, the port still open: exit status 0 only once the flash file is written
+  def encode(:finish), do: <<0x09>>
 
   # debug (native cartridges): :crash and :hang are simulated in-process (the app lives); :segv is a real SIGSEGV
   # (in-process it ends the app: the crash marker's test), :stall firmware code busy for 4 s that no stop reaches

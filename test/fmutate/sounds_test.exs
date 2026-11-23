@@ -91,10 +91,11 @@ defmodule FMutate.SoundsTest do
 
     {:ok, running} = Sounds.running("a")
     [listed] = Sounds.list("obervave")
-    assert listed.bytes == saved.bytes
-    assert Sounds.check(listed, running) == :ok
+    {:ok, read} = Sounds.read(listed.path)
+    assert read.bytes == saved.bytes
+    assert Sounds.check(read, running) == :ok
 
-    assert :ok = Sounds.load("a", listed)
+    assert :ok = Sounds.load("a", read)
     assert File.read!(flash) == saved.bytes
     assert %{phase: :running, firmware: "obervave"} = Instance.view("a")
     # the restarted firmware runs on the loaded memory and keeps it
@@ -157,11 +158,16 @@ defmodule FMutate.SoundsTest do
     File.rm(file)
   end
 
-  test "another version of the same synth needs the player's say; an import of it is kept, marked" do
+  test "another version of the same synth needs the player's say; an import of it is kept, marked", %{flash: flash} do
     {:ok, saved} = Sounds.save("a", "Old")
+    changed = turn_cutoff(flash, 10)
     {:ok, running} = Sounds.running("a")
     old = %{saved | firmware: %{saved.firmware | version: "3.3.0"}}
     assert Sounds.check(old, running) == {:other_version, "3.3.0", "3.3.2"}
+    assert Sounds.load("a", old) == {:other_version, "3.3.0", "3.3.2"}
+    assert File.read!(flash) == changed
+    assert :ok = Sounds.load("a", old, anyway: true)
+    assert File.read!(flash) == saved.bytes
 
     file = Path.join(System.tmp_dir!(), "old_#{System.unique_integer([:positive])}.sound.json")
     doc = saved.path |> File.read!() |> JSON.decode!()
@@ -282,37 +288,192 @@ defmodule FMutate.SoundsTest do
     assert %{phase: :running, firmware: "obervave"} = Instance.view("a")
   end
 
-  # FMutate's engine executable, once failing at once and from then on the real one
-  defp engine_failing_once do
+  # The instance again, its engine a script around the real one that does what the files in its directory ask,
+  # once: `fail` exits 1 at once (with `lock` too, it first makes the flash directory read-only), `slow` waits 1 s
+  # before starting the engine. (A snapshot or restore starts the same build again, so the script has to be the
+  # build the instance started with.)
+  defp fake_engine do
     real = Paths.native_lib_dir()
     dir = Path.join(Paths.data_dir(), "fake_lib")
     File.mkdir_p!(dir)
     for f <- ~w(libcart_obervave.so libcart_shineon.so), do: File.ln_s!(Path.join(real, f), Path.join(dir, f))
-    mark = Path.join(dir, "failed_once")
     engine = Path.join(dir, "libfm1engine.so")
 
     File.write!(engine, """
     #!/bin/sh
-    if [ -e "#{mark}" ]; then exec "#{Path.join(real, "libfm1engine.so")}" "$@"; fi
-    touch "#{mark}"
-    exit 1
+    d="#{dir}"
+    if [ -e "$d/fail" ]; then
+      rm "$d/fail"
+      if [ -e "$d/lock" ]; then rm "$d/lock"; chmod 500 "$(dirname "$3")"; fi
+      exit 1
+    fi
+    if [ -e "$d/slow" ]; then rm "$d/slow"; sleep 1; fi
+    exec "#{Path.join(real, "libfm1engine.so")}" "$@"
     """)
 
     File.chmod!(engine, 0o755)
     Application.put_env(:fmutate_app, :native_lib_dir, dir)
     on_exit(fn -> Application.delete_env(:fmutate_app, :native_lib_dir) end)
+
+    stop_supervised!({:instance, "a"})
+    start_supervised!({Instance, id: "a"}, id: {:instance, "a"})
+    Instance.subscribe("a", status: true)
+    await_running("obervave")
+    firmware_wait(500)
+    dir
   end
 
+  defp ask(dir, what), do: File.touch!(Path.join(dir, what))
+
   test "a loaded memory the firmware doesn't start on goes back to what it replaced", %{flash: flash} do
+    fake = fake_engine()
     {:ok, saved} = Sounds.save("a", "Fails")
     changed = turn_cutoff(flash, 15)
-    engine_failing_once()
+    ask(fake, "fail")
 
     assert {:error, msg} = Sounds.load("a", saved)
     assert msg =~ "back as it was"
     assert File.read!(flash) == changed
+    refute File.exists?(flash <> ".rollback")
     assert %{phase: :running, firmware: "obervave", restarts: 0} = Instance.view("a")
     # not a crash of the firmware's own: nothing counts towards its quarantine
     assert :sys.get_state(Instance.via("a")).failures == []
+  end
+
+  test "when the previous memory can't go back, nothing starts until it can (Run anyway)", %{flash: flash} do
+    fake = fake_engine()
+    {:ok, saved} = Sounds.save("a", "Stuck")
+    changed = turn_cutoff(flash, 15)
+    ask(fake, "lock")
+    ask(fake, "fail")
+    on_exit(fn -> File.chmod(Path.dirname(flash), 0o700) end)
+
+    assert {:error, msg} = Sounds.load("a", saved)
+    assert msg =~ "couldn't be put back"
+    # it doesn't boot the failing memory again, and doesn't count it as the firmware's crash
+    assert %{phase: :safe_mode, quarantined: false, restarts: 0} = Instance.view("a")
+    assert :sys.get_state(Instance.via("a")).live == nil
+    assert :sys.get_state(Instance.via("a")).failures == []
+    assert File.read!(flash <> ".rollback") == changed
+
+    File.chmod!(Path.dirname(flash), 0o700)
+    assert :ok = Instance.run_anyway("a")
+    await_running("obervave")
+    assert File.read!(flash) == changed
+    refute File.exists?(flash <> ".rollback")
+  end
+
+  test "quit before the loaded memory is READY puts the previous one back before it answers", %{flash: flash} do
+    fake = fake_engine()
+    {:ok, saved} = Sounds.save("a", "Quit")
+    changed = turn_cutoff(flash, 15)
+    ask(fake, "slow")
+
+    task = Task.async(fn -> Sounds.load("a", saved) end)
+    await(fn -> match?(%{sound: %{step: :booting, restored: true}}, :sys.get_state(Instance.via("a"))) end)
+    assert :ok = Instance.quit("a")
+
+    assert File.read!(flash) == changed
+    refute File.exists?(flash <> ".rollback")
+    assert {:error, "FMutate is quitting."} = Task.await(task)
+  end
+
+  test "a crash of the app before READY: the previous memory is back before the firmware next starts",
+       %{flash: flash} do
+    {:ok, saved} = Sounds.save("a", "Crash")
+    changed = turn_cutoff(flash, 15)
+    # (what a restore leaves when the app dies between the replace and READY)
+    stop_supervised!({:instance, "a"})
+    File.rename!(flash, flash <> ".rollback")
+    File.write!(flash, saved.bytes)
+
+    start_supervised!({Instance, id: "a"}, id: {:instance, "a"})
+    Instance.subscribe("a")
+    await_running("obervave")
+    assert File.read!(flash) == changed
+    refute File.exists?(flash <> ".rollback")
+  end
+
+  test "a snapshot says which build ran and starts that build again", %{flash: _flash} do
+    fake = fake_engine()
+    %{live: %{run: run}} = :sys.get_state(Instance.via("a"))
+    assert Path.dirname(run.file) == fake
+    # the library would now start another build of the firmware
+    Application.delete_env(:fmutate_app, :native_lib_dir)
+    refute FMutate.Firmware.runnable("obervave").file == run.file
+
+    {:ok, saved} = Sounds.save("a", "Build")
+    assert %{id: "obervave", version: "3.3.2", backend: :native, commit: "792535d" <> _} = saved.firmware
+    assert :sys.get_state(Instance.via("a")).live.run == run
+  end
+
+  test "Undo is checked as a load: another version asks, another length is refused", %{flash: flash} do
+    {:ok, saved} = Sounds.save("a", "Undo")
+    changed = turn_cutoff(flash, 15)
+    assert :ok = Sounds.load("a", saved)
+    undo = Paths.sound_undo("a", "obervave")
+    kept = undo |> File.read!() |> :erlang.binary_to_term()
+    assert kept.bytes == changed
+
+    File.write!(undo, :erlang.term_to_binary(%{kept | version: "3.2.0"}))
+    assert Sounds.undo("a") == {:other_version, "3.2.0", "3.3.2"}
+    assert File.read!(flash) == saved.bytes
+
+    File.write!(undo, :erlang.term_to_binary(%{kept | bytes: binary_part(changed, 0, 4096)}))
+    assert {:error, _} = Sounds.undo("a")
+    assert File.read!(flash) == saved.bytes
+
+    File.write!(undo, :erlang.term_to_binary(%{kept | version: "3.2.0"}))
+    assert :ok = Sounds.undo("a", anyway: true)
+    assert File.read!(flash) == changed
+  end
+
+  test "an undo that can't be kept stops the load and leaves the last undo whole", %{flash: flash} do
+    {:ok, first} = Sounds.save("a", "First")
+    changed = turn_cutoff(flash, 15)
+    assert :ok = Sounds.load("a", first)
+    {:ok, second} = Sounds.save("a", "Second")
+
+    undo_dir = Path.dirname(Paths.sound_undo("a", "obervave"))
+    File.chmod!(undo_dir, 0o500)
+    on_exit(fn -> File.chmod(undo_dir, 0o700) end)
+    assert {:error, msg} = Sounds.load("a", second)
+    assert msg =~ "Undo"
+    assert File.read!(flash) == first.bytes
+
+    File.chmod!(undo_dir, 0o700)
+    assert :ok = Sounds.undo("a")
+    assert File.read!(flash) == changed
+  end
+
+  test "no firmware id reaches outside its own directory of sounds" do
+    root = Path.join(Paths.data_dir(), "sounds")
+
+    for id <- ["..", ".", ".undo", "a/b", "hub:obervave"] do
+      dir = Paths.sounds(id)
+      assert Path.dirname(dir) == root
+      refute Path.basename(dir) in [".", "..", ".undo"]
+    end
+
+    refute Paths.sounds("hub:obervave") == Paths.sounds("obervave")
+  end
+
+  test "sounds added at once with one name and time each get a file of their own" do
+    {:ok, saved} = Sounds.save("a", "Same")
+
+    results =
+      1..8
+      |> Enum.map(fn _ -> Task.async(fn -> Sounds.import(saved.path, "a") end) end)
+      |> Enum.map(&Task.await/1)
+
+    paths = for {:ok, s} <- results, do: s.path
+    assert length(paths) == 8
+    assert length(Enum.uniq([saved.path | paths])) == 9
+    assert length(Sounds.list("obervave")) == 9
+
+    for p <- paths do
+      assert {:ok, %{bytes: bytes}} = Sounds.read(p)
+      assert bytes == saved.bytes
+    end
   end
 end

@@ -100,19 +100,21 @@ defmodule FMutate.Paths do
     do: Path.join(ensure(Path.join([data_dir(), "flash", instance, "emu"])), "#{firmware_id}.bin")
 
   @doc """
-  Saved sounds of one firmware (`FMutate.Sounds`): `sounds/<id>/`, the id made safe for a file name
-  (`hub:obervave` → `hub%3Aobervave`), so `hub:<id>` and `<id>` never share a directory.
+  Saved sounds of one firmware (`FMutate.Sounds`): `sounds/<id>/`, the id percent-encoded for a file name, dots
+  too (`hub:obervave` → `hub%3Aobervave`, `..` → `%2E%2E`): `hub:<id>` and `<id>` never share a directory, and no
+  id reaches outside `sounds/` or into `sounds/.undo/`.
   """
   def sounds(firmware_id), do: ensure(Path.join([data_dir(), "sounds", safe_name(firmware_id)]))
 
   @doc """
-  What the last sound load (or its undo) replaced on one instance, for "Undo last load": `<base>.bin` (the bytes)
-  and `<base>.json` (whose they are). Under `sounds/.undo/<instance>/`, not a listed sound.
+  What the last sound load (or its undo) replaced on one instance, for "Undo last load": one file, the bytes and
+  whose they are (`sounds/.undo/<instance>/<id>.term`), replaced as a whole. Not a listed sound.
   """
   def sound_undo(instance, firmware_id),
-    do: Path.join(ensure(Path.join([data_dir(), "sounds", ".undo", instance])), safe_name(firmware_id))
+    do: Path.join(ensure(Path.join([data_dir(), "sounds", ".undo", instance])), safe_name(firmware_id) <> ".term")
 
-  defp safe_name(id), do: URI.encode(id, &URI.char_unreserved?/1)
+  defp safe_name(id) when is_binary(id) and id != "",
+    do: URI.encode(id, &(URI.char_unreserved?(&1) and &1 != ?.))
 
   @doc "Per-instance app state (current firmware, crash counts)."
   def instance_state(instance),

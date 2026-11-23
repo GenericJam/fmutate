@@ -4,8 +4,9 @@
 //! engine (docs/engine_protocol.md): it emulates while fewer than the target fill frames are queued, so the
 //! mixer's audio clock drives the firmware's. The flash file holds the sectors the firmware changed (records of a
 //! 4-byte little-endian offset and the 4096-byte sector); it is written when a save of the firmware's has
-//! settled, and when the port closes. Beyond the native engine: op 0x08 sets the emulated CPU's clock, and STATUS
-//! carries that clock, the DMA halves the firmware left stale and the engine's CPU time.
+//! settled, and when the port closes (or op 0x09 asks it to end: then the exit status says whether it was written).
+//! Beyond the native engine: op 0x08 sets the emulated CPU's clock, and STATUS carries that clock, the DMA halves
+//! the firmware left stale and the engine's CPU time.
 //!
 //! `run` is the engine; its host is either an OS process of its own (main.rs: stdin, stdout) or a thread of the
 //! iOS app (ffi.rs, c_src/fm1host.c: a pipe in, a callback out).
@@ -140,13 +141,8 @@ impl Engine<'_> {
     }
 
     fn save_flash(&mut self) -> u32 {
-        let records = self.m.flash_records();
-        let tmp = format!("{}.tmp", self.flash_path);
-        match std::fs::write(&tmp, &records).and_then(|_| std::fs::rename(&tmp, &self.flash_path)) {
-            Ok(()) => {
-                self.flash_saved_rev = self.m.flash_revision();
-                records.len() as u32
-            }
+        match self.write_flash() {
+            Ok(n) => n,
             Err(e) => {
                 eprintln!("fm1emu: {}: {e}", self.flash_path);
                 0
@@ -154,7 +150,23 @@ impl Engine<'_> {
         }
     }
 
-    /// One port message. Some(code): the engine ends (the debug crash in-process).
+    /// The flash file, atomically (a temp file, then rename): its size.
+    fn write_flash(&mut self) -> std::io::Result<u32> {
+        let records = self.m.flash_records();
+        let tmp = format!("{}.tmp", self.flash_path);
+        match std::fs::write(&tmp, &records).and_then(|_| std::fs::rename(&tmp, &self.flash_path)) {
+            Ok(()) => {
+                self.flash_saved_rev = self.m.flash_revision();
+                Ok(records.len() as u32)
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp);
+                Err(e)
+            }
+        }
+    }
+
+    /// One port message. Some(code): the engine ends (op 0x09, or the debug crash in-process).
     fn handle(&mut self, m: &[u8]) -> Option<i32> {
         match (m.first(), m.len()) {
             (Some(0x01), 3..) => self.panel(machine::key_id(m[1]), m[2] != 0),
@@ -173,6 +185,16 @@ impl Engine<'_> {
                 } else {
                     self.m.midi(m[9], m[10], m[11]); // (queue full: now rather than never)
                 }
+            }
+            // save and end: exit 0 only once the flash file is written
+            (Some(0x09), _) => {
+                return Some(match self.write_flash() {
+                    Ok(_) => EXIT_OK,
+                    Err(e) => {
+                        eprintln!("fm1emu: {}: {e}", self.flash_path);
+                        EXIT_ERROR
+                    }
+                })
             }
             // (debug: a process dies of SIGSEGV; on a thread of the app the engine ends as if it had)
             (Some(0x10), _) if self.io.in_process() => return Some(EXIT_CRASHED),

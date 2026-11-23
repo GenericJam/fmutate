@@ -6,7 +6,7 @@
  * the port carries panel input in and READY / STATUS / FLASH_SAVED out. The firmware's own printf goes to
  * stderr: stdout is the port. The engine paces itself on the ring: it renders while fewer than the target fill
  * frames are queued, so the mixer's audio clock drives the firmware's clock. When the port closes it saves the
- * flash and exits.
+ * flash and exits; op 0x09 does the same with the port open, its exit status saying whether the flash was written.
  *
  * fm1engine_run (fm1engine.h) is the engine; main below makes it an OS process of its own (Android, the tests).
  * Built with -DFM1ENGINE_LIB there is no main: the iOS app runs engines on threads (c_src/fm1host.c), with a
@@ -59,6 +59,7 @@ struct eng {
     uint8_t inbuf[65536 + 2];
     uint32_t in_n;
     int gone;                                   /* the port's reader is gone: stop, as on EOF */
+    int stop;                                   /* op 0x09: save the flash and end, exit 0 only if it was written */
 };
 
 static uint32_t clamp_fill(uint32_t f)
@@ -103,15 +104,16 @@ static void flash_load(struct eng *e)
     fclose(f);
 }
 
-static uint32_t flash_save(struct eng *e)       /* atomically: a temp file, then rename */
+/* atomically: a temp file, then rename. The bytes written, or -1 when it couldn't be. */
+static int64_t flash_save(struct eng *e)
 {
     char tmp[4096];
     FILE *f;
-    uint32_t i, n = 0;
+    uint32_t i, n = 0, want = e->c->blob_count() * e->c->blob_size();
     snprintf(tmp, sizeof tmp, "%s.tmp", e->flash_path);
-    if (!(f = fopen(tmp, "wb"))) { perror(tmp); return 0; }
+    if (!(f = fopen(tmp, "wb"))) { perror(tmp); return -1; }
     for (i = 0; i < e->c->blob_count(); i++) n += (uint32_t)fwrite(e->c->blob(i), 1, e->c->blob_size(), f);
-    if (fclose(f) || rename(tmp, e->flash_path)) { perror(e->flash_path); return 0; }
+    if (fclose(f) || n != want || rename(tmp, e->flash_path)) { perror(e->flash_path); unlink(tmp); return -1; }
     return n;
 }
 
@@ -136,6 +138,7 @@ static void handle(struct eng *e, const uint8_t *m, uint32_t n)
     case 0x05: if (n >= 3) c->master((uint32_t)m[1] << 8 | m[2]); break;
     case 0x07: if (n >= 3) e->target_fill = clamp_fill((uint32_t)m[1] << 8 | m[2]); break;
     case 0x08: break;                           /* the emulated CPU's clock: the emulator engine's */
+    case 0x09: e->stop = 1; break;              /* save and end (run) */
     case 0x10: c->debug(1); break;
     case 0x11: c->debug(2); break;
     case 0x12: c->debug(3); break;
@@ -265,6 +268,11 @@ static int run(struct eng *e, const char *prefix)
                 return FM1ENGINE_EXIT_OK;
             }
             if (res < 0) { fprintf(stderr, "fm1engine: read: %s\n", strerror(errno)); return FM1ENGINE_EXIT_ERROR; }
+            if (e->stop) {                      /* asked to end: the exit status says whether the flash is saved */
+                if (abandoned(e)) return FM1ENGINE_EXIT_KILLED;
+                if (cart_ended(e) == 2) return FM1ENGINE_EXIT_CRASHED;
+                return flash_save(e) < 0 ? FM1ENGINE_EXIT_ERROR : FM1ENGINE_EXIT_OK;
+            }
         }
 
         t = now_s();
@@ -290,9 +298,10 @@ static int run(struct eng *e, const char *prefix)
             put32(m + 13, c->leds_buttons()); put32(m + 17, c->leds_keys()); put32(m + 21, c->glow_keys());
             send_msg(e, m, 25);
             if (sh != last_store) {
+                int64_t saved = flash_save(e);
                 uint8_t f[5] = {0x84};
                 last_store = sh;
-                put32(f + 1, flash_save(e));
+                put32(f + 1, saved < 0 ? 0 : (uint32_t)saved);
                 send_msg(e, f, 5);
             }
         }

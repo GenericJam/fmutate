@@ -11,7 +11,8 @@ defmodule FMutate.Engine do
     * `{:status, status}` every STATUS (`FMutate.Engine.Wire.status/0`)
     * `{:flash_saved, bytes}`
     * `{:exit, reason}` the OS process (the thread) is gone; this process stops right after. `reason`:
-      `:stopped` (we closed the port and it exited), `:stop_killed` (it didn't exit within 3 s of the
+      `:stopped` (we closed the port and it exited; after `finish/1`, or in-process, only with exit status 0),
+      `:stop_killed` (it didn't exit within 3 s of the
       port closing), `:hung` (no STATUS for 1 s), `:ready_timeout` (no READY within 5 s),
       `{:signal, n}`, `{:status, n}`, `{:start_failed, reason}` (in-process: `:busy` when the cartridge's
       previous engine still hadn't ended after 4 s of trying again, `:hung` when a hung firmware loop holds
@@ -47,6 +48,14 @@ defmodule FMutate.Engine do
 
   @doc "Close the port: the engine saves its flash and exits; an `{:exit, _}` event follows."
   def stop(pid), do: GenServer.cast(pid, :stop)
+
+  @doc """
+  Ask the engine to save its flash and end with the port still open (op `0x09`), so its exit status is seen:
+  `{:exit, :stopped}` only for exit status 0, which the engine gives only once the flash file is written; a crash,
+  a kill or a failed save is `{:exit, {:signal, n}}` / `{:exit, {:status, n}}`, and no exit within 3 s kill -9s it
+  (`:stop_killed`). (`stop/1` can't tell: once the port is closed, an executable's exit status isn't seen.)
+  """
+  def finish(pid), do: GenServer.cast(pid, :finish)
 
   @doc "kill -9 the OS process from outside (tests and the debug menu); in-process, abandon its thread."
   def kill9(pid), do: GenServer.cast(pid, :kill9)
@@ -198,12 +207,34 @@ defmodule FMutate.Engine do
   end
 
   # in-process, still waiting for the cartridge: nothing started, nothing to save
-  def handle_cast(:stop, %{phase: :waiting} = state) do
+  def handle_cast(stop, %{phase: :waiting} = state) when stop in [:stop, :finish] do
     notify(state, {:exit, :stopped})
     {:stop, :normal, state}
   end
 
   def handle_cast(:stop, state), do: {:noreply, state}
+
+  # the port stays open: the exit status says whether the engine saved its flash and ended (finish/1)
+  def handle_cast(:finish, %{phase: phase} = state) when phase in [:booting, :running] do
+    cancel(state.watchdog)
+
+    try do
+      command(state, Wire.encode(:finish))
+    rescue
+      # (the port is already gone: its exit status follows)
+      ArgumentError -> :ok
+    end
+
+    {:noreply,
+     %{
+       state
+       | phase: :finishing,
+         watchdog: arm(nil, :stop_killed, @stop_grace_ms),
+         stop_deadline: now() + @stop_grace_ms
+     }}
+  end
+
+  def handle_cast(:finish, state), do: {:noreply, state}
 
   def handle_cast(:kill9, %{phase: phase} = state) when phase in [:booting, :running] do
     kill(state)
@@ -241,9 +272,10 @@ defmodule FMutate.Engine do
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     cancel(state.watchdog)
 
+    # (an engine asked to end exits 0 once its flash is saved; anything else is what it is)
     reason =
       cond do
-        state.phase == :stopping -> :stopped
+        state.phase in [:stopping, :finishing] and status == 0 -> :stopped
         state.kill_reason != nil -> state.kill_reason
         status > 128 -> {:signal, status - 128}
         true -> {:status, status}
@@ -253,13 +285,14 @@ defmodule FMutate.Engine do
     {:stop, :normal, %{state | port: nil, handle: nil, watchdog: nil}}
   end
 
-  # in-process, stopping: no exit within the grace (its firmware never parks again): abandon the thread
-  def handle_info({:watchdog, ref, :stop_killed}, %{watchdog: {ref, _}, phase: :stopping} = state) do
-    Logger.warning(
-      "engine #{inspect(state.tag)}: didn't stop within #{@stop_grace_ms} ms, abandoned"
-    )
+  # stopping in-process, or finishing: no exit within the grace (its firmware never parks again): kill -9 the
+  # process, abandon the thread
+  def handle_info({:watchdog, ref, :stop_killed}, %{watchdog: {ref, _}, phase: phase} = state)
+      when phase in [:stopping, :finishing] do
+    how = if state.handle, do: "abandoned", else: "kill -9"
+    Logger.warning("engine #{inspect(state.tag)}: didn't stop within #{@stop_grace_ms} ms, #{how}")
 
-    EngineNif.kill(state.handle)
+    kill(state)
     notify(state, {:exit, :stop_killed})
     {:stop, :normal, %{state | port: nil, handle: nil, watchdog: nil}}
   end
