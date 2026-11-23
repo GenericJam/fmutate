@@ -486,6 +486,7 @@ final class FMInstrumentSurface: UIView {
     private(set) var editing = false
     private var pageProp = ""
     private var addMenuJson: String?
+    private var undo = ""                 // the edit pill's Undo button: "undo", "redo", or ""
     private var toastText = ""
     private var toastSeq: Int64 = 0
     private var mounted = false
@@ -636,6 +637,7 @@ final class FMInstrumentSurface: UIView {
         let newEditing = bool("editing")
         let newPageProp = str("page") ?? ""
         let newAddMenu = str("add_menu")
+        let newUndo = str("undo") ?? ""
         let newToast = str("toast") ?? ""
         let newToastSeq = num("toast_seq")?.int64Value ?? 0
         let master = num("master")?.floatValue ?? -1
@@ -657,6 +659,7 @@ final class FMInstrumentSurface: UIView {
         let pageChanged = newPageProp != pageProp
         pageProp = newPageProp
         if newAddMenu != addMenuJson { addMenuJson = newAddMenu; addMenu = FMAddMenu.parse(newAddMenu); editOverView.setNeedsDisplay() }
+        if newUndo != undo { undo = newUndo; editOverView.setNeedsDisplay() }
         let toastChanged = first || newToastSeq != toastSeq
         toastSeq = newToastSeq
         toastText = newToast
@@ -1660,7 +1663,7 @@ final class FMInstrumentSurface: UIView {
         guard let layout, let page, let f = fitted else { return nil }
         return FMEditCtx(
             layout: layout, page: page, pageIndex: layout.pages.firstIndex { $0.id == page.id } ?? -1, grid: f.grid,
-            wDp: sizeDp.width, hDp: sizeDp.height, addMenu: addMenu,
+            wDp: sizeDp.width, hDp: sizeDp.height, addMenu: addMenu, undo: undo,
             emit: { [weak self] e, p in self?.emit(e, p) },
             setPage: { [weak self] i in self?.goPage(layout.pages[i].id) },
             haptic: { [weak self] k in self?.haptic(k) },

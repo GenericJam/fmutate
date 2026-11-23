@@ -1,13 +1,14 @@
 import UIKit
 
 // Edit in place, home-screen style (HANDOFF §5; boards Edit-Drag, Edit-Add): EditMode.kt. While the instrument
-// is in edit mode its controls send nothing; this draws the grid, the pill (page name, ‹ ›, + Page, Done), the
+// is in edit mode its controls send nothing; this draws the grid, the pill (page name, ‹ ›, Undo or Redo, + Page, Done), the
 // selection (lime ring, corner handles, size badge), drags (dashed ghost at the origin, lime or red footprint,
 // edge-hold to move a control to the next page) and the "Add here" menu, and proposes every edit to Elixir:
 //
 //   send("edit_move", {id, col, row}) | send("edit_resize", {id, col, row, w, h}) | send("edit_to_page", {id, dir})
 //   send("edit_cell", {page, col, row}) | send("edit_add", {type, page, col, row}) | send("edit_add_close")
 //   send("edit_add_page") | send("edit_open", {id, sub, len}) | send("edit_done") | send("page", {id})
+//   send("edit_undo")  (the pill's Undo / Redo, shown when the `undo` prop says there is one)
 //
 // Elixir (FMutate.Editor, FMutate.LayoutEdit) owns the rules and the layout: it saves the edit and sends the new
 // layout back as the view's prop. Until then a dropped control is drawn where it was dropped (`pending`).
@@ -156,6 +157,7 @@ struct FMEditCtx {
     let wDp: CGFloat
     let hDp: CGFloat
     let addMenu: FMAddMenu?
+    let undo: String         // the pill's Undo button: "undo", "redo", or "" (none)
     let emit: (String, [String: Any]) -> Void
     let setPage: (Int) -> Void
     let haptic: (FMHaptic) -> Void
@@ -385,15 +387,20 @@ final class FMEditMode {
     // style: 0 plain text, 1 mono text, 2 light button, 3 dark "Done" button, 4 arrow; the first part is the pill
     private func pill(_ ctx: FMEditCtx) -> [PillPart] {
         let n = ctx.layout.pages.count
-        let parts: [(String, Int, (() -> Void)?)] = [
+        var all: [(String, Int, (() -> Void)?)] = [
             ("Editing", 0, nil),
             ("‹", 4, { if ctx.pageIndex > 0 { ctx.setPage(ctx.pageIndex - 1) } }),
             ("\(ctx.page.name) · \(ctx.pageIndex + 1)/\(n)", 1, nil),
             ("›", 4, { if ctx.pageIndex < n - 1 { ctx.setPage(ctx.pageIndex + 1) } }),
-            ("+ Page", 2, { ctx.emit("edit_add_page", [:]) }),
-            ("Done", 3, { ctx.emit("edit_done", [:]) }),
         ]
-        let widths: [CGFloat] = parts.map { t, s, _ in
+        switch ctx.undo {
+        case "undo": all.append(("Undo", 2, { ctx.emit("edit_undo", [:]) }))
+        case "redo": all.append(("Redo", 2, { ctx.emit("edit_undo", [:]) }))
+        default: break
+        }
+        all.append(("+ Page", 2, { ctx.emit("edit_add_page", [:]) }))
+        all.append(("Done", 3, { ctx.emit("edit_done", [:]) }))
+        func width(_ t: String, _ s: Int) -> CGFloat {
             switch s {
             case 4: return 32
             case 2, 3: return ink.width(t, 13, mono: false, weight: 700) + 26
@@ -402,7 +409,13 @@ final class FMEditMode {
             }
         }
         let gap: CGFloat = 6
-        let total = 14 + widths.reduce(0, +) + gap * CGFloat(parts.count - 1) + 4
+        func span(_ ps: [(String, Int, (() -> Void)?)]) -> CGFloat {
+            14 + ps.reduce(0) { $0 + width($1.0, $1.1) } + gap * CGFloat(ps.count - 1) + 4
+        }
+        // a narrow (portrait) screen drops the "Editing" label rather than the buttons
+        let parts = span(all) > ctx.wDp - 16 ? Array(all.dropFirst()) : all
+        let widths: [CGFloat] = parts.map { width($0.0, $0.1) }
+        let total = span(parts)
         var x = ctx.wDp / 2 - total / 2 + 14
         // at the top, unless the control being edited is under it: then at the bottom. Only the pill's buttons
         // take touches, so a control under its text can still be tapped (and selecting it moves the pill).

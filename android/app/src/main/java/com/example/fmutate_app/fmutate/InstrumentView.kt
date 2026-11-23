@@ -226,6 +226,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         editing = props["editing"] == true,
         pageProp = props["page"] as? String ?: "",
         addMenuJson = props["add_menu"] as? String,
+        undo = props["undo"] as? String ?: "",
         toastText = props["toast"] as? String ?: "",
         toastSeq = (props["toast_seq"] as? Number)?.toLong() ?: 0L,
         send = rememberUpdatedState(send),
@@ -249,6 +250,7 @@ private fun InstrumentSurface(
     editing: Boolean,
     pageProp: String,
     addMenuJson: String?,
+    undo: String,
     toastText: String,
     toastSeq: Long,
     send: State<(String, Map<String, Any>) -> Unit>,
@@ -367,7 +369,7 @@ private fun InstrumentSurface(
     }
 
     val ectx = fitted?.let {
-        EditCtx(layout, page, layout.pages.indexOf(page), it.grid, wDp, hDp, addMenu, scope, { e, p -> emit(e, p) },
+        EditCtx(layout, page, layout.pages.indexOf(page), it.grid, wDp, hDp, addMenu, undo, scope, { e, p -> emit(e, p) },
             { i -> goPage(layout.pages[i].id) }, { k -> haptic(k) })
     }
     val ectxNow by rememberUpdatedState(ectx)

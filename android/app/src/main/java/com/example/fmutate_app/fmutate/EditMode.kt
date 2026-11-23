@@ -29,13 +29,14 @@ import kotlin.math.roundToInt
 
 /*
  * Edit in place, home-screen style (HANDOFF §5; boards Edit-Drag, Edit-Add). While the instrument is in edit
- * mode its controls send nothing; this draws the grid, the pill (page name, ‹ ›, + Page, Done), the selection
+ * mode its controls send nothing; this draws the grid, the pill (page name, ‹ ›, Undo or Redo, + Page, Done), the selection
  * (lime ring, corner handles, size badge), drags (dashed ghost at the origin, lime or red footprint, edge-hold
  * to move a control to the next page) and the "Add here" menu, and proposes every edit to Elixir:
  *
  *   send("edit_move", {id, col, row}) | send("edit_resize", {id, col, row, w, h}) | send("edit_to_page", {id, dir})
  *   send("edit_cell", {page, col, row}) | send("edit_add", {type, page, col, row}) | send("edit_add_close")
  *   send("edit_add_page") | send("edit_open", {id, sub, len}) | send("edit_done") | send("page", {id})
+ *   send("edit_undo")  (the pill's Undo / Redo, shown when the `undo` prop says there is one)
  *
  * Elixir (FMutate.Editor, FMutate.LayoutEdit) owns the rules and the layout: it saves the edit and sends the new
  * layout back as the view's prop. Until then a dropped control is drawn where it was dropped (`pending`).
@@ -161,6 +162,7 @@ class EditCtx(
     val wDp: Float,
     val hDp: Float,
     val addMenu: AddMenu?,
+    val undo: String, // the pill's Undo button: "undo", "redo", or "" (none)
     val scope: CoroutineScope,
     val emit: (String, Map<String, Any>) -> Unit,
     val setPage: (Int) -> Unit,
@@ -365,24 +367,32 @@ class EditMode {
     // style: 0 plain text, 1 mono text, 2 light button, 3 dark "Done" button, 4 arrow
     private fun pill(ctx: EditCtx): List<PillPart> {
         val n = ctx.layout.pages.size
-        val parts = listOf(
+        val undo = when (ctx.undo) {
+            "undo" -> listOf(Triple("Undo", 2, { ctx.emit("edit_undo", emptyMap()) }))
+            "redo" -> listOf(Triple("Redo", 2, { ctx.emit("edit_undo", emptyMap()) }))
+            else -> emptyList()
+        }
+        val all = listOf(
             Triple("Editing", 0, null),
             Triple("‹", 4, { if (ctx.pageIndex > 0) ctx.setPage(ctx.pageIndex - 1) }),
             Triple("${ctx.page.name} · ${ctx.pageIndex + 1}/$n", 1, null),
             Triple("›", 4, { if (ctx.pageIndex < n - 1) ctx.setPage(ctx.pageIndex + 1) }),
+        ) + undo + listOf(
             Triple("+ Page", 2, { ctx.emit("edit_add_page", emptyMap()) }),
             Triple("Done", 3, { ctx.emit("edit_done", emptyMap()) }),
         )
-        val widths = parts.map { (t, s, _) ->
-            when (s) {
-                4 -> 32f
-                2, 3 -> ink.width(t, 13f, true, false) + 26f
-                1 -> ink.width(t, 12f, true, true) + 4f
-                else -> ink.width(t, 13f, true, false) + 4f
-            }
+        fun width(t: String, s: Int) = when (s) {
+            4 -> 32f
+            2, 3 -> ink.width(t, 13f, true, false) + 26f
+            1 -> ink.width(t, 12f, true, true) + 4f
+            else -> ink.width(t, 13f, true, false) + 4f
         }
         val gap = 6f
-        val total = 14f + widths.sum() + gap * (parts.size - 1) + 4f
+        fun total(ps: List<Triple<String, Int, (() -> Unit)?>>) = 14f + ps.sumOf { (t, s, _) -> width(t, s).toDouble() }.toFloat() + gap * (ps.size - 1) + 4f
+        // a narrow (portrait) screen drops the "Editing" label rather than the buttons
+        val parts = if (total(all) > ctx.wDp - 16f) all.drop(1) else all
+        val widths = parts.map { (t, s, _) -> width(t, s) }
+        val total = total(parts)
         var x = ctx.wDp / 2 - total / 2 + 14f
         // at the top, unless the control being edited is under it: then at the bottom. Only the pill's buttons
         // take touches, so a control under its text can still be tapped (and selecting it moves the pill).
