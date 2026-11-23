@@ -39,7 +39,8 @@ defmodule FMutate.Instance do
   The left/right balance of the instance's stereo output, in FMutate's mixer (`FMutate.Audio.balance/3`), the
   same on every firmware: set on every mixer slot the instance has (a switch's two engines, one still fading
   out), and on each new engine's slot when it attaches, before its gain comes up, so it holds across switches,
-  restarts and crashes. Saved with the instance (`balance` in the view) at most half a second after a move.
+  restarts and crashes. Saved with the instance (`balance` in the view) at most half a second after a move, and at
+  `quit/1` (the app's process is killed after it).
 
   ## Native builds not on the phone yet
 
@@ -334,6 +335,8 @@ defmodule FMutate.Instance do
       |> Enum.reduce(state, &drop_engine(&2, &1))
 
     if not state.quit, do: Logger.info("instance #{state.id}: quit")
+    # (the app's process is killed after quit, without terminate/2: a balance move waiting to be saved goes now)
+    state = flush_balance(state)
 
     %{
       state
@@ -509,10 +512,7 @@ defmodule FMutate.Instance do
     {:noreply, state}
   end
 
-  def handle_info(:save_balance, state) do
-    save_state(state)
-    {:noreply, %{state | balance_unsaved: false}}
-  end
+  def handle_info(:save_balance, state), do: {:noreply, flush_balance(state)}
 
   def handle_info({:ran_clean, pid}, %{live: %{pid: pid, firmware: fw}} = state) do
     state = %{state | app_crashes: Map.delete(state.app_crashes, fw)}
@@ -547,7 +547,7 @@ defmodule FMutate.Instance do
   def terminate(_reason, state) do
     engines = Enum.reject([state.live, state.next], &is_nil/1) ++ Map.values(state.stopping)
     engines = if state.sound && state.sound.step == :stopping, do: [state.sound.eng | engines], else: engines
-    if state.balance_unsaved, do: save_state(state)
+    flush_balance(state)
 
     for eng <- engines do
       Engine.stop(eng.pid)
@@ -1367,4 +1367,12 @@ defmodule FMutate.Instance do
 
     File.write!(Paths.instance_state(state.id), :erlang.term_to_binary(data))
   end
+
+  # a balance move not saved yet (apply_input saves it @balance_save_ms after the first): save it now
+  defp flush_balance(%{balance_unsaved: true} = state) do
+    save_state(state)
+    %{state | balance_unsaved: false}
+  end
+
+  defp flush_balance(state), do: state
 end

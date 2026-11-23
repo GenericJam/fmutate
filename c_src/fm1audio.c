@@ -58,11 +58,20 @@ typedef struct {
     uint8_t pad1[20];
 } ring_hdr;
 
+/* A ramped value the audio callback owns (current value, target, step per source frame). gain/balance hand it
+ * commands through `cmd`, one atomic word (sequence << 22 | ramp ms << 10 | permille): a command is never torn or
+ * half taken, the callback never waits, and the last command always lands, even one that reverses a ramp. */
+struct ramp {
+    _Atomic uint32_t cmd;                     /* written by the NIF, read by the callback */
+    uint32_t seen;                            /* the last command the callback took */
+    float v, target, step;                    /* the callback's alone (attach resets them with no callback on it) */
+};
+
 struct slot {
     ring_hdr *_Atomic ring;                   /* read by the audio callback */
     size_t map_len;
-    float gain, target, step;                 /* step per source frame while ramping */
-    float bal, bal_target, bal_step;          /* balance 0 left .. 0.5 centre .. 1 right, ramped the same way */
+    struct ramp gain;                         /* 0..1: fade in and out, crossfades when switching firmware */
+    struct ramp bal;                          /* balance 0 left .. 0.5 centre .. 1 right */
     _Atomic uint32_t underruns;
 };
 
@@ -75,17 +84,30 @@ static _Atomic uint32_t peak[2];             /* per channel (L, R), after soft c
 static int32_t dev_rate = 44100;
 static double rs_pos;                         /* resampler: position in the current source block */
 static float rs_prev[2];                      /* the last source frame of the previous block */
+static _Atomic uint32_t cmd_seq;              /* tells apart two equal commands in a row */
 
 /* ---- mixing (audio thread) */
 
-/* advance a ramp by one source frame, landing exactly on its target */
-static inline void ramp_frame(float *v, float target, float *step)
+/* take the ramp's latest command, if there is a new one */
+static inline void ramp_take(struct ramp *r)
 {
-    if (*step == 0) return;
-    *v += *step;
-    if ((*step > 0 && *v >= target) || (*step < 0 && *v <= target)) {
-        *v = target;
-        *step = 0;
+    uint32_t c = atomic_load_explicit(&r->cmd, memory_order_acquire), ms;
+    if (c == r->seen) return;
+    r->seen = c;
+    r->target = (c & 0x3FF) / 1000.0f;
+    ms = (c >> 10) & 0xFFF;
+    r->step = ms ? (r->target - r->v) / (float)(ms * SRC_RATE / 1000) : 0;
+    if (!ms) r->v = r->target;
+}
+
+/* advance a ramp by one source frame, landing exactly on its target */
+static inline void ramp_frame(struct ramp *r)
+{
+    if (r->step == 0) return;
+    r->v += r->step;
+    if ((r->step > 0 && r->v >= r->target) || (r->step < 0 && r->v <= r->target)) {
+        r->v = r->target;
+        r->step = 0;
     }
 }
 
@@ -100,6 +122,8 @@ static void mix_source(float *acc, uint32_t n)     /* n source frames into acc (
         uint32_t avail, take, i;
         const int16_t *d;
         if (!rg) continue;
+        ramp_take(&sl->gain);
+        ramp_take(&sl->bal);
         w = __atomic_load_n(&rg->w, __ATOMIC_ACQUIRE);
         r = rg->r;
         avail = (uint32_t)(w - r);
@@ -108,17 +132,17 @@ static void mix_source(float *acc, uint32_t n)     /* n source frames into acc (
             avail = 0;
         }
         take = avail < n ? avail : n;
-        if (take < n && (sl->gain > 0 || sl->target > 0)) atomic_fetch_add(&sl->underruns, 1);
+        if (take < n && (sl->gain.v > 0 || sl->gain.target > 0)) atomic_fetch_add(&sl->underruns, 1);
         d = (const int16_t *)(rg + 1);
         for (i = 0; i < n; i++) {
-            ramp_frame(&sl->gain, sl->target, &sl->step);
-            ramp_frame(&sl->bal, sl->bal_target, &sl->bal_step);
-            if (i < take && sl->gain > 0) {
+            ramp_frame(&sl->gain);
+            ramp_frame(&sl->bal);
+            if (i < take && sl->gain.v > 0) {
                 uint32_t pos = (uint32_t)((r + i) % rg->capacity);
-                float gl = sl->gain / 32768.0f, gr = gl;
+                float gl = sl->gain.v / 32768.0f, gr = gl, b = sl->bal.v;
                 /* balance: L = min(1, 2(1 - b)), R = min(1, 2b); centre multiplies nothing (bit for bit) */
-                if (sl->bal < 0.5f) gr *= 2 * sl->bal;
-                else if (sl->bal > 0.5f) gl *= 2 * (1 - sl->bal);
+                if (b < 0.5f) gr *= 2 * b;
+                else if (b > 0.5f) gl *= 2 * (1 - b);
                 acc[2 * i] += d[2 * pos] * gl;
                 acc[2 * i + 1] += d[2 * pos + 1] * gr;
             }
@@ -561,6 +585,23 @@ static void detach_locked(int s)
     slots[s].map_len = 0;
 }
 
+/* a slot's ramp back to `v`, ignoring any command not taken yet (lock held, no callback on the slot) */
+static void ramp_reset(struct ramp *r, float v)
+{
+    r->seen = atomic_load(&r->cmd);
+    r->v = r->target = v;
+    r->step = 0;
+}
+
+/* hand the callback a new target (permille 0..1000) and ramp (ms, 0..4095); it takes it at its next block */
+static void ramp_command(struct ramp *r, int permille, int ms)
+{
+    uint32_t q = atomic_fetch_add(&cmd_seq, 1) + 1;
+    permille = permille < 0 ? 0 : permille > 1000 ? 1000 : permille;
+    ms = ms < 0 ? 0 : ms > 4095 ? 4095 : ms;
+    atomic_store_explicit(&r->cmd, (q & 0x3FFu) << 22 | (uint32_t)ms << 10 | (uint32_t)permille, memory_order_release);
+}
+
 /* attach(slot, path) -> :ok | {:error, reason}; the slot starts silent (gain 0) */
 static ERL_NIF_TERM nif_attach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
@@ -587,9 +628,9 @@ static ERL_NIF_TERM nif_attach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     if (((ring_hdr *)p)->magic != RING_MAGIC) { munmap(p, (size_t)st.st_size); return error_text(env, "not a ring", 0); }
     pthread_mutex_lock(&lock);
     detach_locked(s);
-    slots[s].gain = slots[s].target = slots[s].step = 0;
-    slots[s].bal = slots[s].bal_target = 0.5f;
-    slots[s].bal_step = 0;
+    /* (no callback reads the slot now: its ring is NULL and detach waited out a callback) */
+    ramp_reset(&slots[s].gain, 0);
+    ramp_reset(&slots[s].bal, 0.5f);
     atomic_store(&slots[s].underruns, 0);
     slots[s].map_len = (size_t)st.st_size;
     /* start at the engine's write position: what it queued before we listened is stale */
@@ -614,16 +655,11 @@ static ERL_NIF_TERM nif_detach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
 static ERL_NIF_TERM nif_gain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int s, g, ramp;
-    struct slot *sl;
     (void)argc;
     if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT || !enif_get_int(env, argv[1], &g) ||
         !enif_get_int(env, argv[2], &ramp))
         return enif_make_badarg(env);
-    sl = &slots[s];
-    /* (benign race with the callback: a ramp starting a period late is inaudible) */
-    sl->target = g / 1000.0f;
-    sl->step = ramp > 0 ? (sl->target - sl->gain) / (float)(ramp * SRC_RATE / 1000) : 0;
-    if (ramp <= 0) sl->gain = sl->target;
+    ramp_command(&slots[s].gain, g, ramp);
     return atom(env, "ok");
 }
 
@@ -631,17 +667,11 @@ static ERL_NIF_TERM nif_gain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
 static ERL_NIF_TERM nif_balance(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     int s, b, ramp;
-    struct slot *sl;
     (void)argc;
     if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT || !enif_get_int(env, argv[1], &b) ||
         !enif_get_int(env, argv[2], &ramp))
         return enif_make_badarg(env);
-    sl = &slots[s];
-    b = b < 0 ? 0 : b > 1000 ? 1000 : b;
-    /* (the same benign race as gain's) */
-    sl->bal_target = b / 1000.0f;
-    sl->bal_step = ramp > 0 ? (sl->bal_target - sl->bal) / (float)(ramp * SRC_RATE / 1000) : 0;
-    if (ramp <= 0) sl->bal = sl->bal_target;
+    ramp_command(&slots[s].bal, b, ramp);
     return atom(env, "ok");
 }
 

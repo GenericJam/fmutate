@@ -362,6 +362,25 @@ defmodule FMutate.InstanceTest do
       assert_quit("a", pids)
     end
 
+    test "a balance moved just before quit is saved by then (the app's process is killed after quit, no terminate)" do
+      start_instance()
+      await_state(running?("obervave"))
+      Instance.input("a", {:mixer, :balance, 0.25})
+      assert :ok = Instance.quit("a")
+
+      # killed, as FMutateIO kills the process: the supervisor starts it again from what was saved
+      old = GenServer.whereis(Instance.via("a"))
+      Process.exit(old, :kill)
+
+      Enum.find_value(1..100, fn _ ->
+        Process.sleep(10)
+        pid = GenServer.whereis(Instance.via("a"))
+        pid != nil and pid != old
+      end)
+
+      assert Instance.view("a").balance == 0.25
+    end
+
     test "right after the start, while the engine boots" do
       start_instance()
       # (quit usually lands before READY; the outcome must be the same either way)

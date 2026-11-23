@@ -180,7 +180,8 @@ defmodule FMutate.InstrumentScreen do
       restarts: 0,
       last_exit: nil,
       master: 1.0,
-      balance: 0.5,
+      # (none yet: the surface seeds a BALANCE knob once, so it waits for the instance's own value)
+      balance: nil,
       buffer: :auto,
       clock_pct: nil,
       slow: false,

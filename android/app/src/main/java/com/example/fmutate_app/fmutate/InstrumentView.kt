@@ -82,8 +82,9 @@ import kotlin.math.sin
  * re-rendered on presses, values and LEDs), the firmware screen (each new engine frame), the Opling menu
  * button (its own animation) and an overlay (fingers, bubbles, banner).
  *
- * Props: layout (JSON string), fb (path or null), master (0..1), balance (FMutate's mixer, 0..1, 0.5 centre), bend
- * (firmware takes pitch bend), phase
+ * Props: layout (JSON string), fb (path or null), master (0..1), balance (FMutate's mixer, 0..1, 0.5 centre; null
+ * until the instance has answered, so a BALANCE control is seeded from its real value), bend (firmware takes pitch
+ * bend), phase
  * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %), hint (what is
  * being done or can be, under "Too slow"; alone: dropouts a larger buffer would cure): the Opling's mood and the
  * message in the firmware screen area (Starting…, Downloading… (a native build's cartridge), Restarting…, Crashed

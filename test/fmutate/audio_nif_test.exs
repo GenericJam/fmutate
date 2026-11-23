@@ -141,8 +141,10 @@ defmodule FMutate.AudioNifTest do
 
   # The mixer itself (RemoteIO build, no stream): fm1audio.c with a `render(n)` NIF that runs the audio callback's
   # mixing for n frames (44.1 kHz, no resampling), as module FMutate.MixRig in a VM of its own. `ops` run in order
-  # on slot 0, attached to a ring at `ring`; each {:render, n} first makes n more frames available. Returns the
-  # renders as [{left, right}] lists.
+  # on slot 0, attached to a ring at `ring`; each {:render, n} first makes n more frames available. {:stress, n}
+  # runs the callback on a thread of its own (64 frames at a time, as fast as it goes) while n gain and balance
+  # commands reverse each other's ramps, then sends gain 1000 and balance 0 (15 ms) and lets it run 50 ms more.
+  # Returns the renders as [{left, right}] lists.
   defp mix_rig(dir, ring, ops) do
     File.write!(Path.join(dir, "rig.c"), """
     #include <erl_nif.h>
@@ -154,6 +156,23 @@ defmodule FMutate.AudioNifTest do
     int32_t fm1_session_activate(double *rate, double *io, void (*on_event)(int32_t)) { return -1; }
     void fm1_session_deactivate(void) {}
     double fm1_session_latency(void) { return 0; }
+    static _Atomic int spin_on;
+    static _Atomic uint64_t spun;
+    static pthread_t spin_t;
+    static void *spin_main(void *a) {
+        static int16_t buf[64 * 2];
+        while (atomic_load(&spin_on)) { render_out(buf, 64); atomic_fetch_add(&spun, 1); }
+        return NULL;
+    }
+    static ERL_NIF_TERM rig_spin(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+        atomic_store(&spin_on, 1);
+        return enif_make_atom(env, pthread_create(&spin_t, NULL, spin_main, NULL) ? "error" : "ok");
+    }
+    static ERL_NIF_TERM rig_unspin(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
+        atomic_store(&spin_on, 0);
+        pthread_join(spin_t, NULL);
+        return enif_make_uint64(env, atomic_load(&spun));
+    }
     static ERL_NIF_TERM rig_render(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]) {
         int n; ErlNifBinary out;
         if (!enif_get_int(env, argv[0], &n) || !enif_alloc_binary(n * 4, &out)) return enif_make_badarg(env);
@@ -162,7 +181,7 @@ defmodule FMutate.AudioNifTest do
     }
     static ErlNifFunc rig_funcs[] = {
         {"attach", 2, nif_attach, 0}, {"gain", 3, nif_gain, 0}, {"balance", 3, nif_balance, 0},
-        {"render", 1, rig_render, 0},
+        {"render", 1, rig_render, 0}, {"spin", 0, rig_spin, 0}, {"unspin", 0, rig_unspin, ERL_NIF_DIRTY_JOB_CPU_BOUND},
     };
     ERL_NIF_INIT(Elixir.FMutate.MixRig, rig_funcs, NULL, NULL, NULL, NULL)
     """)
@@ -182,6 +201,8 @@ defmodule FMutate.AudioNifTest do
       def gain(_s, _g, _ms), do: :erlang.nif_error(:nif_not_loaded)
       def balance(_s, _b, _ms), do: :erlang.nif_error(:nif_not_loaded)
       def render(_n), do: :erlang.nif_error(:nif_not_loaded)
+      def spin, do: :erlang.nif_error(:nif_not_loaded)
+      def unspin, do: :erlang.nif_error(:nif_not_loaded)
     end
 
     {ring, ops} = :erlang.binary_to_term(File.read!("ops.bin"))
@@ -192,6 +213,21 @@ defmodule FMutate.AudioNifTest do
       Enum.flat_map_reduce(ops, 0, fn
         {:gain, g, ms}, w -> {[], (:ok = FMutate.MixRig.gain(0, g, ms)) && w}
         {:balance, b, ms}, w -> {[], (:ok = FMutate.MixRig.balance(0, b, ms)) && w}
+        {:stress, n}, w ->
+          :ok = FMutate.MixRig.spin()
+
+          for i <- 1..n do
+            :ok = FMutate.MixRig.balance(0, if(rem(i, 2) == 0, do: 1000, else: 0), rem(i, 20))
+            :ok = FMutate.MixRig.gain(0, if(rem(i, 3) == 0, do: 200, else: 1000), rem(i, 7))
+            if rem(i, 50) == 0, do: Process.sleep(1)
+          end
+
+          :ok = FMutate.MixRig.gain(0, 1000, 15)
+          :ok = FMutate.MixRig.balance(0, 0, 15)
+          Process.sleep(50)
+          true = FMutate.MixRig.unspin() > 100
+          {[], w}
+
         {:render, n}, w ->
           :ok = :file.pwrite(fd, 16, <<w + n::little-64>>)
           {[FMutate.MixRig.render(n)], w + n}
@@ -230,7 +266,7 @@ defmodule FMutate.AudioNifTest do
     ring = ring!(ctx.dir, 8)
     p = @period
 
-    [plain, centre, left, right, ramp_left, back, settled] =
+    [plain, centre, left, right, centre_again, ramp_left, back, settled, _to_right, reversing, reversed, stressed] =
       mix_rig(ctx.dir, ring, [
         {:gain, 1000, 0},
         {:render, p},
@@ -241,16 +277,26 @@ defmodule FMutate.AudioNifTest do
         {:balance, 1000, 0},
         {:render, p},
         {:balance, 500, 0},
+        {:render, p},
         {:balance, 0, 15},
         {:render, 2 * p},
         {:balance, 500, 15},
         {:render, 2 * p},
+        {:render, p},
+        # a move reversed in the middle of its ramp
+        {:balance, 1000, 15},
+        {:render, 200},
+        {:balance, 0, 15},
+        {:render, 2 * p - 200},
+        {:render, p},
+        # commands from another thread while the mixer runs
+        {:stress, 3000},
         {:render, p}
       ])
 
     {ls, rs} = Enum.unzip(plain)
     assert Enum.all?(ls, &(&1 > 0)) and Enum.all?(rs, &(&1 < 0))
-    assert centre == plain
+    assert centre == plain and centre_again == plain
 
     # full left: the right channel is silent, the left untouched; full right the other way round
     assert left == Enum.map(plain, fn {l, _} -> {l, 0} end)
@@ -267,5 +313,64 @@ defmodule FMutate.AudioNifTest do
     # and back: the ramp lands exactly on the centre
     refute back == plain ++ plain
     assert settled == plain
+
+    # reversed a third of the way to the right: the right channel goes from all of it to nothing, and stays
+    {_, rev_r} = Enum.unzip(reversing)
+    assert hd(rev_r) == Enum.at(rs, 200)
+    assert rev_r |> Enum.drop(662) |> Enum.all?(&(&1 == 0))
+    assert reversed == left
+
+    # the last command lands however the commands met the mixer
+    assert stressed == left
+  end
+
+  # (a sanitizer can't be loaded into the BEAM on macOS, so this runs the mixer in a plain executable: NIF terms are
+  # plain ints there)
+  test "gain and balance commands while the callback mixes: no data race (ThreadSanitizer)", ctx do
+    File.write!(Path.join(ctx.dir, "race.c"), """
+    #include <erl_nif.h>
+    #include <stdio.h>
+    #include <stdlib.h>
+    #pragma push_macro("ERL_NIF_INIT")
+    #undef ERL_NIF_INIT
+    #define ERL_NIF_INIT(...)
+    #include "#{@src}"
+    #pragma pop_macro("ERL_NIF_INIT")
+    int32_t fm1_session_activate(double *rate, double *io, void (*on_event)(int32_t)) { return -1; }
+    void fm1_session_deactivate(void) {}
+    double fm1_session_latency(void) { return 0; }
+    int enif_get_int(ErlNifEnv *env, ERL_NIF_TERM t, int *ip) { *ip = (int)t; return 1; }
+    ERL_NIF_TERM enif_make_atom(ErlNifEnv *env, const char *name) { return 0; }
+    static _Atomic int on = 1;
+    static void *render(void *a) { static int16_t buf[128]; while (atomic_load(&on)) render_out(buf, 64); return NULL; }
+    int main(void) {
+        size_t len = sizeof(ring_hdr) + 4410 * 4;
+        ring_hdr *rg = calloc(1, len);
+        pthread_t t;
+        rg->magic = RING_MAGIC; rg->capacity = 4410; rg->rate = 44100;
+        slots[0].map_len = len;
+        atomic_store(&slots[0].ring, rg);
+        pthread_create(&t, NULL, render, NULL);
+        for (int i = 0; i < 100000; i++) {
+            ERL_NIF_TERM b[3] = {0, (i & 1) ? 1000 : 0, 15}, g[3] = {0, (i & 2) ? 1000 : 200, 7};
+            nif_balance(NULL, 3, b);
+            nif_gain(NULL, 3, g);
+        }
+        atomic_store(&on, 0);
+        pthread_join(t, NULL);
+        puts("done");
+        return 0;
+    }
+    """)
+
+    cc!(~w(-fsanitize=thread -g -DkAudioUnitSubType_RemoteIO=0x72696f63 -Wno-unused-function -Wno-unused-variable
+         -I#{erts_include()} #{ctx.dir}/race.c -framework AudioToolbox -Wl,-undefined,dynamic_lookup
+         -o #{ctx.dir}/race))
+
+    {out, _} =
+      System.cmd(Path.join(ctx.dir, "race"), [], stderr_to_stdout: true, env: [{"TSAN_OPTIONS", "halt_on_error=0"}])
+
+    assert out =~ "done"
+    refute out =~ "ThreadSanitizer", out
   end
 end
