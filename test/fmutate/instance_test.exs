@@ -209,13 +209,35 @@ defmodule FMutate.InstanceTest do
     end
   end
 
-  test "the balance holds on every engine the instance runs: a crash restart, a switch, an app restart" do
+  # until the firmware's own clock is `ms` further on than at its next STATUS
+  defp firmware_runs(ms) do
+    from = next_status_ms()
+    Stream.repeatedly(&next_status_ms/0) |> Enum.find(&(&1 >= from + ms))
+  end
+
+  defp next_status_ms do
+    receive do
+      {:instance, "a", {:status, %{ms: ms}}} -> ms
+    after
+      2_000 -> flunk("no STATUS from the firmware")
+    end
+  end
+
+  test "the balance holds on every engine the instance runs: a crash restart, a sound save and load, a switch, an app restart" do
     start_instance()
     await_state(running?("obervave"))
     assert Instance.view("a").balance == 0.5 and live_balance("a") == 500
 
     Instance.input("a", {:mixer, :balance, 0.2})
     assert Instance.view("a").balance == 0.2 and live_balance("a") == 200
+
+    # a sound's save and load each stop the engine and start it again (FMutate.Sounds); the firmware needs a second
+    # of its time first to end cleanly (as in sounds_test.exs)
+    firmware_runs(1_000)
+    {:ok, saved} = Instance.snapshot("a")
+    assert live_balance("a") == 200
+    {:ok, _old} = Instance.restore("a", "obervave", :native, saved.bytes)
+    assert live_balance("a") == 200
 
     # a new engine's slot starts centred (FMutate.Audio.attach/2): the instance sets it again
     Instance.debug("a", :crash)
