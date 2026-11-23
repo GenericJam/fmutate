@@ -13,7 +13,7 @@ a Swift surface; design and measurements in `docs/decisions/2026-11-13-ios-port.
 flowchart LR
   subgraph app["App process (one BEAM, Mob)"]
     SUP[FMutate.Supervisor] --> REG[Registry]
-    SUP --> AUD["FMutate.Audio (owns fm1audio NIF: AAudio mixer, master clock)"]
+    SUP --> AUD["FMutate.Audio (owns the fm1audio mixer NIF, master clock, and its mob_audio_io output stream)"]
     SUP --> INST["FMutate.Instance &quot;a&quot; (firmware, engine lifecycle, inputs, quarantine)"]
     SUP --> LIB["FMutate.Library (catalogue: bundled + Hub + native builds + packages on the phone)"]
     SUP --> BG["FMutate.Background (mob_background keep-alive while a firmware plays)"]
@@ -30,8 +30,12 @@ flowchart LR
   extracts it to the native lib dir). A crash, hang or exit ends only that process; `FMutate.Instance`
   restarts it, and quarantines a firmware that dies twice within a minute. `libfm1emu.so` is the same
   protocol around fm1-emu, for any firmware's update package (`backend: :emu`, `docs/engine_protocol.md`).
-- **Audio** never passes through the BEAM: engines write a shared ring, `c_src/fm1audio.c` (static NIF) mixes
-  the rings in an AAudio callback, resampling 44.1 kHz to the device rate.
+- **Audio** never passes through the BEAM: engines write a shared ring, `c_src/fm1mix.c` (in the static NIF
+  `fm1audio`) mixes the rings in the output's callback, resampling 44.1 kHz to the device rate. The output
+  stream is mob_audio_io's (AAudio on Android, RemoteIO and the audio session on iOS); the mixer is its
+  processor `"fm1_mixer"`. The dependency uses the signed Hex release (`~> 0.1`, locked to 0.1.0),
+  verified against the shared release key in `mob.exs`'s `:trusted_plugins`, without an unsafe
+  acknowledgement.
 - **The firmware screen and LEDs** never pass through the BEAM either: the Kotlin view maps `<prefix>.fb`.
 - **Touch** is handled natively (per-pointer, glissando, knobs, fine mode); the view sends compact input events
   that `FMutate.InstrumentView` turns into `FMutate.Instance.input/2` calls — the same API sibling apps use
@@ -113,8 +117,8 @@ flowchart LR
 | `native/engine/fm1engine.c`, `fm1engine.h`, `live.c` | the engine (`fm1engine_run`, wrapped as an executable by `main`) and the cartridge harness (from `../fmutate_spike`) |
 | `native/build_android.sh`, `build_host.sh` | build engine + cartridges per ABI (jniLibs) / for this computer (tests; Linux or macOS) |
 | `native/emu/`, `native/build_emu.sh` | the emulator engine (Rust, around fm1-emu pinned in the script; local changes to fm1-emu would go in `native/patches/fm1-emu/`, none at present) for arm64-v8a, x86_64 and this computer; a library (`engine::run`, `ffi.rs`) and the executable around it |
-| `native/build_ios.sh`, `native/ios_cartridges.exs` + `.lock`, `c_src/fm1host.c`, `ios/` | iOS: the engines and every published iOS cartridge (pinned by the lock) linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (audio session, surface); `docs/decisions/2026-11-13-ios-port.md` |
-| `c_src/fm1audio.c` | the mixer NIF (`FMutate.AudioNif`): AAudio on Android, RemoteIO on iOS (session: `ios/FMutateAudioSession.swift`) |
+| `native/build_ios.sh`, `native/ios_cartridges.exs` + `.lock`, `c_src/fm1host.c`, `ios/` | iOS: the engines and every published iOS cartridge (pinned by the lock) linked into the app and run on threads behind the same messages (`FMutate.EngineNif`), the app shell and its Swift (surface, route picker); `docs/decisions/2026-11-13-ios-port.md` |
+| `c_src/fm1audio.c`, `c_src/fm1mix.c` | the mixer NIF (`FMutate.AudioNif`): the mob_audio_io processor `"fm1_mixer"` under the plugin's output stream (AAudio on Android, RemoteIO and the session on iOS); host checks in `test/c/fm1mix_host.c` |
 | `lib/fmutate/` | the app: `instance.ex` (+ `instance/health.ex`: speed, too slow, auto fill, the emulated CPU clock), `engine.ex`, `engine/wire.ex`, `audio.ex`, `firmware.ex`, `library.ex`, `library/` (`catalog.ex`, `http.ex`, `readme.ex`: a README as text blocks, `description.ex`: README and picture read and cached for the synth page), `cartridges.ex` (the signed cartridge index, downloaded native cartridges), `fwsc.ex`, `layouts.ex`, `inputs.ex`, `paths.ex`, `subscription.ex` (screens' resubscribing helper), `background.ex` (keep-alive while a firmware plays), `motion.ex` (motion controls' gestures, sensors, settings), screens (`library_screen.ex` and the synth page `firmware_screen.ex` share `library_ui.ex`: badges, actions, the switch toast) |
 | `android/app/src/main/java/com/example/fmutate_app/fmutate/` | native views: `InstrumentView.kt`, `Layout.kt`, `MotionControl.kt` (motion controls: sensors to bindings), `FirmwareShm.kt`, `Opling.kt` (the creature menu button), `FMutateViews.kt` |
 | `android/app/src/main/res/{drawable,mipmap-*}/ic_launcher*` | app icon: adaptive layers (vector foreground + monochrome, violet background) exported from `docs/design/boards/Main.dc.html` |
@@ -380,7 +384,7 @@ flowchart LR
   from the notification, and Quit is what was asked for.
 - **Quit on iOS: none.** iOS has no foreground-service notification (mob_background's iOS side shows nothing and
   never delivers actions), and the lock screen / Control Center Now Playing controls (`MPRemoteCommandCenter`) only
-  go to the Now Playing app, which a mixable audio session (`.mixWithOthers`, `FMutateAudioSession.swift`: FMutate
+  go to the Now Playing app, which a mixable audio session (`.mixWithOthers`, mob_audio_io's `session: :mix`: FMutate
   plays beside other apps, as on Android) can't become; making it non-mixable would stop the user's other audio
   whenever FMutate starts. Apple also has no API for an app to quit itself (QA1561). The user swipes FMutate away
   in the app switcher; with nothing playing (safe mode, a firmware that can't run) FMutate closes its output and
@@ -520,7 +524,7 @@ portrait), scroll = 5 × `input swipe 540 1900 540 600 250`.
 | `FMutate.Dist`, `FMutate.Remote`, `fmutate_tcp_dist`, `fmutate/DistInitArgs.kt`, `fmutate/FMutateSiblingProvider.kt` | distribution for sibling apps; the custom transport (put in the init arguments by `DistInitArgs` before the first launch) keeps its acceptor parked until the allow list and cookies are installed, and pending provider names stay binaries until Allow (`docs/design/protocol.md` §7). On iOS nothing writes that transport, so a release build starts no distribution, and a development build's node is Mob's own (`FMutate.Dist` reports it as already alive) |
 | `FMutate.Pairing`, `FMutate.PairScreen`, mob_pair (`MobPair.Host`, `MobPair.Pairings`, `MobPair.Front`) | pairing sibling apps by QR code or typed code, on this phone or another on the Wi-Fi; TLS distribution for the latter (`docs/design/protocol.md` §7 "Pairing"). Android only for now: iOS starts none of it and its menu has no Pair an app (`FMutate.Pairing.available?/0`) |
 
-- **Audio route**: the AAudio stream's device id (`FMutate.Audio.stats/0` `device_id`) named through
+- **Audio route**: the output stream's AAudio device id (`FMutate.Audio.stats/0` `device_id`) named through
   `AudioManager`. **Latency shown** = device output latency + the engine's ring fill (what a key press waits).
 - **Virtual line-in**: reserved (`FMutate.IO` state `line_in: nil`); nothing produces it.
 - **Clock send** stamps each tick with its exact `MobMidi.now_ns/0` (`System.nanoTime`) time (sent ~4 ms early,

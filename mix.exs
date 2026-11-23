@@ -22,7 +22,8 @@ defmodule FmutateApp.MixProject do
 
   defp deps do
     [
-      {:mob, "~> 0.9.29"},
+      # 0.9.31: what mob_audio_io needs
+      {:mob, "~> 0.9.31"},
       {:mob_dev, "~> 0.7.31", only: :dev, runtime: false},
       {:ecto_sqlite3, "~> 0.18"},
       # motion controls: the editor lists which motion sensors this phone has (MobSensors.list/0);
@@ -33,6 +34,9 @@ defmodule FmutateApp.MixProject do
       # keeps the app running (mediaPlayback foreground service, its notification's Quit) while a firmware plays
       # (FMutate.Background); 0.3.1 has the :media_playback mode
       {:mob_background, "~> 0.3.1"},
+      # the audio output under the mixer (c_src/fm1audio.c's "fm1_mixer" processor): AAudio on Android, RemoteIO
+      # and the audio session on iOS, from the signed Hex release.
+      {:mob_audio_io, "~> 0.1"},
       # pairing sibling apps (Humdinger, Magpie) by QR code or typed code, and their TLS distribution
       # (FMutate.Pairing, the Pair screen); pure Elixir, no native code
       {:mob_pair, github: "GenericJam/mob_pair", ref: "c44aede8009c85c490caddf1972f456aff95c7ae"},

@@ -1,11 +1,20 @@
 defmodule FMutate.Audio do
   @moduledoc """
-  The audio output: owns the mixer NIF (`FMutate.AudioNif`, an AAudio stream), hands out its four
-  ring slots, and samples its stats every 100 ms for the UI (level meter, latency, the clock).
+  The audio output: owns the mixer (`FMutate.AudioNif`, the `mob_audio_io` processor `"fm1_mixer"`) and the
+  output stream it renders into (`MobAudioIo.open/3`: AAudio on Android, RemoteIO on iOS), hands out the
+  mixer's four ring slots, and samples its stats every 100 ms for the UI (level meter, latency, the clock).
+
+  The stream is opened when this process starts, and by `start/0` after `stop/0` (`FMutate.Background` on
+  iOS, where the output is the keep-alive). It asks for an exclusive AAudio stream (falling back to shared)
+  and, on iOS, a session that mixes with other apps' audio (`session: :mix`: playback, `mixWithOthers`, a
+  5 ms IO buffer). `mob_audio_io` keeps it going: it reopens the stream on a new device (headphones in or
+  out, a USB device), when an iOS interruption ends or the app returns to the foreground after one, and after
+  a new rate or a media-services reset; this process only owns it (the stream closes if this process exits).
 
   On a host without the NIF (tests, desktop development) there is no sound, but attached rings are still
   drained at 44.1 kHz by advancing their read index, so firmwares keep running as they would on a
-  device.
+  device. `mixer: module` (tests) puts a double of `FMutate.AudioNif` under a real `MobAudioIo` stream (the
+  plugin's `MobAudioIo.Fake` on the host).
   """
 
   use GenServer
@@ -33,11 +42,32 @@ defmodule FMutate.Audio do
 
   @doc """
   The last stats: `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst,
-  buffer, device_id}`, plus `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last
-  100 ms; `burst` the device's callback size in device frames; `device_id` the Android audio device the
-  stream plays to (`AudioDeviceInfo` id, 0 when unknown; `FMutate.IO.audio_route/0` names it).
+  buffer, device_id}`, plus `:at` (monotonic ms when sampled).
+
+  From the mixer: `frame` (the clock, 44.1 kHz frames mixed), `rate` (the output's rate at its last start),
+  `peak` (the loudest sample in the last 100 ms, 0..32767), `fills` and `underruns` (per slot). From the
+  output stream (`MobAudioIo.status/1`; `running: false` while it is closed, interrupted or being reopened,
+  and then `latency_ms: nil`, `xruns`, `burst`, `buffer`, `device_id` 0 and `sharing: :shared`):
+  `latency_ms` (what a rendered frame waits before it is heard: on Android 12+ from AAudio's timestamps, on
+  Android 8-11 the frames written but not yet read, on iOS the session's output latency and IO buffer),
+  `xruns` (since the stream's platform stream opened), `sharing`, `burst` (the device's callback size in
+  device frames: AAudio's burst; iOS: the last callback's frames, 4096 with the screen locked), `buffer`
+  (AAudio's buffer; iOS: as `burst`) and `device_id` (the Android audio device the stream plays to,
+  `AudioDeviceInfo` id, 0 when unknown or on iOS; `FMutate.IO.audio_route/0` names it).
   """
   def stats, do: GenServer.call(__MODULE__, :stats)
+
+  @doc """
+  Open the output stream if it isn't open: `:ok` or `{:error, reason}` (`MobAudioIo.open/3`'s). A stream
+  already open is left alone, running or not (an interruption or a lost device it is recovering from).
+  """
+  def start, do: GenServer.call(__MODULE__, :start, 15_000)
+
+  @doc "Close the output stream (on iOS the audio session goes back to other apps once nothing plays). `:ok`."
+  def stop, do: GenServer.call(__MODULE__, :stop, 15_000)
+
+  @doc "Whether the output runs now (asked of the stream, not the last stats)."
+  def running?, do: GenServer.call(__MODULE__, :running?)
 
   @doc """
   How far ahead (44.1 kHz frames) an engine should keep its ring: two of the device's callbacks plus a
@@ -62,20 +92,17 @@ defmodule FMutate.Audio do
   ## Server
 
   @impl true
-  def init(_opts) do
-    native = AudioNif.loaded?()
+  def init(opts) do
+    mixer = Keyword.get_lazy(opts, :mixer, fn -> if AudioNif.loaded?(), do: AudioNif end)
+    state = %{mixer: mixer, stream: nil, platform: nil, owners: %{}, drains: %{}, stats: nil}
 
-    if native do
-      case AudioNif.start() do
-        :ok -> :ok
-        {:error, reason} -> Logger.error("audio output did not start: #{reason}")
-      end
-
+    if mixer do
+      {_result, state} = open_output(state)
       Process.send_after(self(), :poll, @poll_ms)
-      {:ok, %{native: true, owners: %{}, drains: %{}, stats: Map.put(AudioNif.stats(), :at, now())}}
+      {:ok, %{state | stats: sample(state)}}
     else
       Process.send_after(self(), :drain, @drain_ms)
-      {:ok, %{native: false, owners: %{}, drains: %{}, stats: empty_stats()}}
+      {:ok, %{state | stats: empty_stats()}}
     end
   end
 
@@ -88,12 +115,12 @@ defmodule FMutate.Audio do
   end
 
   def handle_call({:release, slot}, _from, state) do
-    if state.native, do: AudioNif.detach(slot)
+    if state.mixer, do: state.mixer.detach(slot)
     {:reply, :ok, %{state | owners: Map.delete(state.owners, slot), drains: close_drain(state.drains, slot)}}
   end
 
-  def handle_call({:attach, slot, path}, _from, %{native: true} = state),
-    do: {:reply, AudioNif.attach(slot, path), state}
+  def handle_call({:attach, slot, path}, _from, %{mixer: mixer} = state) when mixer != nil,
+    do: {:reply, mixer.attach(slot, path), state}
 
   def handle_call({:attach, slot, path}, _from, state) do
     drains = close_drain(state.drains, slot)
@@ -111,16 +138,40 @@ defmodule FMutate.Audio do
 
   def handle_call(:stats, _from, state), do: {:reply, state.stats, state}
 
+  # (the host's drain plays the part of an output that always runs)
+  def handle_call(:start, _from, %{mixer: nil} = state), do: {:reply, :ok, state}
+
+  def handle_call(:start, _from, %{stream: stream} = state) when stream != nil,
+    do: {:reply, :ok, state}
+
+  def handle_call(:start, _from, state) do
+    {result, state} = open_output(state)
+    {:reply, result, state}
+  end
+
+  def handle_call(:stop, _from, %{stream: nil} = state), do: {:reply, :ok, state}
+
+  def handle_call(:stop, _from, state) do
+    _ = MobAudioIo.close(state.stream)
+    {:reply, :ok, %{state | stream: nil}}
+  end
+
+  def handle_call(:running?, _from, %{mixer: nil} = state),
+    do: {:reply, state.stats.running, state}
+
+  def handle_call(:running?, _from, state),
+    do: {:reply, match?(%{running: true}, output_status(state)), state}
+
   @impl true
   def handle_cast({:gain, slot, permille, ramp_ms}, state) do
-    if state.native, do: AudioNif.gain(slot, permille, ramp_ms)
+    if state.mixer, do: state.mixer.gain(slot, permille, ramp_ms)
     {:noreply, state}
   end
 
   @impl true
   def handle_info(:poll, state) do
     Process.send_after(self(), :poll, @poll_ms)
-    {:noreply, %{state | stats: Map.put(AudioNif.stats(), :at, now())}}
+    {:noreply, %{state | stats: sample(state)}}
   end
 
   # host: consume each attached ring at 44.1 kHz (the audio is discarded). Frames are counted from the attach
@@ -144,6 +195,107 @@ defmodule FMutate.Audio do
 
     {:noreply, %{state | drains: drains}}
   end
+
+  # The stream's own news (mob_audio_io logs each with a [mob_audio_io] prefix, and reopens the stream itself
+  # after a lost device, an interruption or a new rate): the stats poll reads what it did. Only the stream's
+  # end matters here, when something else closed it (stop/0 forgets it first).
+  def handle_info(
+        {:mob_audio_io, :stopped, stream, %{reason: :closed}},
+        %{stream: stream} = state
+      ) do
+    Logger.warning("[fm1audio] output stream #{stream} closed under the mixer")
+    {:noreply, %{state | stream: nil}}
+  end
+
+  def handle_info({:mob_audio_io, _kind, _stream, _payload}, state), do: {:noreply, state}
+
+  # Open the output for the mixer: {:ok | {:error, reason}, state}. A stream an earlier owner left (this
+  # process restarted; mob_audio_io closes it within a few ms of its owner's exit) is closed first: the mixer
+  # is one stream's.
+  defp open_output(state) do
+    processor = state.mixer.processor()
+    close_stale(processor)
+
+    opts = [
+      processor: processor,
+      module: state.mixer,
+      channels: 2,
+      sharing: :exclusive,
+      session: :mix
+    ]
+
+    case MobAudioIo.open(self(), :output, opts) do
+      {:ok, stream} ->
+        {:ok, %{state | stream: stream, platform: platform(state.platform)}}
+
+      {:error, reason} = error ->
+        Logger.error("[fm1audio] audio output did not start: #{inspect(reason)}")
+        {error, state}
+    end
+  end
+
+  defp close_stale(processor) do
+    case MobAudioIo.status() do
+      %{streams: streams} ->
+        for %{id: id, processor: ^processor} <- streams, do: MobAudioIo.close(id)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp platform(nil) do
+    case MobAudioIo.status() do
+      %{platform: platform} -> platform
+      _ -> nil
+    end
+  end
+
+  defp platform(known), do: known
+
+  defp output_status(%{stream: nil}), do: nil
+
+  defp output_status(%{stream: stream}) do
+    case MobAudioIo.status(stream) do
+      %{} = status -> status
+      {:error, _} -> nil
+    end
+  end
+
+  # the stats/0 map: the mixer's half and the output stream's
+  defp sample(state) do
+    mix = state.mixer.stats()
+
+    out =
+      case output_status(state) do
+        %{running: true} = status -> status
+        _ -> nil
+      end
+
+    burst = callback_frames(out, state.platform)
+
+    %{
+      frame: mix.frame,
+      rate: mix.rate,
+      peak: mix.peak,
+      fills: mix.fills,
+      underruns: mix.underruns,
+      running: out != nil,
+      latency_ms: out && out.latency_ms,
+      xruns: if(out, do: out.xruns, else: 0),
+      sharing: if(out, do: out.sharing, else: :shared),
+      burst: burst,
+      buffer: if(out && state.platform != :ios, do: out.buffer, else: burst),
+      device_id: if(out, do: out.device_id, else: 0),
+      at: now()
+    }
+  end
+
+  # iOS calls the render with the IO buffer's frames, but with the screen locked with 4096 at a time: the
+  # frames the last callback had, as the device takes them (the burst until one has run)
+  defp callback_frames(nil, _platform), do: 0
+  defp callback_frames(%{cb_frames: n}, :ios) when n > 0, do: n
+  defp callback_frames(out, _platform), do: out.burst
 
   defp close_drain(drains, slot) do
     case Map.pop(drains, slot) do

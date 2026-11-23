@@ -82,29 +82,30 @@ defmodule FMutate.Background do
     @moduledoc false
     # The device side: mob_background's keep-alive (through Session) and Mob's permission request (Android); the
     # audio output (iOS).
-    def keep_alive, do: if(ios?(), do: FMutate.AudioNif.start(), else: Session.start())
+    def keep_alive, do: if(ios?(), do: FMutate.Audio.start(), else: Session.start())
 
-    def stop, do: if(ios?(), do: FMutate.AudioNif.stop(), else: Session.stop())
+    def stop, do: if(ios?(), do: FMutate.Audio.stop(), else: Session.stop())
 
     # whether the keep-alive is already held when this process starts: on iOS (in-process engines) the output's
     # own state; on Android the session's
     def on? do
       cond do
-        FMutate.Paths.inproc?() -> FMutate.AudioNif.stats().running
+        FMutate.Paths.inproc?() -> FMutate.Audio.running?()
         Process.whereis(Session) -> Session.on?()
         true -> false
       end
     end
 
-    # back in the foreground with the keep-alive held: on iOS reopen the output if an interruption closed it and
-    # never reported its end (AudioNif.start leaves a running output alone); elsewhere nothing
-    def resume, do: if(ios?(), do: FMutate.AudioNif.start(), else: :ok)
+    # back in the foreground with the keep-alive held: on iOS open the output if nothing has it open (Audio.start
+    # leaves an open stream alone; mob_audio_io reopens one an interruption stopped when the app is back in the
+    # foreground, whether or not iOS reported the interruption's end); elsewhere nothing
+    def resume, do: if(ios?(), do: FMutate.Audio.start(), else: :ok)
     def request_notifications, do: unless(ios?(), do: :mob_nif.request_permission(:notifications))
 
     # Quit (Android; the engines have ended): close the audio output, then FMutateIO.kt finishes the activity and
     # its task and ends the process
     def quit do
-      FMutate.AudioNif.stop()
+      FMutate.Audio.stop()
 
       with {:ok, _reply} <- FMutate.IONif.call(~s({"op":"quit"})), do: :ok
     end
