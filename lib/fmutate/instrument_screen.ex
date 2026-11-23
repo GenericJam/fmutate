@@ -180,6 +180,7 @@ defmodule FMutate.InstrumentScreen do
       restarts: 0,
       last_exit: nil,
       master: 1.0,
+      balance: 0.5,
       buffer: :auto,
       clock_pct: nil,
       slow: false,

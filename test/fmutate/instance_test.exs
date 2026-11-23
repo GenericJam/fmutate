@@ -187,6 +187,38 @@ defmodule FMutate.InstanceTest do
     assert view.buffer == 3072 and view.fill == 3072
   end
 
+  # the mixer balance (permille) on the instance's live engine's slot, as FMutate.Audio has it
+  defp live_balance(id) do
+    %{live: %{slot: slot}} = :sys.get_state(Instance.via(id))
+    :sys.get_state(FMutate.Audio).balances[slot]
+  end
+
+  test "the balance holds on every engine the instance runs: a crash restart, a switch, an app restart" do
+    start_instance()
+    await_state(running?("obervave"))
+    assert Instance.view("a").balance == 0.5 and live_balance("a") == 500
+
+    Instance.input("a", {:mixer, :balance, 0.2})
+    assert Instance.view("a").balance == 0.2 and live_balance("a") == 200
+
+    # a new engine's slot starts centred (FMutate.Audio.attach/2): the instance sets it again
+    Instance.debug("a", :crash)
+    await_state(&(&1.phase == :crashed))
+    await_state(running?("obervave"))
+    assert live_balance("a") == 200
+
+    :ok = Instance.switch_firmware("a", "shineon")
+    await_state(running?("shineon"))
+    assert live_balance("a") == 200
+
+    Instance.input("a", {:mixer, :balance, 1.0})
+    assert live_balance("a") == 1000
+    stop_supervised!({:instance, "a"})
+    start_instance()
+    view = await_state(running?("shineon"))
+    assert view.balance == 1.0 and live_balance("a") == 1000
+  end
+
   test "run anyway from safe mode, as the instrument's screen area asks for it" do
     start_instance()
     await_state(running?("obervave"))

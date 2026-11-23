@@ -6,6 +6,9 @@ defmodule FMutate.Audio do
   On a host without the NIF (tests, desktop development) there is no sound, but attached rings are still
   drained at 44.1 kHz by advancing their read index, so firmwares keep running as they would on a
   device.
+
+  Each slot also has a left/right balance (`balance/3`; `attach/2` centres it). The server keeps the last
+  balance set per slot in its state (`balances`, permille), on the host too.
   """
 
   use GenServer
@@ -32,10 +35,18 @@ defmodule FMutate.Audio do
   def gain(slot, permille, ramp_ms \\ 0), do: GenServer.cast(__MODULE__, {:gain, slot, permille, ramp_ms})
 
   @doc """
-  The last stats: `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst,
-  buffer, device_id}`, plus `:at` (monotonic ms when sampled). `peak` is the loudest sample in the last
-  100 ms; `burst` the device's callback size in device frames; `device_id` the Android audio device the
-  stream plays to (`AudioDeviceInfo` id, 0 when unknown; `FMutate.IO.audio_route/0` names it).
+  Ramp a slot's left/right balance over `ramp_ms`: 0 left, 500 centre (the engine's stereo as it is, bit for
+  bit), 1000 right. Attenuation only (`FMutate.AudioNif.balance/3`).
+  """
+  def balance(slot, permille, ramp_ms \\ 0),
+    do: GenServer.cast(__MODULE__, {:balance, slot, permille |> max(0) |> min(1000), ramp_ms})
+
+  @doc """
+  The last stats: `%{frame, rate, peak, peaks, latency_ms, xruns, running, sharing, fills, underruns, burst,
+  buffer, device_id}`, plus `:at` (monotonic ms when sampled). `peaks` is the loudest sample of each channel,
+  `[left, right]`, in the last 100 ms, `peak` the louder; `burst` the device's callback size in device frames;
+  `device_id` the Android audio device the stream plays to (`AudioDeviceInfo` id, 0 when unknown;
+  `FMutate.IO.audio_route/0` names it).
   """
   def stats, do: GenServer.call(__MODULE__, :stats)
 
@@ -72,10 +83,10 @@ defmodule FMutate.Audio do
       end
 
       Process.send_after(self(), :poll, @poll_ms)
-      {:ok, %{native: true, owners: %{}, drains: %{}, stats: Map.put(AudioNif.stats(), :at, now())}}
+      {:ok, %{native: true, owners: %{}, drains: %{}, balances: %{}, stats: Map.put(AudioNif.stats(), :at, now())}}
     else
       Process.send_after(self(), :drain, @drain_ms)
-      {:ok, %{native: false, owners: %{}, drains: %{}, stats: empty_stats()}}
+      {:ok, %{native: false, owners: %{}, drains: %{}, balances: %{}, stats: empty_stats()}}
     end
   end
 
@@ -89,14 +100,25 @@ defmodule FMutate.Audio do
 
   def handle_call({:release, slot}, _from, state) do
     if state.native, do: AudioNif.detach(slot)
-    {:reply, :ok, %{state | owners: Map.delete(state.owners, slot), drains: close_drain(state.drains, slot)}}
+    {:reply, :ok,
+     %{
+       state
+       | owners: Map.delete(state.owners, slot),
+         drains: close_drain(state.drains, slot),
+         balances: Map.delete(state.balances, slot)
+     }}
   end
 
-  def handle_call({:attach, slot, path}, _from, %{native: true} = state),
-    do: {:reply, AudioNif.attach(slot, path), state}
+  def handle_call({:attach, slot, path}, _from, %{native: true} = state) do
+    case AudioNif.attach(slot, path) do
+      :ok -> {:reply, :ok, put_in(state.balances[slot], 500)}
+      error -> {:reply, error, state}
+    end
+  end
 
   def handle_call({:attach, slot, path}, _from, state) do
     drains = close_drain(state.drains, slot)
+    state = %{state | balances: Map.put(state.balances, slot, 500)}
 
     case :file.open(path, [:read, :write, :binary, :raw]) do
       {:ok, fd} ->
@@ -115,6 +137,11 @@ defmodule FMutate.Audio do
   def handle_cast({:gain, slot, permille, ramp_ms}, state) do
     if state.native, do: AudioNif.gain(slot, permille, ramp_ms)
     {:noreply, state}
+  end
+
+  def handle_cast({:balance, slot, permille, ramp_ms}, state) do
+    if state.native, do: AudioNif.balance(slot, permille, ramp_ms)
+    {:noreply, put_in(state.balances[slot], permille)}
   end
 
   @impl true
@@ -159,6 +186,7 @@ defmodule FMutate.Audio do
       frame: 0,
       rate: 44_100,
       peak: 0,
+      peaks: [0, 0],
       latency_ms: nil,
       xruns: 0,
       # (the host drain consumes the rings as an output would)

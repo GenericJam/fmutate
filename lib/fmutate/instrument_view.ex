@@ -38,6 +38,8 @@ defmodule FMutate.InstrumentView do
       fb: view.fb,
       phase: to_string(view.phase),
       master: view.master,
+      # FMutate's mixer balance (0 left, 0.5 centre, 1 right): seeds controls bound to {"mixer": "balance"}
+      balance: view.balance,
       bend: cap?(view.firmware, :pitch_bend),
       # per-note pressure: a note-level toggle on the layout is greyed out without it
       note_pressure: cap?(view.firmware, :note_pressure),
@@ -103,11 +105,13 @@ defmodule FMutate.InstrumentView do
   end
 
   @doc """
-  A native input payload through rule 7: `{instance_input | nil, bindings}`. Absolute moves (`pot`, and
-  MIDI CC sent with `"abs"`/`"v"`) from a control (`"c"`) that hasn't picked up the value are dropped.
+  A native input payload through rule 7: `{instance_input | nil, bindings}`. Absolute moves (`pot`, `balance`,
+  and MIDI CC sent with `"abs"`/`"v"`) from a control (`"c"`) that hasn't picked up the value are dropped.
   """
-  def arbitrate(bindings, %{"t" => "pot", "v" => v, "c" => c} = payload) when is_number(v) do
-    case FMutate.Bindings.absolute(bindings, "pot:master", c, v) do
+  def arbitrate(bindings, %{"t" => t, "v" => v, "c" => c} = payload) when t in ["pot", "balance"] and is_number(v) do
+    key = if t == "pot", do: "pot:master", else: "mixer:balance"
+
+    case FMutate.Bindings.absolute(bindings, key, c, v) do
       {:send, v, b} -> {decode(%{payload | "v" => v}), b}
       {:ignore, b} -> {nil, b}
     end
@@ -144,6 +148,7 @@ defmodule FMutate.InstrumentView do
   end
 
   def decode(%{"t" => "pot", "v" => v}) when is_number(v), do: {:pot, :master, v / 1}
+  def decode(%{"t" => "balance", "v" => v}) when is_number(v), do: {:mixer, :balance, v / 1}
 
   def decode(%{"t" => "midi", "bytes" => bytes}) when is_list(bytes),
     do: {:midi, :binary.list_to_bin(Enum.map(bytes, &Bitwise.band(&1, 0xFF)))}

@@ -20,7 +20,8 @@
 // snapshot state invalidates the layer that read it; here every state change goes through a helper that marks
 // the layer (and rect) it shows on. UITouch identity is the pointer id.
 //
-// Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
+// Props: layout (JSON string), fb (path or null), master (0..1), balance (FMutate's mixer, 0..1, 0.5 centre), bend
+// (firmware takes pitch bend), phase
 // (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %), hint (what is
 // being done or can be, under "Too slow"; alone: dropouts a larger buffer would cure): the Opling's mood and the
 // message in the firmware screen area (Starting…, Restarting…, Crashed twice · Run anyway, Too slow, Audio dropouts).
@@ -397,6 +398,7 @@ func fmBendRaw(_ v: Float) -> Int { fmClamp(fmRound(8192 + (v - 0.5) * 2 * 8191)
 private func sendValueBytes(_ t: FMTarget, _ v: Float, _ control: String) -> [String: Any]? {
     switch t {
     case .pot: return ["t": "pot", "v": Double(v), "c": control]
+    case .balance: return ["t": "balance", "v": Double(v), "c": control]
     case let .midi(type, channel, number, _, _, _):
         if type == "cc" {
             return ["t": "midi", "bytes": [0xB0 | (channel - 1), number, fmRound(v * 127)],
@@ -641,6 +643,7 @@ final class FMInstrumentSurface: UIView {
         let newToast = str("toast") ?? ""
         let newToastSeq = num("toast_seq")?.int64Value ?? 0
         let master = num("master")?.floatValue ?? -1
+        let balance = num("balance")?.floatValue ?? -1
         bendOk = bool("bend")
         let newNotePressure = bool("note_pressure")
         if newNotePressure != notePressureOk { notePressureOk = newNotePressure; controlsView.setNeedsDisplay() }
@@ -671,8 +674,9 @@ final class FMInstrumentSurface: UIView {
             return
         }
 
-        // seed the pot from the instance once
+        // seed the pot and the balance from the instance once
         if master >= 0 && state.values["pot:master"] == nil { state.values["pot:master"] = master; controlsView.setNeedsDisplay() }
+        if balance >= 0 && state.values["mixer:balance"] == nil { state.values["mixer:balance"] = balance; controlsView.setNeedsDisplay() }
 
         // ── pages, toasts ──
         if layoutJsonChanged || pageChanged {
@@ -1013,7 +1017,7 @@ final class FMInstrumentSurface: UIView {
             if id == "bend" { state.bendOn = down } else if id == "note_level" && down && noteLevelUsable { emit("note_level") }
         case let .page(ref): if down { goPage(ref) }
         case let .encoder(id, _, invert): if down { input(["t": "encoder", "id": id, "clicks": invert ? -1 : 1]) }
-        case .pot: break
+        case .pot, .balance: break
         }
     }
 

@@ -233,7 +233,11 @@ defmodule FMutate.MIDI do
       ticker: nil,
       firmware: view.firmware,
       layout: layout,
-      controls: Controls.new() |> Controls.load(layout) |> Controls.seed_master(view.master),
+      controls:
+        Controls.new()
+        |> Controls.load(layout)
+        |> Controls.seed_master(view.master)
+        |> Controls.seed_balance(view.balance),
       learn: nil,
       lineup: nil,
       subscribers: %{},

@@ -31,7 +31,8 @@ flowchart LR
   restarts it, and quarantines a firmware that dies twice within a minute. `libfm1emu.so` is the same
   protocol around fm1-emu, for any firmware's update package (`backend: :emu`, `docs/engine_protocol.md`).
 - **Audio** never passes through the BEAM: engines write a shared ring, `c_src/fm1audio.c` (static NIF) mixes
-  the rings in an AAudio callback, resampling 44.1 kHz to the device rate.
+  the rings in an AAudio callback, resampling 44.1 kHz to the device rate. Each ring has its own gain (crossfades)
+  and left/right balance (the instance's BALANCE, below) before the rings are summed.
 - **The firmware screen and LEDs** never pass through the BEAM either: the Kotlin view maps `<prefix>.fb`.
 - **Touch** is handled natively (per-pointer, glissando, knobs, fine mode); the view sends compact input events
   that `FMutate.InstrumentView` turns into `FMutate.Instance.input/2` calls — the same API sibling apps use
@@ -473,6 +474,21 @@ flowchart LR
   whenever FMutate starts. Apple also has no API for an app to quit itself (QA1561). The user swipes FMutate away
   in the app switcher; with nothing playing (safe mode, a firmware that can't run) FMutate closes its output and
   iOS suspends it.
+- **Balance is FMutate's mixer, not the firmware** (`{"mixer": "balance"}` in a layout, `{:mixer, :balance, v}`
+  into `FMutate.Instance`): MASTER is the firmware's own pot (its curve, per firmware and backend), and MIDI pan
+  (CC10) means whatever a firmware makes of it, so neither can promise the same left/right on every firmware.
+  The law is attenuation only, `L = min(1, 2(1 − v))`, `R = min(1, 2v)`: 0.5 leaves the ring's stereo as it is,
+  bit for bit (the multiply is skipped, `test/fmutate/audio_nif_test.exs`), and a balance move never boosts or
+  clips; at an end only that side's own channel plays (balance, not a mono pan). It is per mixer slot, applied
+  before the slots are summed (`mix_source` in `c_src/fm1audio.c`) and ramped over 15 ms like the slot gain (no
+  zipper noise, no click): a post-sum balance would be global, and slots are synth instances. `FMutate.Instance`
+  keeps `balance` (in its view and its saved state, written ≤ 0.5 s after a move and when it stops), sets it on
+  every slot it holds (both engines of a switch, one still fading out) and on each engine's slot right after
+  `Audio.attach/2` (which centres a slot) and before the gain comes up, so it holds across switches, restarts and
+  crashes. Rule 7 keys it `mixer:balance` like `pot:master`: `FMutate.MIDI.Controls` seeds it from the instance,
+  so a learned hardware knob picks it up instead of jumping it. "Add here" has a **Balance knob** (a knob bound to
+  it, labelled BALANCE); the binding sheet lists it as "FMutate mixer → BALANCE". `Audio.stats/0` has `peaks`
+  (`[left, right]`) beside `peak` to see it.
 
 ## Inputs: what can lose a press, and how to see it
 

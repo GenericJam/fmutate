@@ -42,8 +42,15 @@ defmodule FMutate.AudioNif do
   def gain(_slot, _permille, _ramp_ms), do: :erlang.nif_error(:nif_not_loaded)
 
   @doc """
-  `%{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns}`. `frame` is the
-  mixer clock in 44.1 kHz frames; `peak` the loudest sample (0..32767) since the last call.
+  Ramp the slot's left/right balance to `permille` (0 left, 500 centre: the ring's stereo as it is, 1000
+  right) over `ramp_ms`. Attenuation only: `L = min(1, 2(1 − b))`, `R = min(1, 2b)`. `attach/2` centres it.
+  """
+  def balance(_slot, _permille, _ramp_ms), do: :erlang.nif_error(:nif_not_loaded)
+
+  @doc """
+  `%{frame, rate, peak, peaks, latency_ms, xruns, running, sharing, fills, underruns}`. `frame` is the
+  mixer clock in 44.1 kHz frames; `peaks` the loudest sample (0..32767) of each channel, `[left, right]`, since
+  the last call; `peak` the louder of the two.
   """
   def stats, do: :erlang.nif_error(:nif_not_loaded)
 end

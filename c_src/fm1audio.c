@@ -6,7 +6,8 @@
  * Statically linked into the app binary as the NIF `fm1audio` (mob.exs :static_nifs); Elixir side:
  * FMutate.AudioNif / FMutate.Audio.
  *
- * - Up to NSLOT rings, each with a gain ramp (crossfades when switching firmware).
+ * - Up to NSLOT rings, each with a gain ramp (crossfades when switching firmware) and a balance ramp (the
+ *   instance's left/right balance, attenuation only: centre leaves the ring's stereo exactly as it is).
  * - The mixer's clock counts frames at the firmwares' rate (44.1 kHz). After every callback it writes into
  *   each ring the mixer frame at which the ring's next frame will play (`mix_minus_r`), so an engine can turn
  *   "MIDI at mixer frame M" into its own sample index.
@@ -61,6 +62,7 @@ struct slot {
     ring_hdr *_Atomic ring;                   /* read by the audio callback */
     size_t map_len;
     float gain, target, step;                 /* step per source frame while ramping */
+    float bal, bal_target, bal_step;          /* balance 0 left .. 0.5 centre .. 1 right, ramped the same way */
     _Atomic uint32_t underruns;
 };
 
@@ -69,12 +71,23 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;   /* open/close/attach/
 static _Atomic int want_running;
 static _Atomic uint64_t frame;                /* mixer clock: source (44.1 kHz) frames mixed so far */
 static _Atomic uint64_t callbacks;
-static _Atomic uint32_t peak;
+static _Atomic uint32_t peak[2];             /* per channel (L, R), after soft clipping */
 static int32_t dev_rate = 44100;
 static double rs_pos;                         /* resampler: position in the current source block */
 static float rs_prev[2];                      /* the last source frame of the previous block */
 
 /* ---- mixing (audio thread) */
+
+/* advance a ramp by one source frame, landing exactly on its target */
+static inline void ramp_frame(float *v, float target, float *step)
+{
+    if (*step == 0) return;
+    *v += *step;
+    if ((*step > 0 && *v >= target) || (*step < 0 && *v <= target)) {
+        *v = target;
+        *step = 0;
+    }
+}
 
 static void mix_source(float *acc, uint32_t n)     /* n source frames into acc (stereo, -1..1) */
 {
@@ -98,17 +111,16 @@ static void mix_source(float *acc, uint32_t n)     /* n source frames into acc (
         if (take < n && (sl->gain > 0 || sl->target > 0)) atomic_fetch_add(&sl->underruns, 1);
         d = (const int16_t *)(rg + 1);
         for (i = 0; i < n; i++) {
-            if (sl->step != 0) {
-                sl->gain += sl->step;
-                if ((sl->step > 0 && sl->gain >= sl->target) || (sl->step < 0 && sl->gain <= sl->target)) {
-                    sl->gain = sl->target;
-                    sl->step = 0;
-                }
-            }
+            ramp_frame(&sl->gain, sl->target, &sl->step);
+            ramp_frame(&sl->bal, sl->bal_target, &sl->bal_step);
             if (i < take && sl->gain > 0) {
                 uint32_t pos = (uint32_t)((r + i) % rg->capacity);
-                acc[2 * i] += d[2 * pos] * (sl->gain / 32768.0f);
-                acc[2 * i + 1] += d[2 * pos + 1] * (sl->gain / 32768.0f);
+                float gl = sl->gain / 32768.0f, gr = gl;
+                /* balance: L = min(1, 2(1 - b)), R = min(1, 2b); centre multiplies nothing (bit for bit) */
+                if (sl->bal < 0.5f) gr *= 2 * sl->bal;
+                else if (sl->bal > 0.5f) gl *= 2 * (1 - sl->bal);
+                acc[2 * i] += d[2 * pos] * gl;
+                acc[2 * i + 1] += d[2 * pos + 1] * gr;
             }
         }
         /* the ring's next frame (r + take) plays at mixer frame (f0 + n) */
@@ -133,12 +145,12 @@ static int16_t out_sample(float x, uint32_t *pk)
 static void render_out(int16_t *out, int32_t n)
 {
     static float src[(MAX_SRC + 2) * 2];
-    uint32_t pk = atomic_load(&peak);
+    uint32_t pk[2] = {atomic_load(&peak[0]), atomic_load(&peak[1])};
     if (dev_rate == 44100) {
         for (int32_t done = 0; done < n;) {
             uint32_t k = (uint32_t)(n - done) > MAX_SRC ? MAX_SRC : (uint32_t)(n - done);
             mix_source(src, k);
-            for (uint32_t i = 0; i < 2 * k; i++) out[2 * done + i] = out_sample(src[i], &pk);
+            for (uint32_t i = 0; i < 2 * k; i++) out[2 * done + i] = out_sample(src[i], &pk[i & 1]);
             done += (int32_t)k;
         }
     } else {
@@ -159,13 +171,14 @@ static void render_out(int16_t *out, int32_t n)
             float fr = (float)(p - j);
             if (j + 1 > need) { j = need - 1; fr = 1; }   /* (only when MAX_SRC capped the block) */
             for (int c = 0; c < 2; c++)
-                out[2 * i + c] = out_sample(src[2 * j + c] + fr * (src[2 * (j + 1) + c] - src[2 * j + c]), &pk);
+                out[2 * i + c] = out_sample(src[2 * j + c] + fr * (src[2 * (j + 1) + c] - src[2 * j + c]), &pk[c]);
         }
         rs_pos = rs_pos + n * step - need;
         rs_prev[0] = src[2 * need];
         rs_prev[1] = src[2 * need + 1];
     }
-    atomic_store(&peak, pk);
+    atomic_store(&peak[0], pk[0]);
+    atomic_store(&peak[1], pk[1]);
     atomic_fetch_add(&callbacks, 1);
 }
 
@@ -575,6 +588,8 @@ static ERL_NIF_TERM nif_attach(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv
     pthread_mutex_lock(&lock);
     detach_locked(s);
     slots[s].gain = slots[s].target = slots[s].step = 0;
+    slots[s].bal = slots[s].bal_target = 0.5f;
+    slots[s].bal_step = 0;
     atomic_store(&slots[s].underruns, 0);
     slots[s].map_len = (size_t)st.st_size;
     /* start at the engine's write position: what it queued before we listened is stale */
@@ -612,12 +627,32 @@ static ERL_NIF_TERM nif_gain(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return atom(env, "ok");
 }
 
-/* stats() -> %{frame, rate, peak, latency_ms, xruns, running, sharing, fills, underruns, burst, buffer, device_id}
- * (device_id: the AudioDeviceInfo id the stream plays to, 0 when unknown or on iOS; xruns on iOS: gaps in the
- * device's sample time; latency_ms on iOS: the session's output latency and IO buffer) */
+/* balance(slot, permille, ramp_ms) -> :ok: 0 left, 500 centre (the ring as it is), 1000 right */
+static ERL_NIF_TERM nif_balance(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
+{
+    int s, b, ramp;
+    struct slot *sl;
+    (void)argc;
+    if (!enif_get_int(env, argv[0], &s) || s < 0 || s >= NSLOT || !enif_get_int(env, argv[1], &b) ||
+        !enif_get_int(env, argv[2], &ramp))
+        return enif_make_badarg(env);
+    sl = &slots[s];
+    b = b < 0 ? 0 : b > 1000 ? 1000 : b;
+    /* (the same benign race as gain's) */
+    sl->bal_target = b / 1000.0f;
+    sl->bal_step = ramp > 0 ? (sl->bal_target - sl->bal) / (float)(ramp * SRC_RATE / 1000) : 0;
+    if (ramp <= 0) sl->bal = sl->bal_target;
+    return atom(env, "ok");
+}
+
+/* stats() -> %{frame, rate, peak, peaks, latency_ms, xruns, running, sharing, fills, underruns, burst, buffer,
+ * device_id} (peaks: [left, right]; peak: the louder of them; device_id: the AudioDeviceInfo id the stream plays to,
+ * 0 when unknown or on iOS; xruns on iOS: gaps in the device's sample time; latency_ms on iOS: the session's output
+ * latency and IO buffer) */
 static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
-    ERL_NIF_TERM keys[12], vals[12], fills[NSLOT], unders[NSLOT], map;
+    ERL_NIF_TERM keys[13], vals[13], fills[NSLOT], unders[NSLOT], peaks[2], map;
+    uint32_t pl = atomic_exchange(&peak[0], 0), pr = atomic_exchange(&peak[1], 0);
     struct out_info o;
     (void)argc; (void)argv;
     pthread_mutex_lock(&lock);
@@ -630,7 +665,7 @@ static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     }
     keys[0] = atom(env, "frame");      vals[0] = enif_make_uint64(env, atomic_load(&frame));
     keys[1] = atom(env, "rate");       vals[1] = enif_make_int(env, dev_rate);
-    keys[2] = atom(env, "peak");       vals[2] = enif_make_uint(env, atomic_exchange(&peak, 0));
+    keys[2] = atom(env, "peak");       vals[2] = enif_make_uint(env, pl > pr ? pl : pr);
     keys[3] = atom(env, "latency_ms"); vals[3] = o.latency_ms >= 0 ? enif_make_double(env, o.latency_ms) : atom(env, "nil");
     keys[4] = atom(env, "xruns");      vals[4] = enif_make_int(env, o.xruns);
     keys[5] = atom(env, "running");    vals[5] = atom(env, o.running ? "true" : "false");
@@ -640,7 +675,10 @@ static ERL_NIF_TERM nif_stats(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[
     keys[9] = atom(env, "burst");      vals[9] = enif_make_int(env, o.burst);
     keys[10] = atom(env, "buffer");    vals[10] = enif_make_int(env, o.buffer);
     keys[11] = atom(env, "device_id"); vals[11] = enif_make_int(env, o.device_id);
-    enif_make_map_from_arrays(env, keys, vals, 12, &map);
+    peaks[0] = enif_make_uint(env, pl);
+    peaks[1] = enif_make_uint(env, pr);
+    keys[12] = atom(env, "peaks");     vals[12] = enif_make_list_from_array(env, peaks, 2);
+    enif_make_map_from_arrays(env, keys, vals, 13, &map);
     return map;
 }
 
@@ -650,6 +688,7 @@ static ErlNifFunc nif_funcs[] = {
     {"attach", 2, nif_attach, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"detach", 1, nif_detach, ERL_NIF_DIRTY_JOB_IO_BOUND},
     {"gain", 3, nif_gain, 0},
+    {"balance", 3, nif_balance, 0},
     {"stats", 0, nif_stats, ERL_NIF_DIRTY_JOB_IO_BOUND},
 };
 
