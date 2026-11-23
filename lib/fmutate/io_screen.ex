@@ -44,7 +44,7 @@ defmodule FMutate.IOScreen do
        # nil until the server is up (it arrives through the subscription)
        io: subscribed(:io, IO, &IO.subscribe/0),
        dist: subscribed(:dist, Dist, &Dist.subscribe/0),
-       midi_firmware: view.firmware,
+       midi_for: {view.firmware, view.caps},
        midi: MIDI.settings(@instance),
        outputs: MIDI.outputs(@instance),
        latency: nil,
@@ -1465,13 +1465,14 @@ defmodule FMutate.IOScreen do
   def handle_info({:io, io}, socket), do: {:noreply, Mob.Socket.assign(socket, :io, io)}
   def handle_info({:dist, dist}, socket), do: {:noreply, Mob.Socket.assign(socket, :dist, dist)}
 
-  # another firmware: what unmapped knobs do and the pins differ
+  # another firmware (what unmapped knobs do and the pins differ), or another build of it (pitch bend follows the
+  # running engine's caps)
   def handle_info({:instance, @instance, {:state, view}}, socket) do
     socket = Mob.Socket.assign(socket, :view, view)
 
-    if view.firmware == socket.assigns.midi_firmware,
+    if {view.firmware, view.caps} == socket.assigns.midi_for,
       do: {:noreply, socket},
-      else: {:noreply, Mob.Socket.assign(socket, midi: MIDI.settings(@instance), midi_firmware: view.firmware)}
+      else: {:noreply, Mob.Socket.assign(socket, midi: MIDI.settings(@instance), midi_for: {view.firmware, view.caps})}
   end
 
   def handle_info({:tap, {:buffer, buffer}}, socket) do

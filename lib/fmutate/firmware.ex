@@ -54,7 +54,7 @@ defmodule FMutate.Firmware do
 
   # `caps`: what the firmware does beyond plain notes, for bindings: `pitch_bend` (keyboard bend),
   # `octave_reset_both` (OCT− and OCT+ pressed together set its octave to 0), `note_pressure` (MIDI polyphonic
-  # aftertouch sets a held note's level; FMutate's build of OberVave, native/patches/obervave). Unknown = false.
+  # aftertouch sets a held note's level). Bundled declarations and exact signed native assets only; unknown = false.
   # `repo` and `ref`: the source native/build_android.sh builds the cartridge from (keep the commits in step).
   @bundled [
     %{
@@ -103,23 +103,36 @@ defmodule FMutate.Firmware do
   def default_id, do: "obervave"
 
   @doc """
-  How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu}` for
-  `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it can't run
-  here (no cartridge in this build or downloaded, no package on the phone, or no emulator engine).
+  How to run a firmware: `%{engine: executable, file: cartridge_or_package, backend: :native | :emu, caps: map,
+  stamp: term}` for `FMutate.Engine` (the backend picks the flash file, `FMutate.Paths.flash/3`), or nil when it
+  can't run here. Captured capabilities stay with the run even when the library later installs another asset;
+  `stamp` (`stamp/1`) says which file that was, so a restart with this run can tell it's still the same binary.
   """
-  @spec runnable(String.t()) :: %{engine: String.t(), file: String.t(), backend: :native | :emu} | nil
+  @spec runnable(String.t()) ::
+          %{engine: String.t() | :inproc, file: String.t(), backend: :native | :emu, caps: map, stamp: term} | nil
   def runnable(id) do
     case get(id) do
       %{backend: :native} = fw ->
         with cart when cart != nil <- FMutate.Paths.bundled_cart(id) || downloaded_cart(fw),
-             do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native}
+             do: %{engine: FMutate.Paths.engine_bin(), file: cart, backend: :native, caps: fw.caps, stamp: stamp(cart)}
 
       %{backend: :emu, package: pkg} when is_binary(pkg) ->
         if FMutate.Paths.emu?() and File.exists?(pkg),
-          do: %{engine: FMutate.Paths.emu_bin(), file: pkg, backend: :emu}
+          do: %{engine: FMutate.Paths.emu_bin(), file: pkg, backend: :emu, caps: %{}, stamp: stamp(pkg)}
 
       _ ->
         nil
+    end
+  end
+
+  @doc """
+  Which file is at `path` now: its inode, size and mtime (an install renames a new file in, a new inode), or nil
+  when there's none. Two equal stamps are the same binary.
+  """
+  def stamp(path) do
+    case File.stat(path, time: :posix) do
+      {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} -> {inode, size, mtime}
+      _ -> nil
     end
   end
 
@@ -138,8 +151,8 @@ defmodule FMutate.Firmware do
   @doc """
   Who a run of firmware `id` from `run` (`runnable/1`'s answer, as it started) is. `version` is the build's: a
   downloaded native cartridge's own when the index has moved past it (`native.cart_version`), else the firmware's
-  (on iOS already the linked cartridge's); `commit` when the build says (a bundled cartridge's pinned source, the
-  index's entry when its version is the build's), else nil.
+  (on iOS already the linked cartridge's); `commit` when the exact asset says (a bundled cartridge's pinned source
+  or linked metadata, the index's entry only when its asset SHA matches), else nil.
   """
   @spec build(String.t(), %{backend: :native | :emu, file: term}) :: build
   def build(id, %{backend: backend, file: file}) do
@@ -155,7 +168,13 @@ defmodule FMutate.Firmware do
 
   defp build_version(%__MODULE__{native: %{} = n} = fw, file) do
     version = if file == n[:cart] and is_binary(n[:cart_version]), do: n.cart_version, else: fw.version
-    {version, if(version == n[:version], do: n[:commit])}
+    commit =
+      cond do
+        file == n[:bundled] -> n[:bundled_commit]
+        file == n[:cart] and n[:cart_sha256] == n[:sha256] -> n[:commit]
+        true -> nil
+      end
+    {version, commit}
   end
 
   defp build_version(%__MODULE__{source: :bundled, ref: ref} = fw, _file), do: {fw.version, ref}

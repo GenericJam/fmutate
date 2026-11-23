@@ -41,7 +41,7 @@ defmodule FMutate.Library do
             etag: nil,
             index_refreshing: false,
             index_error: nil,
-            # %{id => version} of the native builds the player has seen (nil before the first index)
+            # %{id => {version, asset SHA-256}} of the native builds seen (nil before the first index)
             seen: nil,
             notify: false,
             downloads: %{},
@@ -218,8 +218,8 @@ defmodule FMutate.Library do
   end
 
   def handle_call({:mark_seen, ids}, _from, state) do
-    versions = Cartridges.versions(entries(state.index))
-    seen = Map.merge(state.seen || %{}, Map.take(versions, ids))
+    identities = Cartridges.identities(entries(state.index))
+    seen = Map.merge(state.seen || %{}, Map.take(identities, ids))
     if seen != state.seen, do: write_term(seen_path(), seen)
     {:reply, :ok, %{state | seen: seen, firmwares: nil}}
   end
@@ -448,13 +448,13 @@ defmodule FMutate.Library do
   # a verified index: the first ever seen has nothing new; a fetched one announces the builds new since
   # the last index and the player's last look; ids now running natively take their emulator saves along
   defp apply_index(state, index, at) do
-    versions = Cartridges.versions(entries(index))
-    before = if state.index, do: Cartridges.versions(entries(state.index)), else: state.seen
+    identities = Cartridges.identities(entries(index))
+    before = if state.index, do: Cartridges.identities(entries(state.index)), else: state.seen
 
     seen =
       if state.seen == nil do
-        write_term(seen_path(), versions)
-        versions
+        write_term(seen_path(), identities)
+        identities
       else
         state.seen
       end
@@ -464,7 +464,7 @@ defmodule FMutate.Library do
 
     announce =
       if at == :fetch and before != nil,
-        do: for({id, v} <- Enum.sort(versions), before[id] != v and seen[id] != v, do: id),
+        do: for({id, identity} <- Enum.sort(identities), before[id] != identity and seen[id] != identity, do: id),
         else: []
 
     if announce != [], do: announce(state, announce)

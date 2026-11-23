@@ -49,19 +49,24 @@ defmodule FMutate.Editor do
   @doc "The surface events this module handles."
   def events, do: @events
 
-  @doc "Assign the current layout of `firmware` (on mount, and whenever the firmware changes)."
-  def load(socket, instance, firmware) do
+  @doc """
+  Assign the current layout of `firmware` (on mount, and whenever the firmware changes). `caps` are the running
+  engine's (`FMutate.Instance` view), never the catalogue's: a newer asset installed under the same id doesn't
+  unlock controls on the code still running.
+  """
+  def load(socket, instance, firmware, caps) do
     layout = Layouts.current(instance, firmware)
 
     Mob.Socket.assign(socket,
       instance: instance,
       firmware: firmware,
+      caps: caps,
       layout: layout,
-      layout_json: surface_json(layout, firmware),
+      layout_json: surface_json(layout, caps),
       page: hd(layout["pages"])["id"],
       sheet: nil,
       learning: nil,
-      bend: cap?(firmware, :pitch_bend),
+      bend: Map.get(caps, :pitch_bend, false),
       toast: Map.get(socket.assigns, :toast, {0, ""}),
       add_menu: nil,
       # the phone's sensors (FMutate.Motion.sensors/0), asked once, when "Add here" or a motion sheet needs them
@@ -73,11 +78,23 @@ defmodule FMutate.Editor do
     )
   end
 
-  @doc "The firmware may have changed: switching firmware switches layout (HANDOFF §5)."
-  def firmware(socket, firmware) do
-    if socket.assigns[:firmware] == firmware,
-      do: socket,
-      else: socket |> load(socket.assigns.instance, firmware) |> Mob.Socket.assign(:editing, false)
+  @doc """
+  The instance's view changed: another firmware switches layout (HANDOFF §5); the same firmware restarted into
+  a build with other capabilities re-resolves the surface (note level, bend) for it.
+  """
+  def running(socket, firmware, caps) do
+    cond do
+      socket.assigns[:firmware] != firmware ->
+        socket |> load(socket.assigns.instance, firmware, caps) |> Mob.Socket.assign(:editing, false)
+
+      socket.assigns[:caps] != caps ->
+        socket
+        |> Mob.Socket.assign(caps: caps, bend: Map.get(caps, :pitch_bend, false))
+        |> assign_layout(socket.assigns.layout, [])
+
+      true ->
+        socket
+    end
   end
 
   @doc """
@@ -152,7 +169,7 @@ defmodule FMutate.Editor do
   # a press on a note-level toggle (binding target `{"action": "note_level"}`): every strike-position strip
   # switches, saved like any edit, so the surface, the editor and the next start agree
   def event("note_level", _p, socket) do
-    note_pressure = cap?(socket.assigns.firmware, :note_pressure)
+    note_pressure = cap?(socket.assigns, :note_pressure)
     commit(socket, LayoutEdit.toggle_note_level(socket.assigns.layout, note_pressure))
   end
 
@@ -264,12 +281,12 @@ defmodule FMutate.Editor do
 
   # the layout and what the surface plays: each strip's note level resolved for this firmware
   defp assign_layout(socket, layout, assigns) do
-    json = surface_json(layout, socket.assigns.firmware)
+    json = surface_json(layout, socket.assigns.caps)
     Mob.Socket.assign(socket, [layout: layout, layout_json: json] ++ assigns)
   end
 
-  defp surface_json(layout, firmware),
-    do: layout |> LayoutEdit.surface(cap?(firmware, :note_pressure)) |> Layouts.encode()
+  defp surface_json(layout, caps),
+    do: layout |> LayoutEdit.surface(Map.get(caps, :note_pressure, false)) |> Layouts.encode()
 
   defp toast(socket, text) do
     {seq, _} = socket.assigns.toast
@@ -1232,7 +1249,7 @@ defmodule FMutate.Editor do
 
     why =
       cond do
-        not cap?(assigns.firmware, :note_pressure) ->
+        not cap?(assigns, :note_pressure) ->
           " Greyed out on the instrument: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."
 
         not LayoutEdit.position_strips?(assigns.layout) ->
@@ -1321,7 +1338,7 @@ defmodule FMutate.Editor do
     vel_min = vel["min"] || 40
     soft_buttons = for v <- [1, 20, 40, 64, 90], do: button("#{v}", {:kb_vel_min, v}, on: vel_min == v, disabled: vel_source != "position")
     swell = vel["swell"] == true
-    pressure_ok = vel_source == "position" and cap?(assigns.firmware, :note_pressure)
+    pressure_ok = vel_source == "position" and cap?(assigns, :note_pressure)
     # effective: on by default unless the strip swells (LayoutEdit.note_level?/2)
     pressure = LayoutEdit.note_level?(c, pressure_ok)
 
@@ -1366,7 +1383,7 @@ defmodule FMutate.Editor do
       </Row>
       """,
       toggle("Note level follows the finger", "Strike position only: a held key's own note starts at its strike's level; slide back from where you struck to fade it (silent at the key's back edge), forward to make it louder (full at the front edge). Other notes untouched. On unless Swell is on." <>
-        if(cap?(assigns.firmware, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
+        if(cap?(assigns, :note_pressure), do: "", else: " Greyed out: #{firmware_name(assigns.firmware)} doesn't take per-note pressure."),
         :kb_pressure, pressure, disabled: not pressure_ok),
       toggle("Swell (all notes)", "Strike position only: slide a held key toward the front to get louder, back to get softer. A note's own velocity is fixed once it starts, so this moves the firmware's master volume (CC7): every sounding note swells together. Turn Note level off to use it.",
         :kb_swell, swell and vel_source == "position" and not pressure, disabled: vel_source != "position" or pressure),
@@ -1440,10 +1457,5 @@ defmodule FMutate.Editor do
     end
   end
 
-  defp cap?(firmware_id, cap) do
-    case firmware_id && Firmware.get(firmware_id) do
-      %{caps: caps} -> Map.get(caps, cap, false)
-      _ -> false
-    end
-  end
+  defp cap?(%{caps: caps}, cap), do: Map.get(caps, cap, false)
 end

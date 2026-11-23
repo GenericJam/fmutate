@@ -36,8 +36,8 @@ defmodule FMutate.Cartridges do
   """
   @type entry :: %{required(atom) => term}
 
-  @typedoc "A cartridge of the build and its version, when the build says (`FMutate.Paths.bundled/1`)."
-  @type bundled :: {String.t(), String.t() | nil}
+  @typedoc "A cartridge of the build, with its pinned version, commit, asset SHA and capabilities."
+  @type bundled :: %{cart: String.t(), version: String.t() | nil, commit: String.t() | nil, sha256: String.t() | nil, caps: map}
 
   @doc "The signed index's URL (nil: don't fetch)."
   def index_url, do: config(:index_url)
@@ -130,12 +130,23 @@ defmodule FMutate.Cartridges do
          url: asset["url"],
          size: asset["size"],
          sha256: String.downcase(asset["sha256"]),
-         sig: asset["sig"]
+         sig: asset["sig"],
+         caps: capabilities(asset["caps"])
        }}
     end
   end
 
   def entries(_index, _platform), do: %{}
+
+  @doc "Known per-asset expression capabilities; absent, unknown and non-boolean values grant nothing."
+  def capabilities(caps) when is_map(caps) do
+    for {key, cap} <- [{"pitch_bend", :pitch_bend}, {"note_pressure", :note_pressure}],
+        is_boolean(caps[key]),
+        into: %{},
+        do: {cap, caps[key]}
+  end
+
+  def capabilities(_caps), do: %{}
 
   # ids and versions become file names
   defp safe?(s), do: is_binary(s) and s =~ ~r/\A[A-Za-z0-9][\w.+-]*\z/
@@ -190,10 +201,9 @@ defmodule FMutate.Cartridges do
     do: "libcart_#{id}@#{version}@#{platform}@#{@abi_tag}.so"
 
   @doc """
-  Entries with where they are on the phone: `bundled` and `bundled_version` (`bundled.(id)`, a cartridge of the
-  build: `{cart, version | nil}` or nil) and, where cartridges download, `cart` and `cart_version` (the file of
-  the id in `dir` for this engine ABI: this version's, else an older one, which keeps working until the update
-  is downloaded).
+  Entries with their selected cartridge's pinned metadata. A downloaded file grants the index's capabilities
+  only when its SHA-256 matches that exact asset, not merely its firmware version. Bundled metadata comes from
+  the linked build, never from the current index.
   """
   @spec resolve(%{String.t() => entry}, Path.t(), (String.t() -> bundled | nil)) :: %{String.t() => entry}
   def resolve(entries, dir, bundled \\ &Paths.bundled/1) do
@@ -203,10 +213,48 @@ defmodule FMutate.Cartridges do
       {cart, version} =
         if downloadable?(e.platform), do: downloaded(files, dir, e), else: {nil, nil}
 
-      {b_cart, b_version} = bundled.(id) || {nil, nil}
-      where = %{bundled: b_cart, bundled_version: b_version, cart: cart, cart_version: version}
+      b = bundled.(id)
+      sha = if cart, do: sha256(cart)
+      current = cart != nil and version == e.version and sha == e.sha256
+      selected_caps = if b, do: b.caps, else: if(current, do: e.caps, else: %{})
+      where = %{
+        bundled: b && b.cart,
+        bundled_version: b && b.version,
+        bundled_commit: b && b.commit,
+        bundled_sha256: b && b.sha256,
+        cart: cart,
+        cart_version: version,
+        cart_sha256: sha,
+        selected_caps: selected_caps
+      }
       {id, Map.merge(e, where)}
     end)
+  end
+
+  # the file's SHA-256, cached per path while its inode, size and mtime stay (an install renames a new file in: a
+  # new inode); the library rebuilds its list on every download progress step, and hashing every cartridge each
+  # time would be the cost the list cache exists to avoid
+  defp sha256(path) do
+    with {:ok, %File.Stat{inode: inode, size: size, mtime: mtime}} <- File.stat(path, time: :posix) do
+      stamp = {inode, size, mtime}
+      key = {__MODULE__, :sha256, path}
+
+      case :persistent_term.get(key, nil) do
+        {^stamp, sha} ->
+          sha
+
+        _ ->
+          with {:ok, bytes} <- File.read(path) do
+            sha = Base.encode16(:crypto.hash(:sha256, bytes), case: :lower)
+            :persistent_term.put(key, {stamp, sha})
+            sha
+          else
+            _ -> nil
+          end
+      end
+    else
+      _ -> nil
+    end
   end
 
   defp downloaded(files, dir, e) do
@@ -295,17 +343,17 @@ defmodule FMutate.Cartridges do
 
   ## New since last seen
 
-  @doc "The versions of entries, by id (what `seen` records)."
-  @spec versions(%{String.t() => entry}) :: %{String.t() => String.t()}
-  def versions(entries), do: Map.new(entries, fn {id, e} -> {id, e.version} end)
+  @doc "The asset identities by id (what `seen` records): a rebuild at the same version is still new."
+  @spec identities(%{String.t() => entry}) :: %{String.t() => {String.t(), String.t()}}
+  def identities(entries), do: Map.new(entries, fn {id, e} -> {id, {e.version, e.sha256}} end)
 
   @doc """
-  The ids of entries new or updated since `seen` (`%{id => version}`); none before anything was seen (the
-  first index ever loaded).
+  The ids of entries new or updated since `seen` (`%{id => {version, sha256}}`); none before anything was seen
+  (the first index ever loaded). Older version-only records count as unseen until shown again.
   """
-  @spec fresh(%{String.t() => entry}, %{String.t() => String.t()} | nil) :: [String.t()]
+  @spec fresh(%{String.t() => entry}, map | nil) :: [String.t()]
   def fresh(_entries, nil), do: []
-  def fresh(entries, seen), do: for({id, e} <- Enum.sort(entries), seen[id] != e.version, do: id)
+  def fresh(entries, seen), do: for({id, identity} <- entries |> identities() |> Enum.sort(), seen[id] != identity, do: id)
 
   ## Saves
 

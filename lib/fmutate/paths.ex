@@ -54,26 +54,32 @@ defmodule FMutate.Paths do
   @doc "A bundled cartridge (its path, or in-process its id), or nil if this build doesn't carry it."
   def bundled_cart(firmware_id) do
     case bundled(firmware_id) do
-      {cart, _version} -> cart
+      %{cart: cart} -> cart
       nil -> nil
     end
   end
 
   @doc """
-  A cartridge of this build and its version: in-process `{id, version}` (linked into the app,
-  `FMutate.EngineNif.cartridges/0`), else `{path, nil}` (the APK's `libcart_<id>.so`, which doesn't say), or nil.
+  A cartridge of this build with its pinned metadata. In-process metadata is linked beside the code; an APK's
+  bare `libcart_<id>.so` carries no asset capabilities. The built-ins declare their own caps in Firmware.
   """
   def bundled(firmware_id) do
     if inproc?() do
       case List.keyfind(FMutate.EngineNif.cartridges(), firmware_id, 0) do
-        {id, version, _status} -> {id, version}
+        {id, version, _status, commit, sha256, flags} ->
+          caps = for {cap, bit} <- [{:pitch_bend, 1}, {:note_pressure, 2}],
+                     :erlang.band(flags, bit) != 0, into: %{}, do: {cap, true}
+          %{cart: id, version: version, commit: present(commit), sha256: present(sha256), caps: caps}
         nil -> nil
       end
     else
       path = Path.join(native_lib_dir(), "libcart_#{firmware_id}.so")
-      if File.exists?(path), do: {path, nil}
+      if File.exists?(path), do: %{cart: path, version: nil, commit: nil, sha256: nil, caps: %{}}
     end
   end
+
+  defp present(""), do: nil
+  defp present(value), do: value
 
   @doc """
   Shared-memory prefix for an instance's engine slot (`<prefix>.ring`, `<prefix>.fb`): under the data dir, or on

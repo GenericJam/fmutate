@@ -103,6 +103,9 @@ defmodule FMutate.Instance do
             firmware: nil,
             phase: :stopped,
             live: nil,
+            # the capabilities of the build that last went live for this firmware (`run.caps`): kept through a
+            # crash or sound restart (no flicker), replaced when another build goes live, cleared on a switch
+            caps: %{},
             next: nil,
             master: 1.0,
             balance: 0.5,
@@ -646,7 +649,7 @@ defmodule FMutate.Instance do
 
       MapSet.member?(state.quarantined, hub) and role == :live ->
         Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
-        %{state | firmware: hub, wanted: fw, phase: :safe_mode}
+        %{state | firmware: hub, caps: %{}, wanted: fw, phase: :safe_mode}
 
       MapSet.member?(state.quarantined, hub) ->
         Logger.error("instance #{state.id}: #{why} and #{hub} is quarantined")
@@ -654,7 +657,7 @@ defmodule FMutate.Instance do
 
       true ->
         Logger.warning("instance #{state.id}: #{why}; running #{hub} in the emulator")
-        start_engine(%{state | firmware: hub, wanted: fw}, role, hub)
+        start_engine(%{state | firmware: hub, caps: %{}, wanted: fw}, role, hub)
     end
   end
 
@@ -666,7 +669,7 @@ defmodule FMutate.Instance do
 
   # a switch to it: the old firmware plays on, and is the current one again
   defp not_installed(%{live: %{firmware: old}} = state, :next) do
-    state = %{state | firmware: old}
+    state = %{state | firmware: old, caps: state.live.run.caps}
     save_state(state)
     state
   end
@@ -677,7 +680,8 @@ defmodule FMutate.Instance do
   # boots `fw` (beside a live engine, as the next one)
   defp switch(state, fw, how) do
     state = if state.next, do: drop_engine(state, :next), else: state
-    state = %{state | firmware: fw, restarts: 0, failures: [], fetching: nil, wanted: nil}
+    caps = if how == :keep_live and state.live, do: state.live.run.caps, else: %{}
+    state = %{state | firmware: fw, caps: caps, restarts: 0, failures: [], fetching: nil, wanted: nil}
 
     state =
       case how do
@@ -747,7 +751,7 @@ defmodule FMutate.Instance do
     case role do
       :live ->
         Audio.gain(eng.slot, 1000, 20)
-        publish(%{state | live: eng, phase: :running, health: health})
+        publish(%{state | live: eng, caps: eng.run.caps, phase: :running, health: health})
 
       :next ->
         old = state.live
@@ -756,7 +760,7 @@ defmodule FMutate.Instance do
         Audio.gain(old.slot, 0, @crossfade_ms)
         Process.send_after(self(), {:finish_switch, old.pid}, @crossfade_ms + 50)
         state = %{state | stopping: Map.put(state.stopping, old.pid, old)}
-        publish(%{state | live: eng, next: nil, phase: :running, health: health})
+        publish(%{state | live: eng, caps: eng.run.caps, next: nil, phase: :running, health: health})
     end
   end
 
@@ -975,11 +979,14 @@ defmodule FMutate.Instance do
     end
   end
 
-  # the build that ran can start again (a library update may have removed its cartridge or package)
+  # the build that ran can start again: the same file still there (a library update may have removed its cartridge
+  # or package, or installed another binary at the same path, whose caps differ)
   defp same_build(eng), do: if(build_there?(eng.run), do: :ok, else: {:error, :build_changed})
 
   defp build_there?(%{engine: :inproc}), do: true
-  defp build_there?(%{engine: bin, file: file}), do: File.exists?(bin) and File.exists?(file)
+
+  defp build_there?(%{engine: bin, file: file, stamp: stamp}),
+    do: File.exists?(bin) and stamp != nil and Firmware.stamp(file) == stamp
 
   defp sound_keep(keep, old) do
     keep.(old)
@@ -1291,6 +1298,7 @@ defmodule FMutate.Instance do
       %{
         id: state.id,
         firmware: state.firmware,
+        caps: state.caps,
         phase: state.phase,
         fb: state.live && state.live.ready && Paths.fb(state.live.prefix),
         quarantined: MapSet.member?(state.quarantined, state.firmware),

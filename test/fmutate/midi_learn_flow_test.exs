@@ -48,7 +48,7 @@ defmodule FMutate.MIDILearnFlowTest do
   defp socket(firmware) do
     Mob.Socket.new(FMutate.InstrumentScreen)
     |> Mob.Socket.assign(:editing, true)
-    |> Editor.load("a", firmware)
+    |> Editor.load("a", firmware, FMutate.Firmware.get(firmware).caps)
   end
 
   test "learn from the sheet: the CC drives KNOB1, the knob shows it, and the CC no longer reaches the firmware",

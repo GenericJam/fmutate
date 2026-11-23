@@ -434,20 +434,25 @@ static ERL_NIF_TERM nif_kill(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[]
     return a_ok;
 }
 
-/* cartridges() -> [{"obervave", "3.3.2", :ok | :hung}, ...]: what this build links in (id and version), and whether
- * a hung loop holds each */
+/* cartridges() -> [{id, version, :ok | :hung, commit, asset_sha256, caps_bits}, ...].
+ * Metadata is in the same archive as the cartridge code, never borrowed from a newer downloaded index. */
 static ERL_NIF_TERM nif_cartridges(ErlNifEnv *env, int argc, const ERL_NIF_TERM argv[])
 {
     ERL_NIF_TERM list = enif_make_list(env, 0);
     (void)argc; (void)argv;
     pthread_mutex_lock(&carts_lock);
     for (size_t i = ncart; i-- > 0;) {
-        ERL_NIF_TERM id, version;
+        ERL_NIF_TERM id, version, commit, sha;
+        const struct fm1native_cart *pin = &fm1native_carts[i];
         size_t len = strlen(carts[i].id), vlen = strlen(carts[i].version);
+        size_t clen = strlen(pin->commit), slen = strlen(pin->sha256);
         recover_locked(&carts[i]);
         memcpy(enif_make_new_binary(env, len, &id), carts[i].id, len);
         memcpy(enif_make_new_binary(env, vlen, &version), carts[i].version, vlen);
-        list = enif_make_list_cell(env, enif_make_tuple3(env, id, version, carts[i].hung ? a_hung : a_ok), list);
+        memcpy(enif_make_new_binary(env, clen, &commit), pin->commit, clen);
+        memcpy(enif_make_new_binary(env, slen, &sha), pin->sha256, slen);
+        list = enif_make_list_cell(env, enif_make_tuple6(env, id, version, carts[i].hung ? a_hung : a_ok,
+                                   commit, sha, enif_make_uint(env, pin->caps)), list);
     }
     pthread_mutex_unlock(&carts_lock);
     return list;
@@ -531,6 +536,7 @@ static int load(ErlNifEnv *env, void **priv, ERL_NIF_TERM info)
     engine_type = enif_init_resource_type(env, "fm1host_engine", &init, ERL_NIF_RT_CREATE | ERL_NIF_RT_TAKEOVER, NULL);
     if (!engine_type || pthread_key_create(&marker_key, NULL)) return -1;
     if (!carts) {                             /* (the static NIF loads once; so does the host build, load_host) */
+        if (!fm1native_carts_layout_2) return -1;   /* (a stale libfm1native.a, the earlier table layout: no link) */
         if (!(carts = calloc(fm1native_ncarts ? fm1native_ncarts : 1, sizeof *carts))) return -1;
         for (size_t i = 0; i < fm1native_ncarts; i++) {
             struct cart *c = &carts[i];

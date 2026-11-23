@@ -104,10 +104,11 @@ defmodule FMutate.IosCartridgesTest do
              ]
 
       bin = "skiff 1.2 sim"
-      [_, _, _, sha, size, _sig, url, _] = Enum.at(entries, 3)
+      [_, _, _, sha, size, _sig, url, _, caps] = Enum.at(entries, 3)
       assert sha == Base.encode16(:crypto.hash(:sha256, bin), case: :lower)
       assert size == to_string(byte_size(bin))
       assert url == ctx.server.url <> "skiff-sim.a"
+      assert JSON.decode!(caps) == %{}
     end
 
     test "refuses an index whose signature doesn't verify with the app's key; the lock stays", ctx do
@@ -134,6 +135,22 @@ defmodule FMutate.IosCartridgesTest do
       assert {_, 0} = run(ctx, ["lock", ctx.lock, "obervave"])
       assert File.read!(ctx.lock) == pinned
     end
+
+    test "pins platform-specific partial capabilities, never firmware-wide or another platform's", ctx do
+      skiff = firmware(ctx, "skiff", "1.2")
+      skiff =
+        skiff
+        |> Map.put("caps", %{"pitch_bend" => true, "note_pressure" => true})
+        |> put_in(["assets", "ios-sim", "caps"], %{"pitch_bend" => true, "note_pressure" => "true", "unknown" => true})
+        |> put_in(["assets", "ios-device", "caps"], %{"note_pressure" => true})
+      serve_index(ctx, [skiff], "2026-11-20T10:00:00Z")
+      assert {_, 0} = run(ctx, ["lock", ctx.lock])
+
+      assert {out, 0} = run(ctx, ["fetch", ctx.lock, "ios-sim", ctx.cache])
+      assert out =~ "#{skiff["commit"]} #{skiff["assets"]["ios-sim"]["sha256"]} 1\n"
+      assert {out, 0} = run(ctx, ["fetch", ctx.lock, "ios-device", ctx.cache])
+      assert out =~ "#{skiff["commit"]} #{skiff["assets"]["ios-device"]["sha256"]} 2\n"
+    end
   end
 
   describe "fetch" do
@@ -157,7 +174,7 @@ defmodule FMutate.IosCartridgesTest do
       path = Path.join(ctx.cache, a["sha256"] <> ".a")
 
       assert {out, 0} = run(ctx, ["fetch", ctx.lock, "ios-sim", ctx.cache])
-      assert out =~ "skiff 1.2 #{path}\n"
+      assert out =~ "skiff 1.2 #{path} - #{a["sha256"]} 0\n"
       assert File.read!(path) == "skiff archive"
       assert cached(ctx) == [a["sha256"] <> ".a"]
     end

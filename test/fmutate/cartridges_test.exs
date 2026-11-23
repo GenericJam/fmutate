@@ -29,6 +29,9 @@ defmodule FMutate.CartridgesTest do
 
   defp file(id, version, platform \\ @platform, abi \\ 1), do: "libcart_#{id}@#{version}@#{platform}@abi#{abi}.so"
 
+  defp bundled(cart, version, caps \\ %{}, commit \\ nil, sha \\ nil),
+    do: %{cart: cart, version: version, caps: caps, commit: commit, sha256: sha}
+
   # a cartridge's bytes and its index entry (asset for `platform`)
   defp cart(id, version, priv, platform \\ @platform) do
     bytes = :crypto.strong_rand_bytes(300) <> "#{id} #{version}"
@@ -105,13 +108,14 @@ defmodule FMutate.CartridgesTest do
 
   describe "the catalogue" do
     setup %{priv: priv} do
-      {_, skiff} = cart("skiff", "2.6", priv)
+      {bytes, skiff} = cart("skiff", "2.6", priv)
       {_, shine} = cart("shineon", "9.9", priv)
-      {:ok, body: index([skiff, shine]), hub: Catalog.parse_hub(@hub)}
+      shine = put_in(shine, ["assets", @platform, "caps"], %{"note_pressure" => true})
+      {:ok, body: index([skiff, shine]), hub: Catalog.parse_hub(@hub), bytes: bytes}
     end
 
     test "a cartridge of the build wins over a download, a download over the emulator; the Hub package stays as hub:<id>",
-         %{dir: dir, body: body, hub: hub} do
+         %{dir: dir, body: body, hub: hub, bytes: bytes} do
       carts = Path.join(dir, "carts")
       File.mkdir_p!(carts)
       ctx = %{current: nil, quarantined: [], emu?: true}
@@ -128,6 +132,8 @@ defmodule FMutate.CartridgesTest do
       # a firmware bundled with the app ignores the index
       shine = Enum.find(all, &(&1.id == "shineon"))
       assert shine.source == :bundled and shine.version == "3.0.1" and shine.native == nil
+      refute Map.get(shine.caps, :note_pressure, false)
+      assert Enum.find(all, &(&1.id == "hub:shineon")).caps == %{}
 
       # a native build not downloaded yet: Download (the cartridge's size)
       skiff = Enum.find(all, &(&1.id == "skiff"))
@@ -138,14 +144,14 @@ defmodule FMutate.CartridgesTest do
       assert %{backend: :emu, native: nil} = Enum.find(all, &(&1.id == "hortator"))
 
       # downloaded: on the phone
-      File.write!(Path.join(carts, file("skiff", "2.6")), "x")
+      File.write!(Path.join(carts, file("skiff", "2.6")), bytes)
       skiff = Enum.find(merge.(none), &(&1.id == "skiff"))
       assert skiff.cart == Path.join(carts, file("skiff", "2.6"))
       assert Catalog.status(skiff, ctx) == :on_phone
       refute Catalog.update?(skiff)
 
       # a cartridge of the build wins over the download: nothing to download or update
-      bundled = fn id -> if id == "skiff", do: {"/lib/libcart_skiff.so", nil} end
+      bundled = fn id -> if id == "skiff", do: bundled("/lib/libcart_skiff.so", nil) end
       skiff = Enum.find(merge.(bundled), &(&1.id == "skiff"))
       assert skiff.cart == "/lib/libcart_skiff.so" and Catalog.status(skiff, ctx) == :on_phone
       refute Catalog.update?(skiff)
@@ -188,7 +194,7 @@ defmodule FMutate.CartridgesTest do
         Catalog.merge([], hub, dir, natives)
       end
 
-      all = merge.(%{"hortator" => {"hortator", "1.1"}})
+      all = merge.(%{"hortator" => bundled("hortator", "1.1")})
       assert %{backend: :emu, native: %{version: "2.6"}} = skiff = Enum.find(all, &(&1.id == "skiff"))
       assert LibraryUI.ios_note?(skiff)
       refute Enum.find(all, &(&1.id == "hub:skiff"))
@@ -196,12 +202,75 @@ defmodule FMutate.CartridgesTest do
       refute LibraryUI.ios_note?(hort) or LibraryUI.linked_note(hort)
 
       # the index moved on since the app was built: the linked version plays, and the card says which
-      skiff = Enum.find(merge.(%{"skiff" => {"skiff", "2.5"}}), &(&1.id == "skiff"))
+      skiff = Enum.find(merge.(%{"skiff" => bundled("skiff", "2.5")}), &(&1.id == "skiff"))
       assert %{backend: :native, cart: "skiff", version: "2.5"} = skiff
       refute LibraryUI.ios_note?(skiff)
       assert LibraryUI.linked_note(skiff) =~ "v2.5" and LibraryUI.linked_note(skiff) =~ "v2.6"
       assert LibraryUI.meta(skiff) =~ "v2.5"
       assert Catalog.status(skiff, %{current: nil, quarantined: [], emu?: true}) == :on_phone
+    end
+
+    test "expression capabilities belong to the installed asset, not its version or emulator package",
+         %{dir: dir, priv: priv, pub: pub, hub: hub} do
+      {old_bytes, old} = cart("skiff", "2.6", priv)
+      {bytes, enhanced} = cart("skiff", "2.6", priv)
+      enhanced = put_in(enhanced, ["assets", @platform, "caps"], %{"pitch_bend" => true, "note_pressure" => true})
+      entries = entries_of(index([enhanced]))
+      old_entries = entries_of(index([old]))
+      File.write!(Path.join(dir, file("skiff", "2.6")), old_bytes)
+      merge = fn ->
+        Catalog.merge([], hub, dir, Cartridges.resolve(entries, dir, fn _ -> nil end))
+      end
+
+      stale = Enum.find(merge.(), &(&1.id == "skiff"))
+      assert stale.caps == %{}
+      assert Catalog.update?(stale)
+      assert Cartridges.fresh(entries, Cartridges.identities(old_entries)) == ["skiff"]
+
+      part = Path.join(dir, "skiff.part")
+      File.write!(part, bytes)
+      assert {:ok, _} = Cartridges.install(part, entries["skiff"], dir, pub)
+      all = merge.()
+      native = Enum.find(all, &(&1.id == "skiff"))
+      assert native.caps == %{pitch_bend: true, note_pressure: true}
+      refute Catalog.update?(native)
+      assert Enum.find(all, &(&1.id == "hub:skiff")).caps == %{}
+    end
+
+    test "only explicit boolean capabilities on this platform's asset unlock controls",
+         %{dir: dir, priv: priv, hub: hub} do
+      {bytes, entry} = cart("skiff", "2.6", priv)
+      entry =
+        entry
+        |> Map.put("caps", %{"note_pressure" => true})
+        |> put_in(["assets", @platform, "caps"], %{"pitch_bend" => true, "note_pressure" => "true", "octave_reset_both" => true})
+        |> put_in(["assets", "ios-device"], Map.put(entry["assets"][@platform], "caps", %{"note_pressure" => true}))
+      File.write!(Path.join(dir, file("skiff", "2.6")), bytes)
+      natives = index([entry]) |> entries_of() |> Cartridges.resolve(dir, fn _ -> nil end)
+      native = Enum.find(Catalog.merge([], hub, dir, natives), &(&1.id == "skiff"))
+      assert native.caps == %{pitch_bend: true}
+
+      legacy = update_in(entry, ["assets", @platform], &Map.delete(&1, "caps"))
+      natives = index([legacy]) |> entries_of() |> Cartridges.resolve(dir, fn _ -> nil end)
+      assert Enum.find(Catalog.merge([], hub, dir, natives), &(&1.id == "skiff")).caps == %{}
+    end
+
+    test "iOS uses linked capabilities even when the latest same-version asset declares more",
+         %{dir: dir, priv: priv, hub: hub} do
+      {_, entry} = cart("skiff", "2.6", priv, "ios-device")
+      entry = put_in(entry, ["assets", "ios-device", "caps"], %{"pitch_bend" => true, "note_pressure" => true})
+      entries = entries_of(index([entry]), "ios-device")
+
+      for caps <- [%{}, %{pitch_bend: true}] do
+        pin = bundled("skiff", "2.6", caps, String.duplicate("b", 40), String.duplicate("c", 64))
+        natives = Cartridges.resolve(entries, dir, fn _ -> pin end)
+        all = Catalog.merge([], hub, dir, natives)
+        assert Enum.find(all, &(&1.id == "skiff")).caps == caps
+        assert Enum.find(all, &(&1.id == "hub:skiff")).caps == %{}
+      end
+
+      natives = Cartridges.resolve(entries, dir, fn _ -> nil end)
+      assert %{backend: :emu, caps: %{}} = Enum.find(Catalog.merge([], hub, dir, natives), &(&1.id == "skiff"))
     end
   end
 
@@ -273,8 +342,8 @@ defmodule FMutate.CartridgesTest do
       entries = entries_of(index([skiff, dinghy]))
 
       assert Cartridges.fresh(entries, nil) == []
-      assert Cartridges.fresh(entries, %{"skiff" => "2.6", "dinghy" => "1.0"}) == []
-      assert Cartridges.fresh(entries, %{"skiff" => "2.5"}) == ["dinghy", "skiff"]
+      assert Cartridges.fresh(entries, Cartridges.identities(entries)) == []
+      assert Cartridges.fresh(entries, %{"skiff" => {"2.5", "old"}}) == ["dinghy", "skiff"]
     end
   end
 
@@ -301,7 +370,7 @@ defmodule FMutate.CartridgesTest do
       skiff = put_url(skiff, server, "/skiff.so")
       serve_index(server, [skiff], priv, "\"v1\"")
       serve(server, "/skiff.so", {200, [], skiff_bytes})
-      {:ok, server: server}
+      {:ok, server: server, skiff: skiff}
     end
 
     test "the index is read at start and on refresh with its ETag; 304 and a restart keep it", %{server: server} do
@@ -405,13 +474,12 @@ defmodule FMutate.CartridgesTest do
     end
 
     test "New: nothing on the first index; a later one's new builds are New until seen, and notified if asked",
-         %{server: server, priv: priv} do
+         %{server: server, priv: priv, skiff: skiff} do
       start_supervised!(Library)
       wait(fn -> Library.info().index_generated != nil end)
       refute Firmware.get("skiff").new
       :ok = Library.subscribe()
 
-      {_, skiff} = cart("skiff", "2.6", priv)
       {_, dinghy} = cart("dinghy", "1.0", priv)
       serve_index(server, [skiff, dinghy], priv, "\"v2\"")
       Library.refresh()

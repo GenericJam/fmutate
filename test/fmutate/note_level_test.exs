@@ -55,7 +55,7 @@ defmodule FMutate.NoteLevelTest do
   defp socket(firmware) do
     Mob.Socket.new(FMutate.InstrumentScreen)
     |> Mob.Socket.assign(:editing, false)
-    |> Editor.load("a", firmware)
+    |> Editor.load("a", firmware, FMutate.Firmware.get(firmware).caps)
   end
 
   describe "the default" do
@@ -128,6 +128,21 @@ defmodule FMutate.NoteLevelTest do
       assert :ok = Layouts.save("a", "obervave", fixed_classic())
       surface = socket("obervave").assigns.layout_json |> JSON.decode!() |> velocity("keys")
       assert {surface["source"], surface["pressure"]} == {"fixed", false}
+    end
+
+    test "the same firmware restarted into a build with other capabilities re-resolves note level" do
+      s = socket("obervave")
+      assert surface_pressure(s, "keys") == true
+
+      # the running engine's caps decide, not the catalogue's: a build without note pressure greys it out
+      s = Editor.running(s, "obervave", %{pitch_bend: true})
+      assert surface_pressure(s, "keys") == false
+      refute s.assigns.caps[:note_pressure]
+      assert {_, "This firmware doesn't take per-note pressure"} = Editor.event("note_level", %{}, s).assigns.toast
+
+      s = Editor.running(s, "obervave", %{pitch_bend: true, note_pressure: true})
+      assert surface_pressure(s, "keys") == true
+      assert Editor.running(s, "obervave", s.assigns.caps) == s
     end
   end
 
