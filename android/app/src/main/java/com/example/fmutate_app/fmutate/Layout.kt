@@ -15,6 +15,8 @@ sealed class Target {
     data class Key(val n: Int) : Target()
     data class Encoder(val id: String, val ptPerClick: Float, val invert: Boolean) : Target()
     object Pot : Target()
+    /** FMutate's mixer balance (`{"mixer": "balance"}`): a value, not a firmware input; 0.5 is the centre. */
+    object Balance : Target()
     data class Button(val id: String) : Target()
     data class Midi(val type: String, val channel: Int, val number: Int, val jump: Boolean, val on: Int = 127, val off: Int = 0) : Target()
     data class Page(val ref: String) : Target()
@@ -28,6 +30,7 @@ sealed class Target {
     val absoluteKey: String?
         get() = when (this) {
             is Pot -> "pot:master"
+            is Balance -> "mixer:balance"
             is Midi -> when (type) {
                 "cc" -> "cc:$channel:$number"
                 // a motion control's axis: one bend value per channel, shared like a CC
@@ -194,6 +197,7 @@ data class Layout(
                 t.getString("encoder"), t.optDouble("pt_per_click", 6.0).toFloat(), t.optBoolean("invert", false),
             )
             t.has("pot") -> Target.Pot
+            t.optString("mixer") == "balance" -> Target.Balance
             t.has("button") -> Target.Button(t.getString("button"))
             t.has("midi") -> t.getJSONObject("midi").let {
                 Target.Midi(

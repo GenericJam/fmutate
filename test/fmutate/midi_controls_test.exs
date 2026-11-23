@@ -74,6 +74,27 @@ defmodule FMutate.MIDI.ControlsTest do
     assert_in_delta v, 105 / 127, 0.001
   end
 
+  test "BALANCE (Add here's balance knob, learned): hardware picks up the instance's value, the screen picks up from it" do
+    {:ok, l, page} = LayoutEdit.add_page(@panel)
+    {:ok, l, id} = LayoutEdit.add(l, page, "balance_knob", 0, 1)
+    l = learn(l, id, %{"on" => "value", "type" => "cc", "channel" => 1, "number" => 10})
+    assert Layouts.validate(l) == :ok
+    c = Controls.new() |> Controls.load(l) |> Controls.seed_master(0.5) |> Controls.seed_balance(0.3)
+
+    # the instance has the balance at 0.3: a knob far right doesn't jump it, nor one that comes near but not close
+    {[], [], c} = run(c, [cc(10, 127), cc(10, 50)])
+    {ins, sur, c} = run(c, [cc(10, 38), cc(10, 20)])
+    assert [{:mixer, :balance, a}, {:mixer, :balance, b}] = ins
+    assert_in_delta a, 38 / 127, 0.001
+    assert_in_delta b, 20 / 127, 0.001
+    assert {:value, ^id, "mixer:balance", _} = List.last(sur)
+
+    # the on-screen knob is stale until it reaches the hardware's value, then it owns it
+    assert {nil, c} = Controls.touch(c, %{"t" => "balance", "v" => 0.6, "c" => id})
+    assert {{:mixer, :balance, 0.16}, c} = Controls.touch(c, %{"t" => "balance", "v" => 0.16, "c" => id})
+    {[], [], _} = run(c, [cc(10, 5)])
+  end
+
   test "a pad presses a button momentarily; the keys' note of the same number isn't it" do
     c = controls([{"arp", %{"on" => "press", "type" => "note", "channel" => 10, "number" => 36, "device" => "MPK mini 3"}}])
     assert Controls.keys(c, "MPK mini 3") == MapSet.new([{:note, 10, 36}])

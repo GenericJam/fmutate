@@ -195,6 +195,9 @@ defmodule FMutate.MIDI.Controls do
   @doc "The master pot's value as the instance has it (rule 7 starts from it; see `FMutate.Bindings.seed/3`)."
   def seed_master(%__MODULE__{} = c, value), do: %{c | bindings: Bindings.seed(c.bindings, "pot:master", value)}
 
+  @doc "The mixer balance as the instance has it (like `seed_master/2`: learned knobs pick it up)."
+  def seed_balance(%__MODULE__{} = c, value), do: %{c | bindings: Bindings.seed(c.bindings, "mixer:balance", value)}
+
   @doc "The `FMutate.MIDI.Map.key/1` a learned input (`midi_in`) takes."
   def match_of(m), do: {type(m["type"]), m["channel"], m["number"]}
 
@@ -448,6 +451,7 @@ defmodule FMutate.MIDI.Controls do
   end
 
   defp value_input(%{"pot" => _}, v), do: {:pot, :master, v}
+  defp value_input(%{"mixer" => "balance"}, v), do: {:mixer, :balance, v}
 
   defp value_input(%{"midi" => %{"type" => "cc"} = mi}, v),
     do: {:midi, <<0xB0 + (mi["channel"] || 1) - 1, mi["number"] || 0, round(v * 127)>>}
@@ -469,6 +473,7 @@ defmodule FMutate.MIDI.Controls do
 
   @doc "The surface's key of an absolute target (`Layout.kt` `absoluteKey`), or nil."
   def target_key(%{"pot" => _}), do: "pot:master"
+  def target_key(%{"mixer" => "balance"}), do: "mixer:balance"
   def target_key(%{"midi" => %{"type" => "cc"} = mi}), do: "cc:#{mi["channel"] || 1}:#{mi["number"] || 0}"
   def target_key(%{"midi" => %{"type" => "pitch_bend"} = mi}), do: "bend:#{mi["channel"] || 1}"
   def target_key(_), do: nil

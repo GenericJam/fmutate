@@ -38,7 +38,9 @@ early: Android, as a sideloaded APK or built from source (an iOS port is in test
     "note level on/off") or in the keyboard strip's settings.
   - **Bend** a held note by sliding sideways, and a long-release **sustain**.
 - **Your own layouts**, edited in place: drag, resize, add controls, pages, bindings to firmware inputs, MIDI notes
-  and CCs, portrait or landscape. Saved per firmware, with one-step Undo / Redo of the last change.
+  and CCs, portrait or landscape. Saved per firmware, with one-step Undo / Redo of the last change. A **Balance
+  knob** (left/right, FMutate's own mixer: the same on every firmware, kept with the synth) is one of the controls
+  you can add.
 - **A layout library** (menu › Layouts): save layouts by name, load any of them onto any synth, export one as a
   `.json` file through the share sheet and import one back; "Original layout" brings back the classic panel.
 - **I/O**: low-latency audio (AAudio), a virtual MIDI port `FMutate A`, USB and Bluetooth MIDI devices, MIDI clock

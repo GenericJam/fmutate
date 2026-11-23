@@ -1095,6 +1095,7 @@ defmodule FMutate.Editor do
   end
 
   defp absolute?(%{"pot" => _}), do: true
+  defp absolute?(%{"mixer" => "balance"}), do: true
   defp absolute?(%{"midi" => %{"type" => "cc"}}), do: true
   defp absolute?(_), do: false
 
@@ -1115,6 +1116,7 @@ defmodule FMutate.Editor do
       end
 
     pot = %{"pot" => "master"}
+    balance = %{"mixer" => "balance"}
 
     buttons =
       for b <- Inputs.buttons() do
@@ -1136,7 +1138,10 @@ defmodule FMutate.Editor do
         [
           section("Pot"),
           wrap([chip("MASTER", {:toggle_target, pot}, on: pot in bound)], 6),
-          caption("Encoders get clicks for distance moved; the pot gets a value.")
+          caption("Encoders get clicks for distance moved; the pot gets a value."),
+          section("FMutate mixer"),
+          wrap([chip("BALANCE", {:toggle_target, balance}, on: balance in bound)], 6),
+          caption("Left / right balance of this synth's sound, the same on every firmware: centre leaves it as it is.")
         ]
     end
   end
@@ -1382,6 +1387,7 @@ defmodule FMutate.Editor do
   defp describe(%{"key" => k}), do: "key #{LayoutEdit.key_name(k)}"
   defp describe(%{"encoder" => e} = t), do: encoder_name(e) <> if(t["invert"], do: " −", else: "")
   defp describe(%{"pot" => _}), do: "MASTER"
+  defp describe(%{"mixer" => "balance"}), do: "BALANCE"
   defp describe(%{"button" => b}), do: button_name(b)
   defp describe(%{"midi" => %{"type" => "note"} = m}), do: "note #{note_name(m["number"] || 0)} · ch#{m["channel"] || 1}"
   defp describe(%{"midi" => %{"type" => "cc"} = m}) do

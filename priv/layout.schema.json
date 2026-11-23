@@ -77,6 +77,7 @@
             "pt_per_click": { "type": "number", "default": 6 },
             "invert": { "type": "boolean", "default": false } }, "additionalProperties": false },
         { "type": "object", "required": ["pot"], "properties": { "pot": { "const": "master" } }, "additionalProperties": false },
+        { "type": "object", "required": ["mixer"], "properties": { "mixer": { "const": "balance", "description": "FMutate's mixer, not a firmware input: the left/right balance of this instance's stereo output, the same on every firmware. A value: 0 left, 0.5 centre (unchanged), 1 right." } }, "additionalProperties": false },
         { "type": "object", "required": ["button"], "properties": { "button": { "enum": ["oct_down", "oct_up", "fx", "sel", "env", "lfo", "edit", "glo", "home", "save", "arp", "seq", "play", "rec"] } }, "additionalProperties": false },
         { "type": "object", "required": ["midi"], "properties": { "midi": {
             "type": "object",

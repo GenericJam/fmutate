@@ -28,10 +28,19 @@ defmodule FMutate.Instance do
       {:button, id, :down | :up}           id from FMutate.Inputs.buttons/0
       {:encoder, id, clicks}               id from FMutate.Inputs.encoders/0
       {:pot, :master, value}               0.0..1.0
+      {:mixer, :balance, value}            0.0 left, 0.5 centre, 1.0 right (FMutate's mixer, not the firmware)
       {:midi, binary}                      raw MIDI, now
       {:midi_at, frame, binary}            raw MIDI at a mixer frame (FMutate.Audio.stats/0 :frame)
 
   Keys held when the engine changes are released first, so nothing sticks.
+
+  ## Balance
+
+  The left/right balance of the instance's stereo output, in FMutate's mixer (`FMutate.Audio.balance/3`), the
+  same on every firmware: set on every mixer slot the instance has (a switch's two engines, one still fading
+  out), and on each new engine's slot when it attaches, before its gain comes up, so it holds across switches,
+  restarts and crashes. Saved with the instance (`balance` in the view) at most half a second after a move, and at
+  `quit/1` and at once after it (the app's process is killed after quit, with no terminate).
 
   ## Native builds not on the phone yet
 
@@ -80,6 +89,9 @@ defmodule FMutate.Instance do
   alias FMutate.Library.Catalog
 
   @crossfade_ms 150
+  # (smooths a balance move: no zipper noise, no click at a jump)
+  @balance_ramp_ms 15
+  @balance_save_ms 500
   @restart_window_ms 60_000
   @quarantine_after 2
   # an engine's stop grace (3 s, FMutate.Engine) and a margin
@@ -93,6 +105,9 @@ defmodule FMutate.Instance do
             live: nil,
             next: nil,
             master: 1.0,
+            balance: 0.5,
+            # a balance move not saved yet (saved @balance_save_ms after the first)
+            balance_unsaved: false,
             held_keys: MapSet.new(),
             held_buttons: MapSet.new(),
             # the last inputs and surface diagnostics, newest first (journal/2); trimmed to @journal_keep
@@ -251,6 +266,7 @@ defmodule FMutate.Instance do
       id: id,
       firmware: saved[:firmware] || Firmware.default_id(),
       master: saved[:master] || 1.0,
+      balance: saved[:balance] || 0.5,
       quarantined: MapSet.new(saved[:quarantined] || []),
       buffer: saved[:buffer] || :auto,
       cpu: saved[:cpu] || %{},
@@ -319,6 +335,8 @@ defmodule FMutate.Instance do
       |> Enum.reduce(state, &drop_engine(&2, &1))
 
     if not state.quit, do: Logger.info("instance #{state.id}: quit")
+    # (the app's process is killed after quit, without terminate/2: a balance move waiting to be saved goes now)
+    state = flush_balance(state)
 
     %{
       state
@@ -494,6 +512,8 @@ defmodule FMutate.Instance do
     {:noreply, state}
   end
 
+  def handle_info(:save_balance, state), do: {:noreply, flush_balance(state)}
+
   def handle_info({:ran_clean, pid}, %{live: %{pid: pid, firmware: fw}} = state) do
     state = %{state | app_crashes: Map.delete(state.app_crashes, fw)}
     save_state(state)
@@ -527,6 +547,7 @@ defmodule FMutate.Instance do
   def terminate(_reason, state) do
     engines = Enum.reject([state.live, state.next], &is_nil/1) ++ Map.values(state.stopping)
     engines = if state.sound && state.sound.step == :stopping, do: [state.sound.eng | engines], else: engines
+    flush_balance(state)
 
     for eng <- engines do
       Engine.stop(eng.pid)
@@ -707,6 +728,8 @@ defmodule FMutate.Instance do
     eng = Map.fetch!(state, role)
     Logger.info("instance #{state.id}: #{eng.firmware} ready in #{ms} ms (slot #{eng.slot})")
     :ok = Audio.attach(eng.slot, Paths.ring(eng.prefix))
+    # (the attach centred the slot: the instance's balance, before the gain comes up)
+    Audio.balance(eng.slot, permille(state.balance))
     eng = %{eng | ready: true}
     Engine.commands(eng.pid, [{:master, round(state.master * 1024)}])
     # (a firmware that ended the app before is forgiven after a minute of running)
@@ -1144,6 +1167,17 @@ defmodule FMutate.Instance do
 
   ## Inputs
 
+  # not a firmware input: FMutate's mixer, with or without an engine
+  defp apply_input(state, {:mixer, :balance, v} = event) do
+    v = clamp01(v)
+    engines = Enum.reject([state.live, state.next], &is_nil/1) ++ Map.values(state.stopping)
+    for eng <- engines, do: Audio.balance(eng.slot, permille(v), @balance_ramp_ms)
+    if not state.balance_unsaved, do: Process.send_after(self(), :save_balance, @balance_save_ms)
+    state = journal(%{state | balance: v, balance_unsaved: true}, :in, event, :sent)
+    # (after quit/1 the app's process may be killed at any moment: no waiting)
+    if state.quit, do: flush_balance(state), else: state
+  end
+
   defp apply_input(%{live: %{ready: true} = eng} = state, event) do
     {cmds, state} = to_commands(event, state)
     Engine.commands(eng.pid, cmds)
@@ -1245,6 +1279,8 @@ defmodule FMutate.Instance do
 
   defp clamp01(v) when is_number(v), do: v |> max(0.0) |> min(1.0)
 
+  defp permille(v), do: round(v * 1000)
+
   ## View, persistence
 
   defp view_of(state) do
@@ -1258,6 +1294,7 @@ defmodule FMutate.Instance do
         restarts: state.restarts,
         last_exit: state.last_exit,
         master: state.master,
+        balance: state.balance,
         buffer: state.buffer,
         # a cartridge downloading before its firmware starts: {bytes, total | nil}, or nil
         download: state.fetching && (state.fetching.progress || {0, nil})
@@ -1323,6 +1360,7 @@ defmodule FMutate.Instance do
     data = %{
       firmware: state.wanted || state.firmware,
       master: state.master,
+      balance: state.balance,
       quarantined: MapSet.to_list(state.quarantined),
       buffer: state.buffer,
       cpu: state.cpu,
@@ -1331,4 +1369,12 @@ defmodule FMutate.Instance do
 
     File.write!(Paths.instance_state(state.id), :erlang.term_to_binary(data))
   end
+
+  # a balance move not saved yet (apply_input saves it @balance_save_ms after the first): save it now
+  defp flush_balance(%{balance_unsaved: true} = state) do
+    save_state(state)
+    %{state | balance_unsaved: false}
+  end
+
+  defp flush_balance(state), do: state
 end

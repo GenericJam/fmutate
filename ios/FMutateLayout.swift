@@ -15,6 +15,8 @@ enum FMTarget: Equatable {
     case key(Int)
     case encoder(id: String, ptPerClick: CGFloat, invert: Bool)
     case pot
+    /// FMutate's mixer balance (`{"mixer": "balance"}`): a value, not a firmware input; 0.5 is the centre.
+    case balance
     case button(String)
     case midi(type: String, channel: Int, number: Int, jump: Bool, on: Int, off: Int)
     case page(String)
@@ -26,6 +28,7 @@ enum FMTarget: Equatable {
     var absoluteKey: String? {
         switch self {
         case .pot: return "pot:master"
+        case .balance: return "mixer:balance"
         case let .midi(type, channel, number, _, _, _):
             switch type {
             case "cc": return "cc:\(channel):\(number)"
@@ -292,6 +295,7 @@ struct FMLayout: Equatable {
             return .encoder(id: try t.getString("encoder"), ptPerClick: CGFloat(t.optDouble("pt_per_click", 6.0)), invert: t.optBool("invert", false))
         }
         if t.has("pot") { return .pot }
+        if t.optString("mixer", "") == "balance" { return .balance }
         if t.has("button") { return .button(try t.getString("button")) }
         if t.has("midi") {
             let m = try t.getObj("midi")

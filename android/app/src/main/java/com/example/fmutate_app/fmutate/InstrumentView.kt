@@ -82,7 +82,9 @@ import kotlin.math.sin
  * re-rendered on presses, values and LEDs), the firmware screen (each new engine frame), the Opling menu
  * button (its own animation) and an overlay (fingers, bubbles, banner).
  *
- * Props: layout (JSON string), fb (path or null), master (0..1), bend (firmware takes pitch bend), phase
+ * Props: layout (JSON string), fb (path or null), master (0..1), balance (FMutate's mixer, 0..1, 0.5 centre; null
+ * until the instance has answered, so a BALANCE control is seeded from its real value), bend (firmware takes pitch
+ * bend), phase
  * (instance phase), quarantined, restarts, slow and speed (too slow, and the firmware's speed in %), hint (what is
  * being done or can be, under "Too slow"; alone: dropouts a larger buffer would cure): the Opling's mood and the
  * message in the firmware screen area (Starting…, Downloading… (a native build's cartridge), Restarting…, Crashed
@@ -218,6 +220,7 @@ fun InstrumentView(props: Map<String, Any?>, send: (String, Map<String, Any>) ->
         oct0 = props["oct0"] == true,
         phase = props["phase"] as? String ?: "",
         master = (props["master"] as? Number)?.toFloat() ?: -1f,
+        balance = (props["balance"] as? Number)?.toFloat() ?: -1f,
         quarantined = props["quarantined"] == true,
         restarts = (props["restarts"] as? Number)?.toInt() ?: 0,
         slow = props["slow"] == true,
@@ -242,6 +245,7 @@ private fun InstrumentSurface(
     oct0: Boolean,
     phase: String,
     master: Float,
+    balance: Float,
     quarantined: Boolean,
     restarts: Int,
     slow: Boolean,
@@ -265,9 +269,11 @@ private fun InstrumentSurface(
     val ink = remember(density) { Ink(density) }
     var sizePx by remember { mutableStateOf(IntSize.Zero) }
 
-    // seed the pot from the instance once; not a tracked read, or every value change would recompose the surface
+    // seed the pot and the balance from the instance once; not a tracked read, or every value change would
+    // recompose the surface
     Snapshot.withoutReadObservation {
         if (master >= 0f && "pot:master" !in state.values) state.values["pot:master"] = master
+        if (balance >= 0f && "mixer:balance" !in state.values) state.values["mixer:balance"] = balance
     }
 
     // ── edit mode, pages, toasts, rule 7 (EditMode.kt, Rule7.kt; FMutate.Editor) ──
@@ -427,7 +433,7 @@ private fun InstrumentSurface(
             }
             is Target.Page -> if (down) goPage(t.ref)
             is Target.Encoder -> if (down) input(mapOf("t" to "encoder", "id" to t.id, "clicks" to if (t.invert) -1 else 1))
-            Target.Pot -> {}
+            Target.Pot, Target.Balance -> {}
         }
     }
 
@@ -1218,6 +1224,7 @@ private fun ledFor(c: Control, leds: Triple<Int, Int, Int>): Boolean {
 
 private fun sendValueBytes(t: Target, v: Float, control: String): Map<String, Any>? = when (t) {
     Target.Pot -> mapOf("t" to "pot", "v" to v.toDouble(), "c" to control)
+    Target.Balance -> mapOf("t" to "balance", "v" to v.toDouble(), "c" to control)
     is Target.Midi -> if (t.type == "cc") mapOf(
         "t" to "midi", "bytes" to listOf(0xB0 or (t.channel - 1), t.number, (v * 127).roundToInt()),
         "c" to control, "abs" to (t.absoluteKey ?: ""), "v" to v.toDouble(),

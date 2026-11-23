@@ -22,10 +22,12 @@ defmodule FMutate.LayoutEdit do
   @type cell :: %{required(String.t()) => non_neg_integer()}
   @type result :: {:ok, layout} | {:error, String.t()}
 
-  # what "Add here" offers, in the board's order (Edit-Add.dc.html), with the size a new one gets
+  # what "Add here" offers, in the board's order (Edit-Add.dc.html), with the size a new one gets. Entries
+  # that aren't a control type of their own (`@presets`) add one of another type, set up already.
   @addable [
     {"button", "Button", {1, 1}},
     {"knob", "Knob", {1, 1}},
+    {"balance_knob", "Balance knob", {1, 1}},
     {"slider", "Slider", {1, 2}},
     {"xy_pad", "XY pad", {2, 2}},
     {"motion", "Motion", {2, 2}},
@@ -38,7 +40,13 @@ defmodule FMutate.LayoutEdit do
     {"page_switcher", "Page switcher", {2, 1}}
   ]
 
-  @doc "The control types \"Add here\" offers: `{type, name, default_size}`."
+  # entry => {control type, what it starts with}: a knob on FMutate's mixer balance
+  @presets %{
+    "balance_knob" =>
+      {"knob", %{"label" => "BALANCE", "bindings" => [%{"on" => "value", "to" => %{"mixer" => "balance"}}]}}
+  }
+
+  @doc "What \"Add here\" offers: `{entry, name, default_size}` (an entry is a control type or a preset of one)."
   def addable, do: @addable
 
   @doc """
@@ -145,15 +153,17 @@ defmodule FMutate.LayoutEdit do
   end
 
   @doc """
-  What "Add here" shows for an empty cell: `[%{type, name, fits, size}]`, where `size` is the minimum
-  (`"2×2"`). Types that don't fit are listed too, with `fits: false`.
+  What "Add here" shows for an empty cell: `[%{type, name, fits, size}]` (`type`: the entry `add/5` takes),
+  where `size` is the minimum (`"2×2"`). Types that don't fit are listed too, with `fits: false`.
   """
   def add_menu(layout, page_id, col, row) do
-    for {type, name, _} <- @addable do
-      {w, h} = min_size(type)
-      %{type: type, name: name, fits: spot(layout, page_id, col, row, w, h) != nil, size: "#{w}×#{h}"}
+    for {entry, name, _} <- @addable do
+      {w, h} = min_size(control_type(entry))
+      %{type: entry, name: name, fits: spot(layout, page_id, col, row, w, h) != nil, size: "#{w}×#{h}"}
     end
   end
+
+  defp control_type(entry), do: @presets |> Map.get(entry, {entry, nil}) |> elem(0)
 
   ## Edits
 
@@ -247,21 +257,23 @@ defmodule FMutate.LayoutEdit do
   end
 
   @doc """
-  Add a control of `type` covering the empty cell `(col, row)` of a page, at its default size if that
-  fits, else at its minimum. Returns `{:ok, layout, control_id}`.
+  Add a control for an "Add here" entry (a control type, or a preset such as `"balance_knob"`) covering the
+  empty cell `(col, row)` of a page, at its default size if that fits, else at its minimum. Returns
+  `{:ok, layout, control_id}`.
   """
-  def add(layout, page_id, type, col, row) do
-    case List.keyfind(@addable, type, 0) do
+  def add(layout, page_id, entry, col, row) do
+    case List.keyfind(@addable, entry, 0) do
       nil ->
         {:error, "Unknown control type"}
 
       {_, name, {dw, dh}} ->
+        {type, preset} = Map.get(@presets, entry, {entry, nil})
         {mw, mh} = min_size(type)
         at = spot(layout, page_id, col, row, dw, dh) || spot(layout, page_id, col, row, mw, mh)
 
         if at do
           id = new_id(layout, type)
-          control = Map.merge(%{"id" => id, "type" => type, "at" => at}, defaults(type, name, at))
+          control = Map.merge(%{"id" => id, "type" => type, "at" => at}, preset || defaults(type, name, at))
           {:ok, insert(layout, page(layout, page_id)["id"], control), id}
         else
           {:error, "#{name} needs #{mw}×#{mh} here"}

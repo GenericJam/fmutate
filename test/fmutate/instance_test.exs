@@ -187,6 +187,77 @@ defmodule FMutate.InstanceTest do
     assert view.buffer == 3072 and view.fill == 3072
   end
 
+  # the mixer balance (permille) on the instance's live engine's slot, as FMutate.Audio has it
+  defp live_balance(id) do
+    %{live: %{slot: slot}} = :sys.get_state(Instance.via(id))
+    :sys.get_state(FMutate.Audio).balances[slot]
+  end
+
+  # stop the instance as the app does and start it again (it has what it saved). The old one's state messages
+  # still queued are dropped first: they would pass for the new one's (same firmware, phase running).
+  defp restart_instance(id) do
+    stop_supervised!({:instance, id})
+    drop_instance_messages(id)
+    start_instance(id)
+  end
+
+  defp drop_instance_messages(id) do
+    receive do
+      {:instance, ^id, _} -> drop_instance_messages(id)
+    after
+      0 -> :ok
+    end
+  end
+
+  # until the firmware's own clock is `ms` further on than at its next STATUS
+  defp firmware_runs(ms) do
+    from = next_status_ms()
+    Stream.repeatedly(&next_status_ms/0) |> Enum.find(&(&1 >= from + ms))
+  end
+
+  defp next_status_ms do
+    receive do
+      {:instance, "a", {:status, %{ms: ms}}} -> ms
+    after
+      2_000 -> flunk("no STATUS from the firmware")
+    end
+  end
+
+  test "the balance holds on every engine the instance runs: a crash restart, a sound save and load, a switch, an app restart" do
+    start_instance()
+    await_state(running?("obervave"))
+    assert Instance.view("a").balance == 0.5 and live_balance("a") == 500
+
+    Instance.input("a", {:mixer, :balance, 0.2})
+    assert Instance.view("a").balance == 0.2 and live_balance("a") == 200
+
+    # a sound's save and load each stop the engine and start it again (FMutate.Sounds); the firmware needs a second
+    # of its time first to end cleanly (as in sounds_test.exs)
+    firmware_runs(1_000)
+    {:ok, saved} = Instance.snapshot("a")
+    assert live_balance("a") == 200
+    {:ok, _old} = Instance.restore("a", "obervave", :native, saved.bytes)
+    assert live_balance("a") == 200
+
+    # a new engine's slot starts centred (FMutate.Audio.attach/2): the instance sets it again
+    Instance.debug("a", :crash)
+    await_state(&(&1.phase == :crashed))
+    await_state(running?("obervave"))
+    assert live_balance("a") == 200
+
+    # (the view says shineon at once, while the old engine still plays: the new one is live when its screen shows)
+    old_fb = Instance.view("a").fb
+    :ok = Instance.switch_firmware("a", "shineon")
+    await_state(&(running?("shineon").(&1) and &1.fb not in [nil, old_fb]))
+    assert live_balance("a") == 200 and :sys.get_state(Instance.via("a")).live.firmware == "shineon"
+
+    Instance.input("a", {:mixer, :balance, 1.0})
+    assert live_balance("a") == 1000
+    restart_instance("a")
+    view = await_state(running?("shineon"))
+    assert view.balance == 1.0 and live_balance("a") == 1000
+  end
+
   test "run anyway from safe mode, as the instrument's screen area asks for it" do
     start_instance()
     await_state(running?("obervave"))
@@ -328,6 +399,39 @@ defmodule FMutate.InstanceTest do
       assert :ok = Instance.quit("a")
       assert File.exists?(flash)
       assert_quit("a", pids)
+    end
+
+    # killed, as FMutateIO kills the app's process after quit (no terminate): the supervisor starts it again
+    defp kill_instance(id) do
+      old = GenServer.whereis(Instance.via(id))
+      Process.exit(old, :kill)
+
+      Enum.find_value(1..100, fn _ ->
+        Process.sleep(10)
+        pid = GenServer.whereis(Instance.via(id))
+        pid != nil and pid != old
+      end)
+    end
+
+    test "a balance moved just before quit, or after it while the engines end, is saved before the kill" do
+      start_instance()
+      await_state(running?("obervave"))
+      Instance.input("a", {:mixer, :balance, 0.25})
+      assert :ok = Instance.quit("a")
+      kill_instance("a")
+      assert Instance.view("a").balance == 0.25
+
+      # (quit and the move queued together: the move lands while the engine is still ending, before quit replies)
+      Enum.find_value(1..300, fn _ -> Instance.view("a").phase == :running || (Process.sleep(10) && false) end)
+      pid = GenServer.whereis(Instance.via("a"))
+      :sys.suspend(pid)
+      spawn(fn -> catch_exit(Instance.quit("a")) end)
+      Process.sleep(50)
+      Instance.input("a", {:mixer, :balance, 0.75})
+      :sys.resume(pid)
+      assert %{phase: :stopped, balance: 0.75} = Instance.view("a")
+      kill_instance("a")
+      assert Instance.view("a").balance == 0.75
     end
 
     test "right after the start, while the engine boots" do
