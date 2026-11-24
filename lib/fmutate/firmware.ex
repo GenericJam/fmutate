@@ -77,7 +77,7 @@ defmodule FMutate.Firmware do
       about: "A string ensemble in the spirit of the late-70s machines.",
       repo: "https://github.com/zvenson/shineon",
       ref: "2f37738d690a628e0ae1d23d07ea5ee3eeda2de7",
-      caps: %{pitch_bend: true, octave_reset_both: true}
+      caps: %{pitch_bend: true, octave_reset_both: true, note_pressure: true}
     }
   ]
 

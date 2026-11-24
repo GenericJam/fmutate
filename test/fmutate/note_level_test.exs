@@ -52,10 +52,12 @@ defmodule FMutate.NoteLevelTest do
   defp surface_pressure(socket, id),
     do: socket.assigns.layout_json |> JSON.decode!() |> velocity(id) |> Map.fetch!("pressure")
 
-  defp socket(firmware) do
+  defp socket(firmware, caps \\ nil) do
+    caps = caps || FMutate.Firmware.get(firmware).caps
+
     Mob.Socket.new(FMutate.InstrumentScreen)
     |> Mob.Socket.assign(:editing, false)
-    |> Editor.load("a", firmware, FMutate.Firmware.get(firmware).caps)
+    |> Editor.load("a", firmware, caps)
   end
 
   describe "the default" do
@@ -99,18 +101,24 @@ defmodule FMutate.NoteLevelTest do
       assert :ok = Layouts.save("a", "obervave", l)
       refute Map.has_key?(velocity(Layouts.current("a", "obervave"), "keys"), "pressure")
 
-      # OberVave takes poly aftertouch: on; ShineOn doesn't: off (its swell would apply instead)
+      # OberVave and Shine On take poly aftertouch: on; a firmware without the cap or an explicit swell strip: off
       assert surface_pressure(socket("obervave"), "keys") == true
+      assert surface_pressure(socket("shineon"), "keys") == true
+      assert surface_pressure(socket("hub:shineon", %{}), "keys") == false
       assert :ok = Layouts.save("a", "shineon", layout(%{"swell" => true}))
       assert surface_pressure(socket("shineon"), "keys") == false
     end
 
-    test "the bundled classic layout, unedited: velocity from strike position, note level on OberVave only" do
+    test "the bundled classic layout, unedited: velocity from strike position, note level on firmwares with the cap" do
       classic = Layouts.classic()
       refute Map.has_key?(velocity(classic, "keys") || %{}, "source")
 
-      for {fw, level} <- [{"obervave", true}, {"shineon", false}] do
-        s = socket(fw)
+      for {fw, caps, level} <- [
+            {"obervave", nil, true},
+            {"shineon", nil, true},
+            {"hub:shineon", %{}, false}
+          ] do
+        s = socket(fw, caps)
         surface = s.assigns.layout_json |> JSON.decode!() |> velocity("keys")
         assert {fw, surface["source"], surface["pressure"]} == {fw, "position", level}
         # what the editor shows, from the same layout
@@ -215,9 +223,9 @@ defmodule FMutate.NoteLevelTest do
     end
 
     test "changes nothing on a firmware without per-note pressure" do
-      assert :ok = Layouts.save("a", "shineon", layout())
-      s = Editor.event("note_level", %{}, socket("shineon"))
-      assert velocity(Layouts.current("a", "shineon"), "keys") == %{"source" => "position"}
+      assert :ok = Layouts.save("a", "hub:shineon", layout())
+      s = Editor.event("note_level", %{}, socket("hub:shineon", %{pitch_bend: true}))
+      assert velocity(Layouts.current("a", "hub:shineon"), "keys") == %{"source" => "position"}
       assert {_, "This firmware doesn't take per-note pressure"} = s.assigns.toast
     end
 
