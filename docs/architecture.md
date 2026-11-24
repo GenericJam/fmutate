@@ -315,22 +315,24 @@ flowchart LR
   the strike 127, so a tap played at its velocity alone and the strike position wasn't heard. The strike level sits
   between the two: never silent, 20 dB from bottom to top at the default range. Strike-position strips became the
   default with #13; until then no bundled layout had one, so note level never played.)
-  FMutate's built-in OberVave implements it in `native/patches/obervave/poly-aftertouch.patch` (a pressure event through the
-  firmware's note queue, after the note-on; each voice of that note and sound keeps the level, multiplied into its
+  FMutate's built-in OberVave and Shine On implement it in `native/patches/obervave/poly-aftertouch.patch` and
+  `native/patches/shineon/poly-aftertouch.patch` (a pressure event through the
+  firmware's note queue, after the note-on; each voice or keyer of that note and sound keeps the level, multiplied into its
   amp every block on a square law, 127 = as played). The level belongs to the key while it is held or latched: the
   voices it starts later take it, its arp's steps in every octave too (an octave step is another pitch, so the arp
-  passes its key), a MONO / UNISON voice sliding to a key or handed back to one when another is let go takes that
-  key's (no note-on comes for it), and once no key holds the pitch its voices start as played again. (Before the strike level a
-  level was rarely left on a key; with it every strike leaves one, and the sequencer's steps of that pitch, which
-  start voices without a note-on, played up to 24 dB down until the key was pressed again; factory 08's octave
-  steps played full under a quiet strike: level 49 held, host RMS 3 dB under level 127, now 16.6 dB.) Not in the Hub package of OberVave (it runs unpatched). The
+  passes its key), and on OberVave a MONO / UNISON voice sliding to a key or handed back to one when another is let go takes that
+  key's (no note-on comes for it; Shine On has no MONO / UNISON mode); once no key holds the pitch its voices start as played again. (Before the strike level a
+  level was rarely left on a key; with it every strike leaves one, and OberVave's sequencer steps of that pitch, which
+  start voices without a note-on, played up to 24 dB down until the key was pressed again; OberVave factory 08's octave
+  steps played full under a quiet strike: level 49 held, host RMS 3 dB under level 127, now 16.6 dB.) Not in the Hub packages of OberVave or Shine On (they run unpatched). The
   iOS archive and the Android libraries compile the same patched tree (`native/build_ios.sh` and
-  `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` plays it on the engine
-  executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`): held note RMS for pressure 127 / 64 /
-  16 / 127 ≈ 2900 / 820 / 240 / 1900–2000 on both, and a strike at the top / middle / bottom of a key as the
-  surfaces send it (above) at least 12 dB / 4 dB apart on INIT and factory 01, and factory 08's arp octaves at
-  their key's level, and a MONO voice handed back to a quiet key quiet again (it stayed at the other key's level,
-  −0.6 dB, before).
+  `native/build_host.sh` re-apply the patches each run); `test/fmutate/aftertouch_test.exs` runs both on the engine
+  executable and in-process (iOS's path, `TARGETS=host native/build_ios.sh`), checking silence/restore, per-note
+  isolation with two held notes, pressure sweeps (on OberVave, measured held-note RMS for pressure 127 / 64 / 16 /
+  127 ≈ 2900 / 820 / 240 / 1900–2000), top / middle / bottom key strikes at least 12 dB / 4 dB apart on INIT and
+  factory 01, arp octave steps at their key's level (OberVave factory 08, Shine On factory 18), and — on OberVave
+  only — a MONO voice handed back to a quiet key playing quiet again (it stayed at the other key's level, −0.6 dB,
+  before).
   The cartridge pipeline's Dinghy pilot adds the same square-law note gain (and ±2-semitone bend), guarded by
   offline rendered-audio checks; Skiff and Caravel are pending a port (fmutate-cartridges README). The capabilities
   arrive only with the exact signed native asset (above), never with the stock emulator package, and every

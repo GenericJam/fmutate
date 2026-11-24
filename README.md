@@ -36,7 +36,7 @@ early: Android, as a sideloaded APK or built from source (an iOS port is in test
   - **Note level**: on a supported native cartridge, a held note's volume follows your finger: slide back from where you
     struck to fade it, forward to make it louder. On by default; switch it from a button on the surface (bind it to
     "note level on/off") or in the keyboard strip's settings.
-    Beyond FMutate's own OberVave, Dinghy's native cartridge supports it (a signed capability of that build); the
+    Beyond FMutate's own OberVave and Shine On, Dinghy's native cartridge supports it (a signed capability of that build); the
     Hub's stock packages don't.
   - **Bend** a held note by sliding sideways, and a long-release **sustain**.
 - **Your own layouts**, edited in place: drag, resize, add controls, pages, bindings to firmware inputs, MIDI notes
@@ -141,7 +141,7 @@ FMutate's patches from `native/patches/` applied.
 | `c_src/` | the AAudio mixer and I/O NIFs |
 | `native/engine/` | the engine executable and cartridge harness (C) |
 | `native/emu/` | the emulator engine around fm1-emu (Rust) |
-| `native/patches/` | FMutate's patches to the firmwares it builds (OberVave) |
+| `native/patches/` | FMutate's patches to the firmwares it builds (OberVave, Shine On) |
 | `priv/layouts/` | the preset layouts; `priv/layout.schema.json` is their format |
 | `docs/` | architecture, engine protocol, design handoff |
 | `tools/` | `rpc.exs` (evaluate Elixir in the running app), a sibling-app probe, MIDI latency measurement |
@@ -156,8 +156,8 @@ for the source boundary, pinned upstream sources and redistribution requirements
 
 - [OberVave](https://github.com/zvenson/obervave) and [Shine On](https://github.com/zvenson/shineon) by zvenson
   and their upstream contributors remain **GPL-3.0-only**, as do the derivative cartridge harness
-  `native/engine/live.c` and the OberVave patches in `native/patches/obervave/`. FMutate patches OberVave to
-  take MIDI polyphonic aftertouch as a note's level.
+  `native/engine/live.c` and the OberVave and Shine On patches in `native/patches/`. FMutate patches OberVave and
+  Shine On to take MIDI polyphonic aftertouch as a note's level.
 - [fm1-emu](https://github.com/joakimeriksson/fm1-emu) by Joakim Eriksson (MIT).
 - The firmware list comes from the [FM-1 Firmware Hub](https://thefirmwarehub.com/) (CC BY 4.0; card texts and
   pictures belong to each firmware's maker). Every firmware belongs to its author and is downloaded from where

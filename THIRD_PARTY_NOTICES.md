@@ -23,6 +23,7 @@ The following are **GPL-3.0-only**, not covered by FMutate's MIT grant:
 | `native/engine/live.c` | Cartridge harness; copies and adapts the simulator's `web/sim/sim.c` (copyright (C) 2026 zvenson) and runs on the firmwares' `tests/host.c` platform; modified by GenericJam from 2026-11-10 |
 | `native/patches/obervave/host-build-without-mirror.patch` | Changes to OberVave's host build |
 | `native/patches/obervave/poly-aftertouch.patch` | Changes to OberVave's MIDI handling and synth engine |
+| `native/patches/shineon/poly-aftertouch.patch` | Changes to Shine On's MIDI handling and synth engine |
 
 The GPL v3 text previously at the repository root is preserved unchanged in
 [LICENSES/GPL-3.0-only.txt](LICENSES/GPL-3.0-only.txt). The patches and the firmware sources they modify remain

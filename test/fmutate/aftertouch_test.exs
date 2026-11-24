@@ -1,13 +1,14 @@
 defmodule FMutate.AftertouchTest do
-  # FMutate's OberVave build (native/patches/obervave/poly-aftertouch.patch): MIDI polyphonic aftertouch sets a held
-  # note's level, 0 silent .. 127 as played, other notes untouched; and a note's velocity (what a keyboard strip
-  # sends from where a key is struck) sets how loud it starts. The cartridge as each platform runs it: the engine
-  # executable (Android) and in-process on a thread of the app (iOS: native/build_ios.sh's host build,
+  # FMutate's OberVave and Shine On builds (native/patches/{obervave,shineon}/poly-aftertouch.patch): MIDI polyphonic
+  # aftertouch sets a held note's level, 0 silent .. 127 as played, other notes untouched; and a note's velocity (what
+  # a keyboard strip sends from where a key is struck) sets how loud it starts. The cartridge as each platform runs it:
+  # the engine executable (Android) and in-process on a thread of the app (iOS: native/build_ios.sh's host build,
   # c_src/fm1host.c, macOS only), each through FMutate.Engine with its ring drained in real time by the host Audio
   # (FMutate.PanelEdgesTest.Rig). The waits are on the firmware's own clock: on a loaded host the drain, so the
   # firmware, falls behind the wall clock (by a third in a full `mix test` on a busy Mac), and a release tail read
   # after 900 ms of wall time can be one only ~650 ms old. Levels are the ring's RMS: OberVave's detuned
-  # oscillators beat, so a window's level wanders by a fifth or so; the margins below are wider than that.
+  # oscillators and Shine On's ensemble beat, so a window's level wanders by a fifth or so; the margins below are
+  # wider than that.
   use ExUnit.Case, async: false
 
   alias FMutate.{Engine, EngineNif, Paths}
@@ -16,19 +17,42 @@ defmodule FMutate.AftertouchTest do
   @moduletag :engine
   @nif Path.expand("native/build/host/fm1host.so")
 
+  @firmwares [
+    %{
+      id: "obervave",
+      # program 71 (INIT): no arp (factory 01's arp plays notes that aren't the held key) and no effect tails
+      steady: 70,
+      strikes: [{"INIT", 70}, {"factory 01", 0}],
+      # factory 08 ARP SEQ: up, 2 octaves, so every other step is the key an octave up, another pitch
+      arp: 7,
+      # factory 03 SYNC LEAD (MONO): a second key slides the voice over and letting it go hands it back
+      mono: 2
+    },
+    %{
+      id: "shineon",
+      # program 15 (STACCATO): fast attack/release, no arp (INIT/factory 01 have a slow string swell)
+      steady: 14,
+      strikes: [{"INIT", 32}, {"factory 01", 0}],
+      # factory 18 ARP STRINGS: up, 2 octaves
+      arp: 17,
+      mono: nil
+    }
+  ]
+
   setup ctx do
     Rig.setup_data_dir("aftertouch")
     File.mkdir_p!(Paths.data_dir())
     start_supervised!(FMutate.Audio)
+    fw = ctx.fw
     prefix = Path.join(Paths.data_dir(), "at")
-    flash = Path.join(Paths.data_dir(), "obervave.bin")
+    flash = Path.join(Paths.data_dir(), "#{fw}.bin")
 
     pid =
       case ctx.engine do
         :executable ->
           Rig.start_engine(
             Paths.engine_bin(),
-            Paths.bundled_cart("obervave"),
+            Paths.bundled_cart(fw),
             prefix,
             flash,
             2_500
@@ -38,7 +62,7 @@ defmodule FMutate.AftertouchTest do
           # (when the test process ends, the engine goes with it and the NIF closes its pipe; the next test's
           # start waits for the cartridge if its thread is still ending)
           :ok = EngineNif.load_host(@nif)
-          Rig.start_engine(:inproc, "obervave", prefix, flash, 2_500, backend: :native)
+          Rig.start_engine(:inproc, fw, prefix, flash, 2_500, backend: :native)
       end
 
     {:ok, pid: pid, prefix: prefix}
@@ -55,17 +79,16 @@ defmodule FMutate.AftertouchTest do
     Rig.rms_during(prefix, ms)
   end
 
-  for engine <- [:executable, :inproc] do
-    describe "#{engine}" do
-      @describetag engine: engine
+  for fw <- @firmwares, engine <- [:executable, :inproc] do
+    describe "#{fw.id} #{engine}" do
+      @describetag fw: fw.id, engine: engine
       if engine == :inproc and not File.exists?(@nif) do
         @describetag skip: "run TARGETS=host native/build_ios.sh (macOS): no #{@nif}"
       end
 
-      # program 71 (INIT): no arp (factory 01's arp plays notes that aren't the held key) and no effect tails
       test "pressure 0 silences a held note, 127 brings it back; a note it isn't for keeps sounding",
            %{pid: pid, prefix: prefix} do
-        program(pid, 70)
+        program(pid, unquote(fw.steady))
         Engine.commands(pid, [{:midi, 0x90, 60, 127}])
         Rig.firmware_wait(pid, 300)
         held = Rig.peak_during(prefix, 300)
@@ -87,12 +110,41 @@ defmodule FMutate.AftertouchTest do
         Engine.commands(pid, [{:midi, 0x80, 60, 0}])
       end
 
+      # per-note isolation: holding two notes on the same part, silencing one drops it while the other stays at its
+      # level, and 127 restores the silenced note (notes 72/76 settle past decay and span >1 beat cycle in 1 s)
+      test "pressure on one of two held notes leaves the other at its level and 127 restores it",
+           %{pid: pid, prefix: prefix} do
+        program(pid, unquote(fw.steady))
+        db = fn a, b -> 20 * :math.log10(a / b) end
+
+        Engine.commands(pid, [{:midi, 0x90, 72, 127}])
+        solo = level_after(pid, prefix, 800, 1_000)
+
+        Engine.commands(pid, [{:midi, 0x90, 76, 127}])
+        both = level_after(pid, prefix, 800, 1_000)
+
+        Engine.commands(pid, [{:midi, 0xA0, 76, 0}])
+        muted = level_after(pid, prefix, 900, 1_000)
+
+        Engine.commands(pid, [{:midi, 0xA0, 76, 127}])
+        restored = level_after(pid, prefix, 400, 1_000)
+
+        Engine.commands(pid, [{:midi, 0x80, 72, 0}, {:midi, 0x80, 76, 0}])
+
+        assert solo > 500
+        assert db.(both, solo) >= 1.2
+        assert db.(muted, both) <= -1.2
+        assert abs(db.(muted, solo)) <= 1.5
+        assert db.(restored, muted) >= 1.2
+        assert abs(db.(restored, both)) <= 1.5
+      end
+
       # what a finger sliding back on a held key and forward again sends (square law: 64 is a quarter, 16 1/63)
       test "a held note's level falls as the pressure falls and rises again with it", %{
         pid: pid,
         prefix: prefix
       } do
-        program(pid, 70)
+        program(pid, unquote(fw.steady))
         Engine.commands(pid, [{:midi, 0x90, 60, 127}])
         full = level_after(pid, prefix, 300)
 
@@ -112,9 +164,9 @@ defmodule FMutate.AftertouchTest do
 
       # what a strip at its default range sends for a strike at the top of a key (its back edge), the middle and the
       # bottom (the front edge): velocity 40, 84 and 127, each with its strike level (MIDI polyphonic aftertouch; 49,
-      # 79 and 127: StrikeMath.kt). OberVave's own velocity response at its default VEL>AMP 60 (INIT's and factory
-      # 01's) is about 2 dB from 40 to 127, which a player can't tell apart; the level makes the strike heard.
-      for {name, n} <- [{"INIT", 70}, {"factory 01", 0}] do
+      # 79 and 127: StrikeMath.kt). OberVave's and Shine On's own velocity response is modest on INIT and factory 01;
+      # the level makes the strike heard.
+      for {name, n} <- fw.strikes do
         test "a strike at the top of a key plays clearly quieter than one in the middle, the middle than the bottom (#{name})",
              %{pid: pid, prefix: prefix} do
           program(pid, unquote(n))
@@ -138,11 +190,10 @@ defmodule FMutate.AftertouchTest do
         end
       end
 
-      # a held key's arp plays its steps in every octave at the key's level (factory 08 ARP SEQ: up, 2 octaves, so
-      # every other step is the key an octave up, another pitch); the quiet strike first, so the full one's echoes
-      # don't land in its window
+      # a held key's arp plays its steps in every octave at the key's level; the quiet strike first, so the full one's
+      # echoes don't land in its window
       test "an arp's octave steps play at their key's level", %{pid: pid, prefix: prefix} do
-        program(pid, 7)
+        program(pid, unquote(fw.arp))
 
         hold = fn level ->
           Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, level}])
@@ -158,23 +209,25 @@ defmodule FMutate.AftertouchTest do
         assert 20 * :math.log10(quiet / full) <= -12
       end
 
-      # MONO (factory 03 SYNC LEAD): a second key slides the voice over and letting it go hands the voice back to the
-      # first key, each at its own level, with no new note-on (or pressure) for the key taking over
-      test "a mono voice plays the level of the key it sounds", %{pid: pid, prefix: prefix} do
-        program(pid, 2)
-        db = fn a, b -> 20 * :math.log10(a / b) end
+      if fw.mono do
+        # MONO: a second key slides the voice over and letting it go hands the voice back to the first key, each at
+        # its own level, with no new note-on (or pressure) for the key taking over
+        test "a mono voice plays the level of the key it sounds", %{pid: pid, prefix: prefix} do
+          program(pid, unquote(fw.mono))
+          db = fn a, b -> 20 * :math.log10(a / b) end
 
-        Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, 49}])
-        first = level_after(pid, prefix, 300, 500)
-        Engine.commands(pid, [{:midi, 0x90, 62, 127}, {:midi, 0xA0, 62, 127}])
-        second = level_after(pid, prefix, 300, 500)
-        Engine.commands(pid, [{:midi, 0x80, 62, 0}])
-        back = level_after(pid, prefix, 300, 500)
-        Engine.commands(pid, [{:midi, 0x80, 60, 0}])
+          Engine.commands(pid, [{:midi, 0x90, 60, 127}, {:midi, 0xA0, 60, 49}])
+          first = level_after(pid, prefix, 300, 500)
+          Engine.commands(pid, [{:midi, 0x90, 62, 127}, {:midi, 0xA0, 62, 127}])
+          second = level_after(pid, prefix, 300, 500)
+          Engine.commands(pid, [{:midi, 0x80, 62, 0}])
+          back = level_after(pid, prefix, 300, 500)
+          Engine.commands(pid, [{:midi, 0x80, 60, 0}])
 
-        assert second > 300
-        assert db.(first, second) <= -12
-        assert db.(back, second) <= -12
+          assert second > 300
+          assert db.(first, second) <= -12
+          assert db.(back, second) <= -12
+        end
       end
     end
   end

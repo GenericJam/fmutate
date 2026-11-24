@@ -129,11 +129,21 @@ defmodule FMutate.CartridgesTest do
       all = merge.(none)
       assert Enum.map(all, & &1.id) == ["obervave", "shineon", "hub:shineon", "skiff", "hub:skiff", "hortator"]
 
-      # a firmware bundled with the app ignores the index
+      # a firmware bundled with the app ignores the index (keeps its own version and source-built caps)
       shine = Enum.find(all, &(&1.id == "shineon"))
       assert shine.source == :bundled and shine.version == "3.0.1" and shine.native == nil
-      refute Map.get(shine.caps, :note_pressure, false)
+      assert Map.get(shine.caps, :note_pressure, false)
       assert Enum.find(all, &(&1.id == "hub:shineon")).caps == %{}
+
+      # a bundled firmware without note_pressure does not inherit signed-index caps either
+      plain_bundled =
+        Enum.map(Firmware.bundled(), &if(&1.id == "shineon", do: %{&1 | caps: %{pitch_bend: true}}, else: &1))
+
+      plain_shine =
+        Catalog.merge(plain_bundled, hub, dir, body |> entries_of() |> Cartridges.resolve(carts, none))
+        |> Enum.find(&(&1.id == "shineon"))
+
+      refute Map.get(plain_shine.caps, :note_pressure, false)
 
       # a native build not downloaded yet: Download (the cartridge's size)
       skiff = Enum.find(all, &(&1.id == "skiff"))

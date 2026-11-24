@@ -1,0 +1,145 @@
+Add per-note MIDI polyphonic aftertouch (0xA0) as a square-law note level for Shine On.
+Routes 0xA0 through the note event ring per part, applies square-law gain to matching
+(part, note) keyers' block amplitude (skipping when level is 127 for bit-identical unity),
+keeps the level per held/latched key (including arp octave steps), and resets on note-on
+and all-notes-off/panic.
+
+diff --git a/firmware/src/shineon.c b/firmware/src/shineon.c
+--- a/firmware/src/shineon.c
++++ b/firmware/src/shineon.c
+@@ -1801,6 +1801,7 @@ static void midi_in(uint32_t notes_only)
+             uint32_t t = ch - set.midi_ch;
+             if (kind == 0x90u && d2) note_event_p(t, 1, d1, d2);
+             else if (kind == 0x80u || kind == 0x90u) note_event_p(t, 0, d1, 0);
++            else if (kind == 0xA0u) note_event_p(t, 2, d1, d2);   /* polyphonic aftertouch: that note's level */
+             else if (kind == 0xC0u && d1 < NPROG) { trk_load(t, d1); dirty_hdr = dirty_page = dirty_tags = dirty_steps = 1; }
+             else if (kind == 0xB0u && cc_map[d1]) {
+                 uint32_t p = cc_map[d1] - 1u;
+@@ -1818,6 +1819,7 @@ static void midi_in(uint32_t notes_only)
+             note_in(0, d1, 0);
+             dirty_page |= rec || is_seq_page(page); dirty_steps = 1;
+         }
++        else if (kind == 0xA0u) note_event_p(note_part[d1 & 127u], 2, d1, d2);   /* polyphonic aftertouch */
+         else if (kind == 0xE0u) ctl_bend = (int32_t)(d1 | d2 << 7) - 8192;
+         else if (kind == 0xC0u && d1 < NPROG) { trk_load(set.midi_ch ? 0u : seq_trk, d1); dirty_hdr = dirty_page = dirty_tags = dirty_steps = 1; }
+         else if (kind == 0xB0u) {
+diff --git a/firmware/src/shn_engine.h b/firmware/src/shn_engine.h
+--- a/firmware/src/shn_engine.h
++++ b/firmware/src/shn_engine.h
+@@ -35,6 +35,7 @@ typedef struct {
+     int32_t lfo_fade;                           /* Q15 */
+     uint32_t seq;                               /* allocation order */
+     uint8_t note, vel, gate;                    /* gate: the key (or the arp) holds it */
++    uint8_t at;                                 /* polyphonic aftertouch: the note's level 0..127 (127 = as played) */
+     uint8_t part;                               /* the track whose sound it is, 0..3 */
+     uint8_t low;                                /* in the bass section (SPLIT) */
+     uint8_t w;                                  /* this block: which footages to render (W_*) */
+@@ -64,7 +65,7 @@ static voice_t vc[NV];
+ static uint32_t vseq, rr;                       /* allocation counter, round-robin pointer */
+ 
+ /* main loop -> ISR: note events */
+-typedef struct { uint8_t type, note, vel, part; } nev_t;   /* type 1 on, 0 off; part: the track's sound */
++typedef struct { uint8_t type, note, vel, part; } nev_t;   /* type 1 on, 0 off, 2 pressure (vel = 0..127); part: the track's sound */
+ #define NQ 64u
+ static nev_t nq[NQ];
+ static volatile uint32_t nq_w, nq_r;
+@@ -141,5 +142,21 @@ static const int8_t VINT_TUNE8[NCARD] = {-6, 4, 2, -5, 6, -3, 1, -5, 3, -4, 5, -
+ static const int8_t VINT_ENV[NCARD] = {10, -6, 14, -12, 3, -16, 8, -4, 12, -9, 5, -14, 7, -2, 15, -11};   /* /128 on the times */
+ 
++/* polyphonic aftertouch per key of each sound, as 127 - level (0 = as played): the voices a held (or latched) key
++ * starts later take it too, its arp's steps in every octave included; a new press of the key starts at full, and a
++ * voice of a pitch no key holds (the sequencer's steps, a key let go) plays as played (FMutate) */
++static uint8_t note_quiet[NPART][128];
++static int32_t trig_key = -1;                   /* the held key an arp step plays (its octaves are other pitches) */
++
++/* the level a voice of `note` takes: its key's while held or latched (an arp step: the key it plays), else full */
++static uint8_t key_level(uint32_t p, uint32_t note)
++{
++    uint32_t i, k = trig_key >= 0 ? (uint32_t)trig_key : note;
++    p %= NPART;
++    for (i = 0; i < nheld[p]; i++)
++        if (held[p][i].note == k) return (uint8_t)(127u - note_quiet[p][k & 127u]);
++    return 127u;
++}
++
+ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel)
+ {
+     const uint8_t *pv = pt[part].p->v;
+@@ -150,6 +167,7 @@ static void voice_start(voice_t *v, uint32_t part, uint32_t note, uint32_t vel)
+     v->seq = ++vseq;
+     v->low = (uint8_t)(pv[P_SPLIT] && note < 36u + pv[P_SPLIT]);
+     v->target16 = (int32_t)note << 16;
++    v->at = key_level(part, note);
+     v->pitch16 = pv[P_GLIDE] ? pt[part].last_pitch16 : v->target16;
+     v->lfo_blk = 0;
+     v->lfo_fade = pv[P_LFO_DELAY] ? 0 : 32767;
+@@ -323,7 +341,9 @@ static void arp_step(uint32_t p)
+     a->note = (uint32_t)clampi((int32_t)sorted[idx] + 12 * (int32_t)(k / n), 0, 127);
+     for (i = 0; i < n; i++)                     /* the velocity of that key */
+         if (held[p][i].note == sorted[idx]) break;
++    trig_key = sorted[idx];
+     voice_trigger(p, a->note, i < n ? held[p][i].vel : 100u);
++    trig_key = -1;
+     arp_post(p, 1, a->note, i < n ? held[p][i].vel : 100u);
+     a->sounding = 1;
+     ui_arp_step++;
+@@ -378,6 +398,7 @@ static inline uint32_t part_sus(uint32_t p) { return ctl_sustain || (ctl_hold >>
+ static void ev_note_on(uint32_t p, uint32_t note, uint32_t vel)
+ {
+     uint32_t i, arp_on = pt[p].p->v[P_ARP_MODE] != A_OFF, sus = part_sus(p);
++    note_quiet[p][note & 127u] = 0;             /* a new press: full, until pressure says otherwise */
+     if (arp_on && sus) {                        /* latch: a new chord after all keys were up starts over */
+         for (i = 0; i < nheld[p]; i++)
+             if (held[p][i].phys) break;
+@@ -419,10 +440,23 @@ static void ev_sustain_up(uint32_t p)           /* the pedal / its HOLD let go:
+     for (i = 0; i < ng; i++) voice_release(p, gone[i], 0);
+ }
+ 
++/* polyphonic aftertouch: the key's level, for every voice of that key of that sound, held or dying away, and the
++ * ones it starts later (FMutate) */
++static void ev_pressure(uint32_t p, uint32_t note, uint32_t val)
++{
++    uint32_t v;
++    if (val > 127u) val = 127u;
++    note_quiet[p][note & 127u] = (uint8_t)(127u - val);
++    for (v = 0; v < NV; v++)
++        if (vc[v].note == note && vc[v].part == p) vc[v].at = (uint8_t)val;
++}
++
+ static void parts_off(uint32_t p)               /* a sound gone (B back on A, a panic): its keys, its arp, its notes */
+ {
++    uint32_t i;
+     nheld[p] = 0;
++    for (i = 0; i < 128u; i++) note_quiet[p][i] = 0;
+     arp_stop_note(p);
+     arp[p].was_on = 0;
+     voices_release_part(p);
+ }
+@@ -441,7 +475,8 @@ static void engine_events(void)
+         e = nq[nq_r % NQ];
+         p = e.part % NPART;
+         nq_r++;
+-        if (e.type) ev_note_on(p, e.note, e.vel);
++        if (e.type == 1u) ev_note_on(p, e.note, e.vel);
++        else if (e.type == 2u) ev_pressure(p, e.note, e.vel);
+         else ev_note_off(p, e.note);
+     }
+ }
+@@ -547,6 +582,8 @@ static void voice_block(voice_t *v, uint32_t card)
+     velg = 32767 - ((((127 - (int32_t)v->vel) * g->velamp) >> 7) * 258);
+     v->amp0 = v->amp1;
+     a = (int32_t)(((int64_t)(v->ae.level >> 9) * velg) >> 15);
++    if (v->at < 127u)
++        a = (int32_t)(((int64_t)a * ((int32_t)v->at * v->at * 32767 / 16129)) >> 15);   /* aftertouch: a square law to 0 */
+     v->amp1 = (a * g->gain_q12) >> 12;          /* the sound's VOLUME */
+     ui_vlevel[card] = a;
+     ui_vnote[card] = v->note;
+@@ -770,7 +807,7 @@ static void coef_fixed(svf_coef_t *c, int32_t g, int32_t k)   /* a register filt
+ static void engine_init(void)
+ {
+     uint32_t v;
+-    for (v = 0; v < NV; v++) vc[v].noise = 0x12345678u * (v + 1u) + 0x9E3779B9u;
++    for (v = 0; v < NV; v++) { vc[v].noise = 0x12345678u * (v + 1u) + 0x9E3779B9u; vc[v].at = 127; }
+     coef_fixed(&C_CB, G_900, 4900);             /* k 1.2: a small bump at the corner */
+     coef_fixed(&C_CE, G_1800, 5793);
+     coef_fixed(&C_CEF, G_400, 3000);            /* a body resonance */
