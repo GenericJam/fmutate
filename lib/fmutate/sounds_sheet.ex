@@ -87,6 +87,9 @@ defmodule FMutate.SoundsSheet do
   def event({:sounds_listed, _id, _entries, _undo}, socket), do: socket
 
   def event({:tap, {:sounds, _}}, %{assigns: %{sounds: %{busy: busy}}} = socket) when busy != nil, do: socket
+  # (a dialog shows on the UI thread after its tap: an answer arriving while something already runs starts nothing)
+  def event({:alert, _}, %{assigns: %{sounds: %{busy: busy}}} = socket) when busy != nil, do: put(socket, pending: nil)
+  def event({:submit, {:sounds, :name}}, %{assigns: %{sounds: %{busy: busy}}} = socket) when busy != nil, do: socket
 
   def event({:tap, {:sounds, :name}}, socket) do
     name = "#{socket.assigns.sounds.firmware.name} #{Sounds.local_time(now())}"
@@ -273,7 +276,7 @@ defmodule FMutate.SoundsSheet do
       send(me, {:sounds_done, op, result})
     end)
 
-    put(socket, busy: busy, status: nil)
+    put(socket, busy: busy, status: nil, pending: nil)
   end
 
   defp refused(socket, text), do: put(socket, status: {:error, text})

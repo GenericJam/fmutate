@@ -174,6 +174,9 @@ defmodule FMutate.SoundsTest do
     # a native memory of another length isn't this build's
     short = %{saved | bytes: binary_part(saved.bytes, 0, 4096)}
     assert {:error, _} = Sounds.check(short, running)
+    # an empty memory (a reset, or its undo) fits any length; a running synth with an empty file takes any memory
+    assert Sounds.check(%{saved | bytes: <<>>}, running) == :ok
+    assert Sounds.check(short, %{running | flash_size: 0}) == :ok
 
     # nor does the instance take bytes for a firmware that isn't running (the flash is untouched)
     before = File.read!(flash)
