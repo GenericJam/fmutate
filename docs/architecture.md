@@ -178,7 +178,11 @@ flowchart LR
   fade-in: OberVave native, host 8–30 ms; emulator-5584 (Android 15 arm64) save 20–24 ms, load and undo 41–84 ms.
   The restart also drops what the firmware hasn't saved itself (OberVave's `*` edits), so the sheet says to save
   in the synth first. **Undo last load** puts back the kept bytes through the same restore, under a load's checks
-  (another version asks, another native length is refused), and keeps what it replaced, so it toggles. Not taken:
+  (another version asks, another native length is refused), and keeps what it replaced, so it toggles.
+  **Reset to original** (`Sounds.reset/1`, asks first) is a restore of an empty memory, which both engines read as
+  none: the synth starts as on its first start (a native cartridge on its own defaults, which it may write back at
+  once; a package on its flash as it came), and Undo last load puts back what was there. An empty memory fits any
+  length, so the native length check only compares two memories that hold something. Not taken:
   `quit/1` (nothing restarts in that launch), a switch away and back (a switch answers before the old engine has
   ended), replacing the file while the engine runs (it would write over it).
 - **Synth page design** (HANDOFF has no board for a firmware detail page; this is the tech decision, in the

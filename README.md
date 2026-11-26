@@ -26,7 +26,8 @@ early: Android, as a sideloaded APK or built from source (an iOS port is in test
   undo. A firmware that crashes twice in a minute is quarantined until you choose "Run anyway".
 - **Sounds**: save everything a synth keeps in its memory (every patch and setting) under a name, load it back
   (the synth restarts for a moment; Undo last load puts back what was there), export it through the share sheet
-  and import it on another phone. A sound only goes back into the same synth (menu › Sounds).
+  and import it on another phone. A sound only goes back into the same synth (menu › Sounds). **Reset to
+  original** there puts the synth back on the settings it came with (Undo last load brings yours back).
 - **A playable surface**: multitouch where every finger owns the control it touched, glissando, knobs that never
   jump, fine mode, a firmware screen drawn as large as it fits and kept sharp.
   - **Velocity** from where you strike a key (front loud, back soft), on by default; it plays the synth over MIDI

@@ -3,8 +3,9 @@ defmodule FMutate.SoundsSheet do
   The Sounds sheet over the instrument (the Opling menu's Sounds): the running synth's saved sounds
   (`FMutate.Sounds`). Save sound… (a name, then a new entry), the list (newest first: name, local date and time,
   version; one made with another version of this synth says so), per entry Load / Export / Delete (asks first),
-  Import…, and Undo last load. A sound or an undo made with another version asks first. Loading, saving and
-  undoing restart the synth for a moment; they run in a task and the sheet says what it is doing meanwhile. The
+  Import…, Undo last load, and Reset to original (asks first: every patch and setting back to how the synth came;
+  Undo puts them back). A sound or an undo made with another version asks first. Loading, saving, undoing and
+  resetting restart the synth for a moment; they run in a task and the sheet says what it is doing meanwhile. The
   list is read in a task too (each file in turn, without its payload) and drawn as a lazy list.
 
   It works on the instrument screen's socket. Its assign is `sounds` (nil while the sheet is closed and nothing
@@ -147,6 +148,20 @@ defmodule FMutate.SoundsSheet do
 
   def event({:tap, {:sounds, :undo}}, socket), do: undo(socket, [])
 
+  def event({:tap, {:sounds, :reset}}, socket) do
+    synth = socket.assigns.sounds.firmware.name
+
+    socket
+    |> put(pending: :reset)
+    |> Mob.Alert.alert(
+      title: "Reset #{synth} to its original settings?",
+      message:
+        "Every patch and setting goes back to how #{synth} came. Undo last load puts back what is there now; " <>
+          "save it as a sound first to keep it for longer.",
+      buttons: [[label: "Reset", style: :destructive, action: :sounds_reset], [label: "Cancel", style: :cancel]]
+    )
+  end
+
   def event({:alert, :sounds_delete}, %{assigns: %{sounds: %{pending: {:delete, path}}}} = socket) do
     Sounds.delete(%{path: path})
     socket |> put(pending: nil, status: {:ok, "Deleted."}) |> refresh()
@@ -163,6 +178,9 @@ defmodule FMutate.SoundsSheet do
 
   def event({:alert, :sounds_undo_anyway}, %{assigns: %{sounds: %{pending: :undo}}} = socket),
     do: socket |> put(pending: nil) |> undo(anyway: true)
+
+  def event({:alert, :sounds_reset}, %{assigns: %{sounds: %{pending: :reset}}} = socket),
+    do: socket |> put(pending: nil) |> run(:reset, "Resetting… the synth restarts for a moment.", &Sounds.reset/1)
 
   def event({:alert, _}, socket), do: put(socket, pending: nil)
 
@@ -200,6 +218,7 @@ defmodule FMutate.SoundsSheet do
         {:save, {:ok, sound}} -> {:ok, "Saved “#{sound.name}”."}
         {:load, :ok} -> {:ok, "Loaded. Undo last load puts back what was there."}
         {:undo, :ok} -> {:ok, "Undone. Undo again to redo."}
+        {:reset, :ok} -> {:ok, "Back to the original settings. Undo last load puts back what was there."}
         {_, {:other_version, _, _}} -> {:error, "Made with another version: not loaded."}
         {_, {:error, text}} -> {:error, text}
       end
@@ -300,7 +319,8 @@ defmodule FMutate.SoundsSheet do
             row([
               button("Import…", :import, disabled: not idle),
               button("Undo last load", :undo, disabled: not (idle and s.undo))
-            ])
+            ]),
+            row([button("Reset to original", :reset, disabled: not idle)])
           ])
         ]
 
