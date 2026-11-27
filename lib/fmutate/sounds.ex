@@ -25,6 +25,9 @@ defmodule FMutate.Sounds do
   engine has ended). Made with another version of the same synth: `{:other_version, made, have}`, for the player
   to decide. Before replacing, the bytes it replaces are kept (`Paths.sound_undo/2`, one file replaced as a
   whole): `undo/2` puts them back under the same checks and keeps what it replaced, so a second undo redoes.
+  `reset/1` loads an empty memory, which both engines read as none: the synth starts on its original settings, as
+  on its first start (a native cartridge's own defaults, a package's flash as it came); Undo puts back what was there.
+  An empty memory fits any length: the length checks only compare two memories that hold something.
   """
 
   require Logger
@@ -207,7 +210,7 @@ defmodule FMutate.Sounds do
       sf.backend != backend ->
         {:error, "This sound is #{sf.name}'s #{backend_name(sf.backend)}; here it runs #{backend_name(backend)}."}
 
-      backend == :native and running.flash_size not in [nil, byte_size(sound.bytes)] ->
+      backend == :native and running.flash_size not in [nil, 0, byte_size(sound.bytes)] and sound.bytes != <<>> ->
         {:error, "Its memory is #{byte_size(sound.bytes)} bytes; #{fw.name}'s here is #{running.flash_size}."}
 
       sf.version != fw.version ->
@@ -229,6 +232,16 @@ defmodule FMutate.Sounds do
     with {:ok, running} <- running(instance),
          :ok <- confirmed(check(sound, running), opts[:anyway]),
          do: restore(instance, running, sound.bytes)
+  end
+
+  @doc """
+  Put the running synth back on its original settings (it restarts for a moment): its memory replaced by none, as
+  on its first start. What it replaces is kept for `undo/2`.
+  """
+  @spec reset(String.t()) :: :ok | {:error, String.t()}
+  def reset(instance) do
+    with {:ok, running} <- running(instance),
+         do: restore(instance, running, <<>>)
   end
 
   @doc "Whether the last load into the running firmware on `instance` can be undone (or redone): its backend's."
@@ -257,10 +270,11 @@ defmodule FMutate.Sounds do
   defp anyway({:other_version, _made, _have}), do: :ok
   defp anyway(answer), do: answer
 
-  # the bytes it replaces: as long as them (native; checked with the engine ended), and kept as the undo first
+  # the bytes it replaces: as long as them (native; checked with the engine ended; an empty memory, none or a reset,
+  # fits any), and kept as the undo first
   defp restore(instance, %{firmware: build}, bytes) do
     keep = fn old ->
-      if build.backend == :native and old != nil and byte_size(old) != byte_size(bytes),
+      if build.backend == :native and old not in [nil, <<>>] and bytes != <<>> and byte_size(old) != byte_size(bytes),
         do: {:error, "Its memory is #{byte_size(bytes)} bytes; the synth's is #{byte_size(old)}."},
         else: keep_undo(instance, build, old)
     end

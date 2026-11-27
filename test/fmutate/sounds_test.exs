@@ -77,14 +77,14 @@ defmodule FMutate.SoundsTest do
   # PERFORM (HOME) KNOB 1 is CUTOFF; OberVave saves its settings by itself a few seconds later, and the engine
   # writes the flash file when the firmware's save memory changes
   defp turn_cutoff(flash, clicks) do
-    before = File.read!(flash)
+    before = read_flash(flash)
     tap(:home)
     firmware_wait(300)
     Instance.input("a", {:encoder, :knob1, clicks})
 
     Enum.find_value(1..100, fn _ ->
       firmware_wait(100)
-      bytes = File.read!(flash)
+      bytes = read_flash(flash)
       if bytes != before, do: bytes
     end) || flunk("OberVave didn't save the change")
   end
@@ -120,6 +120,32 @@ defmodule FMutate.SoundsTest do
     assert length(Sounds.list("obervave")) == 1
   end
 
+  test "Reset to original: the synth runs on its first settings again; Undo puts back what was there", %{flash: flash} do
+    # an edit from the fresh synth's defaults gives these bytes
+    changed = turn_cutoff(flash, -20)
+
+    assert :ok = Sounds.reset("a")
+    assert %{phase: :running, firmware: "obervave"} = Instance.view("a")
+    assert Sounds.undo?("a", "obervave", :native)
+
+    assert :ok = Sounds.undo("a")
+    assert File.read!(flash) == changed
+    # a second undo resets again (an empty memory fits the synth's length; or OberVave's own defaults, written
+    # meanwhile: what it saves when it runs on no memory)
+    assert :ok = Sounds.undo("a")
+
+    # the same edit from the reset synth writes the same memory: it runs on its defaults, nothing of the edit kept
+    assert turn_cutoff(flash, -20) == changed
+    assert Sounds.list("obervave") == []
+  end
+
+  defp read_flash(flash) do
+    case File.read(flash) do
+      {:ok, bytes} -> bytes
+      {:error, :enoent} -> nil
+    end
+  end
+
   test "saving twice under one name keeps both, newest first" do
     {:ok, first} = Sounds.save("a", "Pad")
     # (a second later, so the second has a later time)
@@ -148,6 +174,9 @@ defmodule FMutate.SoundsTest do
     # a native memory of another length isn't this build's
     short = %{saved | bytes: binary_part(saved.bytes, 0, 4096)}
     assert {:error, _} = Sounds.check(short, running)
+    # an empty memory (a reset, or its undo) fits any length; a running synth with an empty file takes any memory
+    assert Sounds.check(%{saved | bytes: <<>>}, running) == :ok
+    assert Sounds.check(short, %{running | flash_size: 0}) == :ok
 
     # nor does the instance take bytes for a firmware that isn't running (the flash is untouched)
     before = File.read!(flash)
